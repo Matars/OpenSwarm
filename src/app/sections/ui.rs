@@ -1006,7 +1006,7 @@ fn graph_palette_color(idx: usize) -> Color {
 }
 
 fn canvas_root_label(_app: &App, root_branch: &str) -> String {
-    format!("[{}]", truncate_text(root_branch, 14))
+    truncate_text(root_branch, 14)
 }
 
 fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String {
@@ -1023,13 +1023,13 @@ fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String
 
     if selected {
         let state = if entry.dirty { "*" } else { "" };
-        format!("[{}{}{}]", name, state, agent)
+        format!("{}{}{}", name, state, agent)
     } else if entry.dirty {
-        format!("[{}*{}]", name, agent)
+        format!("{}*{}", name, agent)
     } else if !agent.is_empty() {
-        format!("[{}{}]", name, agent)
+        format!("{}{}", name, agent)
     } else {
-        format!("[{}]", name)
+        name
     }
 }
 
@@ -1070,13 +1070,15 @@ fn draw_canvas_label(
         return;
     };
     let label_width = label.chars().count() as u16;
-    if label_width == 0 || label_width + 2 >= area.width {
+    let box_width = label_width.saturating_add(2);
+    let box_height = 3u16;
+    if label_width == 0 || box_width >= area.width || box_height > area.height {
         return;
     }
 
-    let mut x = sx.saturating_sub(label_width / 2);
-    let min_x = area.x.saturating_add(1);
-    let max_x = area.right().saturating_sub(label_width + 1);
+    let mut x = sx.saturating_sub(box_width / 2);
+    let min_x = area.x;
+    let max_x = area.right().saturating_sub(box_width);
     if x < min_x {
         x = min_x;
     }
@@ -1085,10 +1087,18 @@ fn draw_canvas_label(
     }
     let y = sy
         .saturating_add(1)
-        .clamp(area.y, area.bottom().saturating_sub(1));
+        .clamp(area.y, area.bottom().saturating_sub(box_height));
+    let rect = Rect::new(x, y, box_width, box_height);
+    frame.render_widget(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(style)
+            .style(style),
+        rect,
+    );
     frame.render_widget(
         Paragraph::new(label.to_string()).style(style),
-        Rect::new(x, y, label_width, 1),
+        Rect::new(x.saturating_add(1), y.saturating_add(1), label_width, 1),
     );
 }
 
@@ -1622,8 +1632,9 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Cyan ring = selected worktree"),
             Line::from("- Yellow nodes = dirty (uncommitted changes)"),
             Line::from("- Node suffix animates for active: | / - \\"),
-            Line::from("- Idle sessions show idle(12s), completed show done/fail"),
             Line::from("- Active state uses a braille spinner"),
+            Line::from("- Idle sessions show idle(12s), completed show done/fail"),
+            Line::from("- Node labels are boxed with ratatui borders"),
             Line::from("- Lines show parent branch relationships"),
             Line::from(""),
             Line::from("Navigation:"),
