@@ -523,10 +523,6 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
         KeyCode::Char('+') | KeyCode::Char('=') => zoom_worktree_canvas(app, true),
         KeyCode::Char('-') => zoom_worktree_canvas(app, false),
         KeyCode::Char('0') => reset_worktree_canvas_view(app),
-        KeyCode::Char('W') => pan_worktree_canvas(app, 0.0, 1.0),
-        KeyCode::Char('A') => pan_worktree_canvas(app, -1.0, 0.0),
-        KeyCode::Char('S') => pan_worktree_canvas(app, 0.0, -1.0),
-        KeyCode::Char('D') => pan_worktree_canvas(app, 1.0, 0.0),
         KeyCode::Char('h') => move_worktree_level_siblings(app, false),
         KeyCode::Char('l') => move_worktree_level_siblings(app, true),
         KeyCode::Char('L') => {
@@ -597,16 +593,6 @@ fn zoom_worktree_canvas(app: &mut App, zoom_in: bool) {
     }
 
     app.status_line = format!("Canvas zoom: {:.2}x", app.worktree_canvas_zoom);
-}
-
-fn pan_worktree_canvas(app: &mut App, dx: f64, dy: f64) {
-    let step = 0.18 / app.worktree_canvas_zoom.max(0.65);
-    app.worktree_canvas_pan_x = (app.worktree_canvas_pan_x + dx * step).clamp(-1.8, 1.8);
-    app.worktree_canvas_pan_y = (app.worktree_canvas_pan_y + dy * step).clamp(-1.8, 1.8);
-    app.status_line = format!(
-        "Canvas pan: x={:+.2} y={:+.2}",
-        app.worktree_canvas_pan_x, app.worktree_canvas_pan_y
-    );
 }
 
 fn reset_worktree_canvas_view(app: &mut App) {
@@ -4260,10 +4246,6 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" reset camera"),
         ]),
         Line::from(vec![
-            Span::styled("Shift+WASD", Style::default().fg(Color::LightBlue)),
-            Span::raw(" pan camera"),
-        ]),
-        Line::from(vec![
             Span::styled("h/l", Style::default().fg(Color::LightBlue)),
             Span::raw(" left/right in level"),
         ]),
@@ -4324,7 +4306,6 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("Camera:"),
             Line::from("  +/-     - zoom in/out"),
             Line::from("  0       - reset view"),
-            Line::from("  Shift+WASD - pan"),
             Line::from(""),
             Line::from("  ?: close this help"),
         ],
