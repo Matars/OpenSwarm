@@ -1,2 +1,5 @@
+.PHONY: dev
+
 dev:
-	cargo run --bin openswarm
+	cargo build --release --bin openswarm
+	cargo install --path . --bin openswarm --force
