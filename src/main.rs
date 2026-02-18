@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::hash::{Hash, Hasher};
 use std::io;
 use std::io::Read;
 use std::io::Write;
@@ -8,7 +9,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{hash_map::DefaultHasher, BTreeMap, HashSet},
     fs,
 };
 
@@ -3848,20 +3849,15 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
                 let from = parent
                     .and_then(|p| node_points.get(p).copied())
                     .unwrap_or(root_point);
+                let accent = worktree_accent_color(&app.worktrees[idx]);
                 let is_selected_edge =
                     idx == selected_idx || parent.map(|p| p == selected_idx).unwrap_or(false);
                 let edge_color = if is_selected_edge {
-                    Color::LightCyan
+                    Color::White
                 } else {
-                    Color::DarkGray
+                    accent
                 };
-                ctx.draw(&canvas::Line {
-                    x1: from.0,
-                    y1: from.1,
-                    x2: to.0,
-                    y2: to.1,
-                    color: edge_color,
-                });
+                draw_rounded_connector(ctx, from, to, edge_color);
             }
 
             ctx.draw(&canvas::Circle {
@@ -3873,31 +3869,36 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
 
             for (idx, entry) in app.worktrees.iter().enumerate() {
                 let point = node_points[idx];
+                let accent = worktree_accent_color(entry);
 
                 if idx == selected_idx {
                     ctx.draw(&canvas::Circle {
                         x: point.0,
                         y: point.1,
-                        radius: 0.09,
-                        color: Color::Cyan,
+                        radius: 0.1,
+                        color: Color::White,
+                    });
+                } else if entry.dirty {
+                    ctx.draw(&canvas::Circle {
+                        x: point.0,
+                        y: point.1,
+                        radius: 0.085,
+                        color: Color::Yellow,
+                    });
+                } else if entry.is_current {
+                    ctx.draw(&canvas::Circle {
+                        x: point.0,
+                        y: point.1,
+                        radius: 0.085,
+                        color: Color::LightMagenta,
                     });
                 }
-
-                let node_color = if idx == selected_idx {
-                    Color::LightCyan
-                } else if entry.is_current {
-                    Color::LightMagenta
-                } else if entry.dirty {
-                    Color::Yellow
-                } else {
-                    Color::White
-                };
 
                 ctx.draw(&canvas::Circle {
                     x: point.0,
                     y: point.1,
                     radius: 0.06,
-                    color: node_color,
+                    color: accent,
                 });
             }
         });
@@ -3921,20 +3922,16 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
     for (idx, entry) in app.worktrees.iter().enumerate() {
         let selected = idx == selected_idx;
         let label = canvas_node_label(app, entry, selected);
+        let accent = worktree_accent_color(entry);
         let style = if selected {
             Style::default()
                 .fg(Color::Black)
-                .bg(Color::LightCyan)
+                .bg(accent)
                 .add_modifier(Modifier::BOLD)
         } else if entry.is_current {
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::LightMagenta)
-                .add_modifier(Modifier::BOLD)
-        } else if entry.dirty {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(accent).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::White)
+            Style::default().fg(accent)
         };
         draw_canvas_label(
             frame,
@@ -3997,6 +3994,63 @@ fn logical_to_canvas_point(point: (f32, f32)) -> (f64, f64) {
     let x = (point.0 as f64 - 0.5) * 2.6;
     let y = 0.9 - point.1 as f64 * 1.8;
     (x, y)
+}
+
+fn worktree_accent_color(entry: &WorktreeEntry) -> Color {
+    let seed = if entry.detached || entry.branch.is_empty() {
+        entry.path.as_str()
+    } else {
+        entry.branch.as_str()
+    };
+
+    let palette = [39u8, 45, 51, 69, 75, 81, 112, 149, 178, 208, 203, 198];
+    let mut hasher = DefaultHasher::new();
+    seed.hash(&mut hasher);
+    let idx = (hasher.finish() as usize) % palette.len();
+    Color::Indexed(palette[idx])
+}
+
+fn draw_rounded_connector(
+    ctx: &mut canvas::Context<'_>,
+    from: (f64, f64),
+    to: (f64, f64),
+    color: Color,
+) {
+    let dx = to.0 - from.0;
+    let dy = to.1 - from.1;
+
+    if dx.abs() < 0.05 || dy.abs() < 0.05 {
+        ctx.draw(&canvas::Line {
+            x1: from.0,
+            y1: from.1,
+            x2: to.0,
+            y2: to.1,
+            color,
+        });
+        return;
+    }
+
+    let control = (from.0, to.1);
+    let distance = (dx * dx + dy * dy).sqrt();
+    let segments = ((distance * 24.0).ceil() as usize).clamp(10, 32);
+    let mut prev = from;
+
+    for i in 1..=segments {
+        let t = i as f64 / segments as f64;
+        let nt = 1.0 - t;
+        let p = (
+            (nt * nt * from.0) + (2.0 * nt * t * control.0) + (t * t * to.0),
+            (nt * nt * from.1) + (2.0 * nt * t * control.1) + (t * t * to.1),
+        );
+        ctx.draw(&canvas::Line {
+            x1: prev.0,
+            y1: prev.1,
+            x2: p.0,
+            y2: p.1,
+            color,
+        });
+        prev = p;
+    }
 }
 
 fn draw_canvas_label(
