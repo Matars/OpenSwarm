@@ -45,6 +45,7 @@ enum Mode {
     WorktreeGitLogPopup,
     QuitWithSessionsConfirm,
     AgentPopup,
+    NotesPopup,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,6 +89,11 @@ struct App {
     agent_sessions: BTreeMap<String, AgentSession>,
     agent_popup_path: Option<String>,
     terminal_popup_mode: TerminalPopupMode,
+    notes_path: String,
+    notes_lines: Vec<String>,
+    notes_cursor_row: usize,
+    notes_cursor_col: usize,
+    notes_scroll: u16,
     agent_tx: Sender<AgentEvent>,
     agent_rx: Receiver<AgentEvent>,
 }
@@ -255,6 +261,11 @@ impl App {
             agent_sessions: BTreeMap::new(),
             agent_popup_path: None,
             terminal_popup_mode: TerminalPopupMode::Input,
+            notes_path: String::new(),
+            notes_lines: vec![String::new()],
+            notes_cursor_row: 0,
+            notes_cursor_col: 0,
+            notes_scroll: 0,
             agent_tx,
             agent_rx,
         }
@@ -412,6 +423,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         Mode::AgentPopup => {
                             handle_agent_popup_key(&mut app, key)?;
                         }
+                        Mode::NotesPopup => {
+                            handle_notes_popup_key(&mut app, key)?;
+                        }
                     }
 
                     if app.quit_now {
@@ -481,6 +495,9 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
             app.mode = Mode::CommitInput;
             app.commit_input.clear();
             app.status_line = "Commit mode: type a message and press Enter".to_string();
+        }
+        KeyCode::Char('n') => {
+            open_notes_popup(app)?;
         }
         KeyCode::Char('p') => {
             let output = push_with_upstream()?;
@@ -578,6 +595,9 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
             app.status_line = merge_selected_into_parent(app)?;
             refresh_worktrees(app);
             refresh_status(app);
+        }
+        KeyCode::Char('n') => {
+            open_notes_popup(app)?;
         }
         _ => {}
     }
@@ -954,6 +974,206 @@ fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
     }
 
     Ok(())
+}
+
+fn open_notes_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let path = notes_file_path();
+    let notes_file = Path::new(path.as_str());
+    if !notes_file.exists() {
+        fs::write(notes_file, "# Notes\n")?;
+    }
+
+    let content = fs::read_to_string(notes_file)?;
+    let mut lines = content
+        .split('\n')
+        .map(|line| line.to_string())
+        .collect::<Vec<String>>();
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+
+    app.notes_path = path;
+    app.notes_lines = lines;
+    app.notes_cursor_row = app.notes_lines.len().saturating_sub(1);
+    app.notes_cursor_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+    app.notes_scroll = 0;
+    app.mode = Mode::NotesPopup;
+    app.status_line = format!("Opened {}", app.notes_path);
+    Ok(())
+}
+
+fn save_notes_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
+    if app.notes_lines.is_empty() {
+        app.notes_lines.push(String::new());
+    }
+    let body = app.notes_lines.join("\n");
+    fs::write(app.notes_path.as_str(), body)?;
+    app.status_line = format!("Saved {}", app.notes_path);
+    Ok(())
+}
+
+fn handle_notes_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Error>> {
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('s') => {
+                save_notes_popup(app)?;
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
+
+    if app.notes_lines.is_empty() {
+        app.notes_lines.push(String::new());
+    }
+
+    match key.code {
+        KeyCode::Esc => {
+            save_notes_popup(app)?;
+            app.mode = Mode::Normal;
+            app.status_line = format!("Saved notes to {}", app.notes_path);
+        }
+        KeyCode::Up => {
+            if app.notes_cursor_row > 0 {
+                app.notes_cursor_row -= 1;
+            }
+            clamp_notes_cursor(app);
+        }
+        KeyCode::Down => {
+            if app.notes_cursor_row + 1 < app.notes_lines.len() {
+                app.notes_cursor_row += 1;
+            }
+            clamp_notes_cursor(app);
+        }
+        KeyCode::Left => {
+            if app.notes_cursor_col > 0 {
+                app.notes_cursor_col -= 1;
+            } else if app.notes_cursor_row > 0 {
+                app.notes_cursor_row -= 1;
+                app.notes_cursor_col =
+                    line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+            }
+        }
+        KeyCode::Right => {
+            let line_len = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+            if app.notes_cursor_col < line_len {
+                app.notes_cursor_col += 1;
+            } else if app.notes_cursor_row + 1 < app.notes_lines.len() {
+                app.notes_cursor_row += 1;
+                app.notes_cursor_col = 0;
+            }
+        }
+        KeyCode::Home => {
+            app.notes_cursor_col = 0;
+        }
+        KeyCode::End => {
+            app.notes_cursor_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+        }
+        KeyCode::PageUp => {
+            app.notes_cursor_row = app.notes_cursor_row.saturating_sub(10);
+            clamp_notes_cursor(app);
+        }
+        KeyCode::PageDown => {
+            let max_row = app.notes_lines.len().saturating_sub(1);
+            app.notes_cursor_row = (app.notes_cursor_row + 10).min(max_row);
+            clamp_notes_cursor(app);
+        }
+        KeyCode::Enter => {
+            let current = app.notes_lines[app.notes_cursor_row].clone();
+            let split_idx = char_to_byte_idx(current.as_str(), app.notes_cursor_col);
+            let before = current[..split_idx].to_string();
+            let after = current[split_idx..].to_string();
+            app.notes_lines[app.notes_cursor_row] = before;
+            app.notes_lines.insert(app.notes_cursor_row + 1, after);
+            app.notes_cursor_row += 1;
+            app.notes_cursor_col = 0;
+        }
+        KeyCode::Backspace => {
+            if app.notes_cursor_col > 0 {
+                let line = &mut app.notes_lines[app.notes_cursor_row];
+                let end = char_to_byte_idx(line.as_str(), app.notes_cursor_col);
+                let start = char_to_byte_idx(line.as_str(), app.notes_cursor_col - 1);
+                line.replace_range(start..end, "");
+                app.notes_cursor_col -= 1;
+            } else if app.notes_cursor_row > 0 {
+                let current = app.notes_lines.remove(app.notes_cursor_row);
+                app.notes_cursor_row -= 1;
+                app.notes_cursor_col =
+                    line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+                app.notes_lines[app.notes_cursor_row].push_str(current.as_str());
+            }
+        }
+        KeyCode::Delete => {
+            let row = app.notes_cursor_row;
+            let col = app.notes_cursor_col;
+            let line_len = line_char_len(app.notes_lines[row].as_str());
+            if col < line_len {
+                let line = &mut app.notes_lines[row];
+                let start = char_to_byte_idx(line.as_str(), col);
+                let end = char_to_byte_idx(line.as_str(), col + 1);
+                line.replace_range(start..end, "");
+            } else if row + 1 < app.notes_lines.len() {
+                let next = app.notes_lines.remove(row + 1);
+                app.notes_lines[row].push_str(next.as_str());
+            }
+        }
+        KeyCode::Tab => {
+            let line = &mut app.notes_lines[app.notes_cursor_row];
+            let idx = char_to_byte_idx(line.as_str(), app.notes_cursor_col);
+            line.insert_str(idx, "    ");
+            app.notes_cursor_col += 4;
+        }
+        KeyCode::Char(c) => {
+            let line = &mut app.notes_lines[app.notes_cursor_row];
+            let idx = char_to_byte_idx(line.as_str(), app.notes_cursor_col);
+            line.insert(idx, c);
+            app.notes_cursor_col += 1;
+        }
+        _ => {}
+    }
+
+    if app.notes_lines.is_empty() {
+        app.notes_lines.push(String::new());
+        app.notes_cursor_row = 0;
+        app.notes_cursor_col = 0;
+    }
+
+    if app.notes_cursor_row < app.notes_scroll as usize {
+        app.notes_scroll = app.notes_cursor_row as u16;
+    }
+
+    Ok(())
+}
+
+fn clamp_notes_cursor(app: &mut App) {
+    if app.notes_lines.is_empty() {
+        app.notes_lines.push(String::new());
+        app.notes_cursor_row = 0;
+        app.notes_cursor_col = 0;
+        return;
+    }
+    let max_row = app.notes_lines.len().saturating_sub(1);
+    app.notes_cursor_row = app.notes_cursor_row.min(max_row);
+    let max_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+    app.notes_cursor_col = app.notes_cursor_col.min(max_col);
+}
+
+fn line_char_len(text: &str) -> usize {
+    text.chars().count()
+}
+
+fn char_to_byte_idx(text: &str, char_idx: usize) -> usize {
+    text.char_indices()
+        .nth(char_idx)
+        .map(|(idx, _)| idx)
+        .unwrap_or(text.len())
+}
+
+fn notes_file_path() -> String {
+    let root = repo_container_from_path(".")
+        .or_else(repo_root)
+        .unwrap_or_else(|| ".".to_string());
+    format!("{}/notes.md", root)
 }
 
 fn terminate_terminal_session(app: &mut App, path: &str) {
@@ -3041,6 +3261,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         draw_worktree_commit_push_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::NotesPopup) {
+        draw_notes_modal(frame, app);
+    }
+
     if matches!(app.mode, Mode::WorktreeCreateInput) {
         draw_worktree_create_modal(frame, app);
     }
@@ -3523,6 +3747,10 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
         Line::from(vec![
             Span::styled("c", Style::default().fg(Color::Yellow)),
             Span::raw(" commit"),
+        ]),
+        Line::from(vec![
+            Span::styled("n", Style::default().fg(Color::LightCyan)),
+            Span::raw(" notes popup"),
         ]),
         Line::from(vec![
             Span::styled("p", Style::default().fg(Color::Magenta)),
@@ -4231,6 +4459,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" merge to parent"),
         ]),
         Line::from(vec![
+            Span::styled("n", Style::default().fg(Color::LightCyan)),
+            Span::raw(" notes popup"),
+        ]),
+        Line::from(vec![
             Span::styled("x", Style::default().fg(Color::Yellow)),
             Span::raw(" prune stale"),
         ]),
@@ -4345,6 +4577,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
             Line::from("- f: fetch connected parent node"),
             Line::from("- p: selected worktree add+commit+push with message popup"),
+            Line::from("- n: open notes popup (notes.md)"),
             Line::from("- d: delete selected worktree (safe checks)"),
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- x: prune stale worktrees"),
@@ -5333,6 +5566,97 @@ fn draw_worktree_commit_push_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Gray)),
         layout[3],
+    );
+}
+
+fn draw_notes_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(86, 82, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Notes (notes.md)")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightCyan));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(6),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let path = truncate_text(
+        app.notes_path.as_str(),
+        layout[0].width.saturating_sub(2) as usize,
+    );
+    frame.render_widget(
+        Paragraph::new(format!("Path: {}", path)).style(Style::default().fg(Color::Gray)),
+        layout[0],
+    );
+
+    let editor_area = layout[1];
+    let editor_inner = Block::default()
+        .title("Editor")
+        .borders(Borders::ALL)
+        .inner(editor_area);
+    frame.render_widget(
+        Paragraph::new("").block(Block::default().title("Editor").borders(Borders::ALL)),
+        editor_area,
+    );
+
+    let visible_rows = editor_inner.height.max(1) as usize;
+    let total_rows = app.notes_lines.len();
+    let mut scroll = app.notes_scroll as usize;
+    if app.notes_cursor_row < scroll {
+        scroll = app.notes_cursor_row;
+    }
+    if app.notes_cursor_row >= scroll + visible_rows {
+        scroll = app
+            .notes_cursor_row
+            .saturating_sub(visible_rows.saturating_sub(1));
+    }
+    let max_scroll = total_rows.saturating_sub(visible_rows);
+    scroll = scroll.min(max_scroll);
+
+    let lines = app
+        .notes_lines
+        .iter()
+        .skip(scroll)
+        .take(visible_rows)
+        .map(|line| Line::from(line.clone()))
+        .collect::<Vec<Line<'_>>>();
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().fg(Color::White))
+            .scroll((0, 0)),
+        editor_inner,
+    );
+
+    if app.notes_cursor_row >= scroll {
+        let cursor_y = editor_inner
+            .y
+            .saturating_add((app.notes_cursor_row - scroll) as u16);
+        let cursor_x = editor_inner.x.saturating_add(app.notes_cursor_col as u16);
+        let max_x = editor_inner
+            .x
+            .saturating_add(editor_inner.width.saturating_sub(1));
+        let max_y = editor_inner
+            .y
+            .saturating_add(editor_inner.height.saturating_sub(1));
+        frame.set_cursor_position((cursor_x.min(max_x), cursor_y.min(max_y)));
+    }
+
+    frame.render_widget(
+        Paragraph::new("Type to edit. Enter newline, arrows move, Ctrl+S saves, Esc saves+closes")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[2],
     );
 }
 
