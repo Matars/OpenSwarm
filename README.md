@@ -83,8 +83,8 @@ printf '%s\n' "$(pwd)/target/release/openswarm"
 ### Worktree orchestration
 
 - `a`: create a worktree branch
-- `o`: open agent picker popup (if installed)
-- `z`: open terminal popup in selected worktree
+- `o`: open terminal popup in selected worktree
+- `O`: open agent picker popup (if installed)
 - `f`: update connected parent
 - `m`: merge selected worktree into connected parent
 - `d`: remove selected worktree
@@ -119,6 +119,7 @@ printf '%s\n' "$(pwd)/target/release/openswarm"
 - OpenSwarm uses your current shell from `SHELL`.
 - Worktree operations rely on native `git worktree` commands.
 - If launched outside a Git repo, commands will fail until you run it inside one.
+- Agent defaults and prompt templates live in `~/.config/openswarm`.
 
 ## Project origin
 

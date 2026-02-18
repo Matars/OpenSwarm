@@ -79,6 +79,13 @@ struct ConflictResolveContext {
     conflicted_files: Vec<String>,
 }
 
+#[derive(Clone, Debug)]
+struct OpenSwarmConfig {
+    config_path: String,
+    default_agent: Option<ExternalAgent>,
+    conflict_resolve_prompt_path: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum ViewMode {
     Changes,
@@ -124,6 +131,7 @@ struct App {
     agent_select_index: usize,
     agent_select_path: Option<String>,
     pending_conflict_context: Option<ConflictResolveContext>,
+    config: OpenSwarmConfig,
     agent_popup_path: Option<String>,
     terminal_popup_mode: TerminalPopupMode,
     notes_path: String,
@@ -263,6 +271,7 @@ enum DiffPreviewKind {
 impl App {
     fn new() -> Self {
         let (agent_tx, agent_rx) = mpsc::channel();
+        let config = load_openswarm_config();
         Self {
             branch: "unknown".to_string(),
             ahead: 0,
@@ -302,6 +311,7 @@ impl App {
             agent_select_index: 0,
             agent_select_path: None,
             pending_conflict_context: None,
+            config,
             agent_popup_path: None,
             terminal_popup_mode: TerminalPopupMode::Input,
             notes_path: String::new(),
