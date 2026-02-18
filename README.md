@@ -1,16 +1,30 @@
 # OpenSwarm
 
-OpenSwarm is a keyboard-first Rust TUI for day-to-day Git work.
+![OpenSwarm demo](media/demo.gif)
 
-It started as the `gitfetch` TUI, and now lives as its own project.
+OpenSwarm is a keyboard-first Rust TUI built for **parallel agent deployment across Git worktrees**.
 
-## What it does
+Instead of running one long linear loop in a single branch, you can spin up isolated worktrees, run tasks in parallel, and merge back with control.
 
-- Shows a live, navigable view of changed files.
-- Lets you stage/unstage files quickly.
-- Supports commit and push flows from inside the TUI.
-- Includes a worktree navigator for creating, opening, merging, and pruning worktrees.
-- Provides an embedded terminal popup per worktree session.
+## Why OpenSwarm
+
+- Deploy multiple agent sessions in separate worktrees at the same time.
+- Keep branch state isolated, reviewable, and merge-friendly.
+- Stage, commit, push, and merge from one terminal UI.
+- Jump between worktree graph and file changes without leaving flow.
+
+## Parallel Worktree Model
+
+```text
+main
+ ├─ wt/agent-auth     -> agent session A (auth changes)
+ ├─ wt/agent-ui       -> agent session B (UI changes)
+ └─ wt/agent-tests    -> agent session C (test hardening)
+
+Each worktree is isolated, active, and mergeable back to its parent.
+```
+
+This lets you run concurrent implementation streams while preserving clean Git boundaries.
 
 ## Current status
 
@@ -48,49 +62,40 @@ printf '%s\n' "$(pwd)/target/release/openswarm"
 
 `cargo build --release` creates `./target/release/openswarm`; it does not install a global command.
 
-## Core keybindings
+## Core workflow keybindings
 
-### Global
+### Navigation
 
-- `q`: quit
-- `r`: refresh
+- `w`: switch between changes and worktree views
+- `Tab`: cycle panes in worktree view
+- Arrow keys / `h` `j` `k` `l`: move selection
+- `+` / `-` / `0`: zoom worktree canvas in/out/reset
+- `W` `A` `S` `D`: pan worktree canvas
 
-### Changes view
+### Worktree orchestration
 
-- `w`: switch to worktree view
-- `h` / `l` or Left / Right: focus file list vs overview pane
-- `j` / `k` or Up / Down: move selection or scroll overview
+- `a`: create a worktree branch
+- `o` or `z`: open terminal popup in selected worktree
+- `f`: update connected parent
+- `m`: merge selected worktree into connected parent
+- `d`: remove selected worktree
+- `x`: prune worktrees
+
+### Change management
+
 - `Enter` or `Space`: stage/unstage selected file
 - `c`: commit mode
 - `p`: push branch (with upstream handling)
 - `s`: stash (including untracked)
 - `S`: stash pop
 
-### Worktree view
+### Terminal popup controls
 
-- `w`: switch back to changes view
-- `Tab`: cycle worktree panes
-- `?`: toggle panel help
-- Arrow keys / `h` `j` `k` `l`: move in worktree graph/list
-- `+` / `-` / `0`: zoom in, zoom out, reset canvas
-- `W` `A` `S` `D`: pan canvas
-- `a`: create worktree branch
-- `o` or `z`: open terminal popup in selected worktree
-- `p`: add/commit/push selected worktree
-- `L`: open reflog popup
-- `f`: update connected parent
-- `m`: merge selected worktree into connected parent
-- `d`: remove selected worktree
-- `x`: prune worktrees
-
-### Terminal popup
-
-- `Ctrl+g` or `:`: toggle input mode and control mode
-- In control mode:
-  - `Esc`: close popup and keep session in background
-  - `q`: terminate session
-  - `r`: restart session
-  - `i`: return to input mode
+- `Ctrl+g` or `:`: toggle input and control mode
+- `Esc`: close popup and keep session in background
+- `q`: terminate session
+- `r`: restart session
+- `i`: return to input mode
 
 ## Notes
 
@@ -100,4 +105,4 @@ printf '%s\n' "$(pwd)/target/release/openswarm"
 
 ## Project origin
 
-This project was split out from the `gitfetch` repository to evolve independently as a dedicated Git workflow TUI.
+OpenSwarm started as the `gitfetch` TUI and now lives as its own project focused on high-throughput, parallel worktree workflows.
