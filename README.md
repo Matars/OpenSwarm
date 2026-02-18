@@ -83,7 +83,8 @@ printf '%s\n' "$(pwd)/target/release/openswarm"
 ### Worktree orchestration
 
 - `a`: create a worktree branch
-- `o` or `z`: open terminal popup in selected worktree
+- `o`: open agent picker popup (if installed)
+- `z`: open terminal popup in selected worktree
 - `f`: update connected parent
 - `m`: merge selected worktree into connected parent
 - `d`: remove selected worktree

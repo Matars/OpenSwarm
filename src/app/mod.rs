@@ -44,8 +44,39 @@ enum Mode {
     WorktreeRemoveDirtyConfirm,
     WorktreeGitLogPopup,
     QuitWithSessionsConfirm,
+    AgentSelectPopup,
     AgentPopup,
     NotesPopup,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExternalAgent {
+    Opencode,
+    Claude,
+}
+
+impl ExternalAgent {
+    fn display_name(self) -> &'static str {
+        match self {
+            ExternalAgent::Opencode => "OpenCode",
+            ExternalAgent::Claude => "Claude",
+        }
+    }
+
+    fn command_name(self) -> &'static str {
+        match self {
+            ExternalAgent::Opencode => "opencode",
+            ExternalAgent::Claude => "claude",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ConflictResolveContext {
+    parent_path: String,
+    source_branch: String,
+    target_branch: String,
+    conflicted_files: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,6 +120,10 @@ struct App {
     confirm_quit_with_sessions_yes: bool,
     quit_now: bool,
     agent_sessions: BTreeMap<String, AgentSession>,
+    detected_agents: Vec<ExternalAgent>,
+    agent_select_index: usize,
+    agent_select_path: Option<String>,
+    pending_conflict_context: Option<ConflictResolveContext>,
     agent_popup_path: Option<String>,
     terminal_popup_mode: TerminalPopupMode,
     notes_path: String,
@@ -263,6 +298,10 @@ impl App {
             confirm_quit_with_sessions_yes: false,
             quit_now: false,
             agent_sessions: BTreeMap::new(),
+            detected_agents: detect_available_agents(),
+            agent_select_index: 0,
+            agent_select_path: None,
+            pending_conflict_context: None,
             agent_popup_path: None,
             terminal_popup_mode: TerminalPopupMode::Input,
             notes_path: String::new(),
@@ -426,6 +465,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::QuitWithSessionsConfirm => {
                             handle_quit_with_sessions_mode_key(&mut app, key.code);
+                        }
+                        Mode::AgentSelectPopup => {
+                            handle_agent_select_mode_key(&mut app, key.code)?;
                         }
                         Mode::AgentPopup => {
                             handle_agent_popup_key(&mut app, key)?;

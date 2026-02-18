@@ -81,6 +81,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         draw_quit_with_sessions_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::AgentSelectPopup) {
+        draw_agent_select_modal(frame, app);
+    }
+
     if app.view_mode == ViewMode::Worktrees && app.show_panel_help {
         draw_worktree_help_modal(frame, app);
     }
@@ -1535,7 +1539,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("o", Style::default().fg(Color::LightBlue)),
-            Span::raw(" open terminal popup"),
+            Span::raw(" pick agent + auto prompt"),
         ]),
         Line::from(vec![
             Span::styled("z", Style::default().fg(Color::LightBlue)),
@@ -1675,8 +1679,8 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("Actions panel"),
             Line::from("- a: create worktree from branch name"),
             Line::from("- L: open git command history (reflog) popup"),
-            Line::from("- o: open/reopen terminal popup for selected node"),
-            Line::from("- z: same as o (open/reopen terminal popup)"),
+            Line::from("- o: open agent picker for selected or conflicted parent"),
+            Line::from("- z: open/reopen normal terminal popup for selected node"),
             Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
             Line::from("- f: fetch connected parent node"),
             Line::from("- p: selected worktree add+commit+push with message popup"),
@@ -1871,6 +1875,95 @@ fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
     );
     frame.render_widget(
         Paragraph::new(terminal_footer_text(app.terminal_popup_mode))
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
+    );
+}
+
+fn draw_agent_select_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(64, 40, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Resolve With Agent")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightBlue));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(4),
+            Constraint::Length(2),
+        ])
+        .split(popup);
+
+    let target = app
+        .agent_select_path
+        .as_deref()
+        .unwrap_or("(no target worktree)");
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("worktree: ", Style::default().fg(Color::Gray)),
+            Span::styled(target, Style::default().fg(Color::White)),
+        ]))
+        .style(Style::default().fg(Color::White)),
+        layout[0],
+    );
+
+    let hint = if app.pending_conflict_context.is_some() {
+        "Conflict context found: Enter launches agent and pastes resolve prompt"
+    } else {
+        "Select agent: Enter to launch, Esc to cancel"
+    };
+    frame.render_widget(
+        Paragraph::new(hint).style(Style::default().fg(Color::Gray)),
+        layout[1],
+    );
+
+    let rows: Vec<Line<'_>> = if app.detected_agents.is_empty() {
+        vec![Line::from(Span::styled(
+            "No agent CLI found (expected opencode or claude)",
+            Style::default().fg(Color::Red),
+        ))]
+    } else {
+        app.detected_agents
+            .iter()
+            .enumerate()
+            .map(|(idx, agent)| {
+                let selected = idx == app.agent_select_index;
+                let marker = if selected { ">" } else { " " };
+                let style = if selected {
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+                Line::from(vec![
+                    Span::styled(format!(" {} ", marker), style),
+                    Span::styled(
+                        format!("{}  ({})", agent.display_name(), agent.command_name()),
+                        style,
+                    ),
+                ])
+            })
+            .collect()
+    };
+    frame.render_widget(
+        Paragraph::new(rows)
+            .block(Block::default().title("agents").borders(Borders::ALL))
+            .style(Style::default().fg(Color::White)),
+        layout[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Up/Down or j/k select, Enter launch, Esc cancel")
             .style(Style::default().fg(Color::Gray)),
         layout[3],
     );
