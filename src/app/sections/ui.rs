@@ -627,6 +627,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
     }
 
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
+    let collapsed_root_idx = collapsed_root_worktree_idx(&app.worktrees, root_branch.as_str());
     let logical = graph_layout(&parents);
     let node_points: Vec<(f64, f64)> = logical
         .iter()
@@ -637,6 +638,15 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
     let selected_idx = app
         .selected_worktree
         .min(app.worktrees.len().saturating_sub(1));
+    let canvas_selected_idx = if Some(selected_idx) == collapsed_root_idx {
+        app.worktrees
+            .iter()
+            .enumerate()
+            .find_map(|(idx, _)| (Some(idx) != collapsed_root_idx).then_some(idx))
+            .unwrap_or(selected_idx)
+    } else {
+        selected_idx
+    };
     frame.render_widget(Clear, inner);
     let mut screen_points: Vec<(u16, u16)> = Vec::with_capacity(node_points.len());
     for point in &node_points {
@@ -656,10 +666,11 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
         &screen_points,
         root_screen,
         app,
-        selected_idx,
+        canvas_selected_idx,
+        collapsed_root_idx,
     );
 
-    let main_label = canvas_root_label(app, root_branch.as_str());
+    let main_label = canvas_root_label(app, root_branch.as_str(), collapsed_root_idx.is_some());
     draw_canvas_label(
         frame,
         inner,
@@ -673,6 +684,9 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
     );
 
     for (idx, entry) in app.worktrees.iter().enumerate() {
+        if Some(idx) == collapsed_root_idx {
+            continue;
+        }
         let selected = idx == selected_idx;
         let label = canvas_node_label(app, entry, selected);
         let style = if selected {
@@ -731,6 +745,7 @@ fn draw_unicode_worktree_graph(
     root_point: Option<(u16, u16)>,
     app: &App,
     selected_idx: usize,
+    collapsed_root_idx: Option<usize>,
 ) {
     if area.width < 3 || area.height < 3 {
         return;
@@ -741,6 +756,9 @@ fn draw_unicode_worktree_graph(
     let mut cells = vec![GraphCell::new(); width * height];
 
     for (idx, parent) in parents.iter().enumerate() {
+        if Some(idx) == collapsed_root_idx {
+            continue;
+        }
         let Some(&(to_x, to_y)) = node_points.get(idx) else {
             continue;
         };
@@ -784,6 +802,9 @@ fn draw_unicode_worktree_graph(
     }
 
     for (idx, entry) in app.worktrees.iter().enumerate() {
+        if Some(idx) == collapsed_root_idx {
+            continue;
+        }
         let Some(&(sx, sy)) = node_points.get(idx) else {
             continue;
         };
@@ -1009,8 +1030,12 @@ fn graph_palette_color(idx: usize) -> Color {
     GRAPH_PALETTE[idx % GRAPH_PALETTE.len()]
 }
 
-fn canvas_root_label(_app: &App, root_branch: &str) -> String {
-    truncate_text(root_branch, 14)
+fn canvas_root_label(_app: &App, root_branch: &str, collapsed: bool) -> String {
+    if collapsed {
+        truncate_text(format!("HEAD {}", root_branch).as_str(), 14)
+    } else {
+        "HEAD".to_string()
+    }
 }
 
 fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String {
@@ -1307,7 +1332,35 @@ fn worktree_parent_map(worktrees: &[WorktreeEntry], root_branch: &str) -> Vec<Op
         }
     }
 
-    let root_idx = worktrees
+    let root_idx = root_worktree_idx(worktrees, root_branch);
+
+    if let Some(root_idx) = root_idx {
+        for (idx, wt) in worktrees.iter().enumerate() {
+            if idx == root_idx {
+                continue;
+            }
+            if wt.detached {
+                continue;
+            }
+            if parents[idx].is_none() {
+                parents[idx] = Some(root_idx);
+            }
+        }
+    }
+
+    if let Some(collapsed_root_idx) = collapsed_root_worktree_idx(worktrees, root_branch) {
+        for parent in &mut parents {
+            if *parent == Some(collapsed_root_idx) {
+                *parent = None;
+            }
+        }
+    }
+
+    parents
+}
+
+fn root_worktree_idx(worktrees: &[WorktreeEntry], root_branch: &str) -> Option<usize> {
+    worktrees
         .iter()
         .enumerate()
         .find_map(|(idx, wt)| {
@@ -1325,23 +1378,13 @@ fn worktree_parent_map(worktrees: &[WorktreeEntry], root_branch: &str) -> Vec<Op
                     None
                 }
             })
-        });
+        })
+}
 
-    if let Some(root_idx) = root_idx {
-        for (idx, wt) in worktrees.iter().enumerate() {
-            if idx == root_idx {
-                continue;
-            }
-            if wt.detached {
-                continue;
-            }
-            if parents[idx].is_none() {
-                parents[idx] = Some(root_idx);
-            }
-        }
-    }
-
-    parents
+fn collapsed_root_worktree_idx(worktrees: &[WorktreeEntry], root_branch: &str) -> Option<usize> {
+    let root_idx = root_worktree_idx(worktrees, root_branch)?;
+    let root = worktrees.get(root_idx)?;
+    (root.is_current && !root.dirty).then_some(root_idx)
 }
 
 fn find_branch_parent_idx(
