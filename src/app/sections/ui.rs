@@ -1006,7 +1006,7 @@ fn graph_palette_color(idx: usize) -> Color {
 }
 
 fn canvas_root_label(_app: &App, root_branch: &str) -> String {
-    format!("{}", truncate_text(root_branch, 14))
+    format!("[{}]", truncate_text(root_branch, 14))
 }
 
 fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String {
@@ -1023,13 +1023,13 @@ fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String
 
     if selected {
         let state = if entry.dirty { "*" } else { "" };
-        format!("{}{}{}", name, state, agent)
+        format!("[{}{}{}]", name, state, agent)
     } else if entry.dirty {
-        format!("{}*{}", name, agent)
+        format!("[{}*{}]", name, agent)
     } else if !agent.is_empty() {
-        format!("{}{}", name, agent)
+        format!("[{}{}]", name, agent)
     } else {
-        name
+        format!("[{}]", name)
     }
 }
 
@@ -1158,7 +1158,7 @@ fn agent_badge_for_node(app: &App, path: &str) -> String {
 }
 
 fn animated_agent_spinner(session: &AgentSession, now: Instant) -> char {
-    const FRAMES: [char; 4] = ['|', '/', '-', '\\'];
+    const FRAMES: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
     let tick = now
         .saturating_duration_since(session.launched_at)
         .as_millis()
@@ -1623,6 +1623,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Yellow nodes = dirty (uncommitted changes)"),
             Line::from("- Node suffix animates for active: | / - \\"),
             Line::from("- Idle sessions show idle(12s), completed show done/fail"),
+            Line::from("- Active state uses a braille spinner"),
             Line::from("- Lines show parent branch relationships"),
             Line::from(""),
             Line::from("Navigation:"),
