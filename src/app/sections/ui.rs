@@ -81,6 +81,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         draw_quit_with_sessions_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::LegacyWorkspaceMigrateConfirm) {
+        draw_legacy_workspace_migrate_modal(frame, app);
+    }
+
     if matches!(app.mode, Mode::AgentSelectPopup) {
         draw_agent_select_modal(frame, app);
     }
@@ -1810,7 +1814,7 @@ fn draw_worktree_create_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
 
     frame.render_widget(
         Paragraph::new(
-            "Choose source above, then type worktree branch. Enter creates '.gitfetch-worktrees/<branch>'",
+            "Choose source above, then type worktree branch. Enter creates '.<repo>-workspaces/<branch>' next to the repo.",
         )
             .style(Style::default().fg(Color::Gray)),
         layout[0],
@@ -2330,6 +2334,90 @@ fn draw_branch_conflict_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App)
     );
 }
 
+fn draw_legacy_workspace_migrate_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(82, 36, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Legacy Workspace Layout")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::Yellow));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    frame.render_widget(
+        Paragraph::new("Detected legacy in-repo '.gitfetch-worktrees'. Migrate to sibling '.<repo>-workspaces'?")
+            .style(Style::default().fg(Color::White)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("from: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                app.pending_legacy_workspace_path.as_str(),
+                Style::default().fg(Color::White),
+            ),
+        ]))
+        .style(Style::default().fg(Color::White)),
+        layout[1],
+    );
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("to:   ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                app.pending_new_workspace_path.as_str(),
+                Style::default().fg(Color::White),
+            ),
+        ]))
+        .style(Style::default().fg(Color::White)),
+        layout[2],
+    );
+
+    let yes_style = if app.confirm_legacy_workspace_migrate_yes {
+        Style::default().fg(Color::Black).bg(Color::LightGreen)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let no_style = if app.confirm_legacy_workspace_migrate_yes {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::Black).bg(Color::LightRed)
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("[ Yes: migrate now ]", yes_style),
+            Span::raw("   "),
+            Span::styled("[ No: skip ]", no_style),
+        ]))
+        .alignment(Alignment::Center),
+        layout[3],
+    );
+
+    frame.render_widget(
+        Paragraph::new(
+            "Uses 'git worktree move' for tracked worktrees, moves .parent-hints when possible",
+        )
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::Gray)),
+        layout[4],
+    );
+}
+
 fn draw_quit_with_sessions_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     let popup = centered_rect(68, 26, frame.area());
     frame.render_widget(Clear, popup);
@@ -2647,11 +2735,24 @@ fn overview_line_count(info: Option<&FileOverview>) -> usize {
 }
 
 fn should_hide_internal_worktree_path(path: &str) -> bool {
-    if !path.starts_with(".gitfetch-worktrees/") {
+    if path.starts_with(".gitfetch-worktrees/") {
+        return path != ".gitfetch-worktrees/.parent-hints";
+    }
+
+    let repo_name = repo_root()
+        .and_then(|root| {
+            Path::new(root.as_str())
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(|value| value.to_string())
+        })
+        .unwrap_or_else(|| "repo".to_string());
+    let prefix = format!(".{}-workspaces/", repo_name);
+    if !path.starts_with(prefix.as_str()) {
         return false;
     }
 
-    path != ".gitfetch-worktrees/.parent-hints"
+    path != format!("{}{}", prefix, ".parent-hints")
 }
 
 fn truncate_text(text: &str, max_chars: usize) -> String {

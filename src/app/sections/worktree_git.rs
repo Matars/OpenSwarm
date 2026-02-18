@@ -158,6 +158,150 @@ fn refresh_worktrees(app: &mut App) {
     } else if app.selected_worktree >= app.worktrees.len() {
         app.selected_worktree = app.worktrees.len() - 1;
     }
+
+    maybe_prompt_legacy_workspace_migration(app, root.as_str());
+}
+
+fn maybe_prompt_legacy_workspace_migration(app: &mut App, root: &str) {
+    if app.legacy_workspace_prompt_dismissed {
+        return;
+    }
+
+    if !matches!(app.mode, Mode::Normal) {
+        return;
+    }
+
+    if app.view_mode != ViewMode::Worktrees {
+        return;
+    }
+
+    let legacy = Path::new(root).join(".gitfetch-worktrees");
+    if !legacy.exists() {
+        return;
+    }
+
+    let new_container = workspaces_container_for_root(root);
+    let has_legacy_entries = fs::read_dir(legacy.as_path())
+        .ok()
+        .and_then(|mut iter| iter.next().map(|entry| entry.ok()))
+        .flatten()
+        .is_some();
+    if !has_legacy_entries {
+        return;
+    }
+
+    app.pending_legacy_workspace_root = root.to_string();
+    app.pending_legacy_workspace_path = legacy.to_string_lossy().to_string();
+    app.pending_new_workspace_path = new_container.to_string_lossy().to_string();
+    app.confirm_legacy_workspace_migrate_yes = true;
+    app.mode = Mode::LegacyWorkspaceMigrateConfirm;
+    app.status_line = "Detected legacy in-repo worktree folder".to_string();
+}
+
+fn migrate_legacy_workspace_layout(root: &str) -> Result<String, Box<dyn Error>> {
+    let legacy = Path::new(root).join(".gitfetch-worktrees");
+    if !legacy.exists() {
+        return Ok("No legacy .gitfetch-worktrees folder found".to_string());
+    }
+
+    let new_container = workspaces_container_for_root(root);
+    fs::create_dir_all(new_container.as_path())?;
+
+    let list = Command::new("git")
+        .args(["-C", root, "worktree", "list", "--porcelain"])
+        .output()?;
+    if !list.status.success() {
+        let stderr = sanitize_for_tui(String::from_utf8_lossy(&list.stderr).as_ref())
+            .trim()
+            .to_string();
+        let stdout = sanitize_for_tui(String::from_utf8_lossy(&list.stdout).as_ref())
+            .trim()
+            .to_string();
+        let reason = if !stderr.is_empty() { stderr } else { stdout };
+        return Ok(format!("Failed reading worktree list: {}", reason));
+    }
+
+    let mut moved = 0usize;
+    let mut failed: Vec<String> = Vec::new();
+
+    let listing = sanitize_for_tui(String::from_utf8_lossy(&list.stdout).as_ref());
+    for line in listing.lines() {
+        let Some(raw_path) = line.strip_prefix("worktree ") else {
+            continue;
+        };
+        let old_path = PathBuf::from(raw_path.trim());
+        if !old_path.starts_with(legacy.as_path()) {
+            continue;
+        }
+
+        let rel = old_path
+            .strip_prefix(legacy.as_path())
+            .unwrap_or_else(|_| Path::new(""));
+        let target_path = new_container.join(rel);
+        if let Some(parent) = target_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        let move_out = Command::new("git")
+            .args([
+                "-C",
+                root,
+                "worktree",
+                "move",
+                old_path.to_string_lossy().as_ref(),
+                target_path.to_string_lossy().as_ref(),
+            ])
+            .output()?;
+        if move_out.status.success() {
+            moved += 1;
+        } else {
+            let stderr = sanitize_for_tui(String::from_utf8_lossy(&move_out.stderr).as_ref())
+                .trim()
+                .to_string();
+            let stdout = sanitize_for_tui(String::from_utf8_lossy(&move_out.stdout).as_ref())
+                .trim()
+                .to_string();
+            let reason = if !stderr.is_empty() { stderr } else { stdout };
+            failed.push(format!("{} ({})", old_path.to_string_lossy(), reason));
+        }
+    }
+
+    let legacy_hints = legacy.join(".parent-hints");
+    let new_hints = new_container.join(".parent-hints");
+    let mut hints_moved = false;
+    if legacy_hints.exists() && !new_hints.exists() {
+        if fs::rename(legacy_hints.as_path(), new_hints.as_path()).is_ok() {
+            hints_moved = true;
+        }
+    }
+
+    let old_empty = fs::read_dir(legacy.as_path())
+        .ok()
+        .map(|mut iter| iter.next().is_none())
+        .unwrap_or(false);
+    if old_empty {
+        let _ = fs::remove_dir(legacy.as_path());
+    }
+
+    if failed.is_empty() {
+        Ok(format!(
+            "Migrated {} worktree(s) to {}{}",
+            moved,
+            new_container.to_string_lossy(),
+            if hints_moved {
+                " + moved .parent-hints"
+            } else {
+                ""
+            }
+        ))
+    } else {
+        Ok(format!(
+            "Migrated {} worktree(s), {} failed: {}",
+            moved,
+            failed.len(),
+            truncate_text(failed.join("; ").as_str(), 180)
+        ))
+    }
 }
 
 fn hydrate_worktree_runtime_state(
@@ -782,13 +926,14 @@ fn delete_branch_and_create_worktree(
 fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
     let sanitized = branch.replace('/', "-");
     let root = create_root_for_app(app);
-    let container = format!("{}/.gitfetch-worktrees", root);
-    let _ = fs::create_dir_all(container.as_str());
-    let path = format!("{}/.gitfetch-worktrees/{}", root, sanitized);
-    if Path::new(path.as_str()).exists() {
+    let container = workspaces_container_for_root(root.as_str());
+    let _ = fs::create_dir_all(container.as_path());
+    let path = container.join(sanitized);
+    let path_str = path.to_string_lossy().to_string();
+    if path.exists() {
         return Ok(format!(
             "Target path already exists: {} (pick another branch name)",
-            path
+            path_str
         ));
     }
     let (start_point, parent_branch, source_path) = worktree_create_source(app);
@@ -801,7 +946,7 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
             "add",
             "-b",
             branch,
-            path.as_str(),
+            path_str.as_str(),
             start_point.as_str(),
         ])
         .output()?;
@@ -820,14 +965,14 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
             .map(|out| sanitize_for_tui(String::from_utf8_lossy(&out.stdout).as_ref()))
             .map(|list| {
                 list.lines()
-                    .any(|line| line.trim() == format!("worktree {}", path).as_str())
+                    .any(|line| line.trim() == format!("worktree {}", path_str).as_str())
             })
             .unwrap_or(false);
 
         let mut message = if stdout.is_empty() {
             format!(
                 "Created worktree '{}' at {} from {}",
-                branch, path, start_point
+                branch, path_str, start_point
             )
         } else {
             stdout
@@ -839,7 +984,7 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
                     message.push_str(" (no uncommitted tracked changes to apply)");
                 } else {
                     let apply_result = run_git_with_input(
-                        &["-C", path.as_str(), "apply", "--whitespace=nowarn", "-"],
+                        &["-C", path_str.as_str(), "apply", "--whitespace=nowarn", "-"],
                         diff.as_bytes(),
                     )?;
                     if apply_result.success {
@@ -928,7 +1073,21 @@ fn repo_container_from_path(path: &str) -> Option<String> {
 }
 
 fn parent_hint_map_path(root: &str) -> String {
-    format!("{}/.gitfetch-worktrees/.parent-hints", root)
+    workspaces_container_for_root(root)
+        .join(".parent-hints")
+        .to_string_lossy()
+        .to_string()
+}
+
+fn workspaces_container_for_root(root: &str) -> PathBuf {
+    let repo_root = Path::new(root);
+    let repo_name = repo_root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("repo");
+    let parent = repo_root.parent().unwrap_or_else(|| Path::new("."));
+    parent.join(format!(".{}-workspaces", repo_name))
 }
 
 fn load_parent_hint_map(root: &str) -> BTreeMap<String, String> {

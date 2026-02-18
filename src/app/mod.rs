@@ -43,6 +43,7 @@ enum Mode {
     WorktreeBranchConflictConfirm,
     WorktreeRemoveDirtyConfirm,
     WorktreeGitLogPopup,
+    LegacyWorkspaceMigrateConfirm,
     QuitWithSessionsConfirm,
     AgentSelectPopup,
     AgentPopup,
@@ -125,6 +126,11 @@ struct App {
     git_log_lines: Vec<String>,
     git_log_scroll: u16,
     confirm_quit_with_sessions_yes: bool,
+    confirm_legacy_workspace_migrate_yes: bool,
+    pending_legacy_workspace_root: String,
+    pending_legacy_workspace_path: String,
+    pending_new_workspace_path: String,
+    legacy_workspace_prompt_dismissed: bool,
     quit_now: bool,
     agent_sessions: BTreeMap<String, AgentSession>,
     detected_agents: Vec<ExternalAgent>,
@@ -305,6 +311,11 @@ impl App {
             git_log_lines: Vec::new(),
             git_log_scroll: 0,
             confirm_quit_with_sessions_yes: false,
+            confirm_legacy_workspace_migrate_yes: false,
+            pending_legacy_workspace_root: String::new(),
+            pending_legacy_workspace_path: String::new(),
+            pending_new_workspace_path: String::new(),
+            legacy_workspace_prompt_dismissed: false,
             quit_now: false,
             agent_sessions: BTreeMap::new(),
             detected_agents: detect_available_agents(),
@@ -472,6 +483,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::WorktreeGitLogPopup => {
                             handle_worktree_git_log_mode_key(&mut app, key.code);
+                        }
+                        Mode::LegacyWorkspaceMigrateConfirm => {
+                            handle_legacy_workspace_migrate_mode_key(&mut app, key.code)?;
                         }
                         Mode::QuitWithSessionsConfirm => {
                             handle_quit_with_sessions_mode_key(&mut app, key.code);
