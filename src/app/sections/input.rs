@@ -135,9 +135,7 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
             refresh_worktrees(app);
         }
         KeyCode::Char('d') => {
-            app.status_line = remove_selected_worktree(app)?;
-            refresh_worktrees(app);
-            refresh_status(app);
+            request_remove_selected_worktree(app)?;
         }
         KeyCode::Char('m') => {
             app.status_line = merge_selected_into_parent(app)?;
@@ -320,6 +318,71 @@ fn handle_branch_conflict_confirm_mode_key(
             app.confirm_delete_branch_yes = false;
             app.pending_create_branch.clear();
             app.new_worktree_branch.clear();
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn request_remove_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let Some(selected) = app.selected_worktree().cloned() else {
+        app.status_line = "No worktree selected".to_string();
+        return Ok(());
+    };
+
+    if selected.is_current {
+        app.status_line = "Refusing to remove current worktree".to_string();
+        return Ok(());
+    }
+
+    if selected.dirty {
+        app.pending_remove_worktree_path = selected.path;
+        app.confirm_remove_worktree_yes = false;
+        app.mode = Mode::WorktreeRemoveDirtyConfirm;
+        app.status_line = "Selected worktree has uncommitted changes".to_string();
+        return Ok(());
+    }
+
+    app.status_line = remove_selected_worktree(app)?;
+    refresh_worktrees(app);
+    refresh_status(app);
+    Ok(())
+}
+
+fn handle_worktree_remove_dirty_confirm_mode_key(
+    app: &mut App,
+    code: KeyCode,
+) -> Result<(), Box<dyn Error>> {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.confirm_remove_worktree_yes = false;
+            app.pending_remove_worktree_path.clear();
+            app.status_line = "Delete cancelled".to_string();
+        }
+        KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
+            app.confirm_remove_worktree_yes = !app.confirm_remove_worktree_yes;
+        }
+        KeyCode::Char('y') => app.confirm_remove_worktree_yes = true,
+        KeyCode::Char('n') => app.confirm_remove_worktree_yes = false,
+        KeyCode::Enter => {
+            if app.confirm_remove_worktree_yes {
+                let path = app.pending_remove_worktree_path.clone();
+                if path.is_empty() {
+                    app.status_line = "Delete cancelled (missing worktree path)".to_string();
+                } else {
+                    app.status_line = remove_worktree_by_path(app, path.as_str(), true)?;
+                    refresh_worktrees(app);
+                    refresh_status(app);
+                }
+            } else {
+                app.status_line = "Delete cancelled".to_string();
+            }
+
+            app.mode = Mode::Normal;
+            app.confirm_remove_worktree_yes = false;
+            app.pending_remove_worktree_path.clear();
         }
         _ => {}
     }

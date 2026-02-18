@@ -41,6 +41,7 @@ enum Mode {
     WorktreeCommitPushInput,
     WorktreeCreateInput,
     WorktreeBranchConflictConfirm,
+    WorktreeRemoveDirtyConfirm,
     WorktreeGitLogPopup,
     QuitWithSessionsConfirm,
     AgentPopup,
@@ -78,6 +79,8 @@ struct App {
     new_worktree_base: WorktreeCreateBase,
     pending_create_branch: String,
     confirm_delete_branch_yes: bool,
+    pending_remove_worktree_path: String,
+    confirm_remove_worktree_yes: bool,
     worktree_commit_input: String,
     worktree_commit_path: Option<String>,
     git_log_popup_path: Option<String>,
@@ -250,6 +253,8 @@ impl App {
             new_worktree_base: WorktreeCreateBase::Selected,
             pending_create_branch: String::new(),
             confirm_delete_branch_yes: false,
+            pending_remove_worktree_path: String::new(),
+            confirm_remove_worktree_yes: false,
             worktree_commit_input: String::new(),
             worktree_commit_path: None,
             git_log_popup_path: None,
@@ -412,6 +417,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::WorktreeBranchConflictConfirm => {
                             handle_branch_conflict_confirm_mode_key(&mut app, key.code)?;
+                        }
+                        Mode::WorktreeRemoveDirtyConfirm => {
+                            handle_worktree_remove_dirty_confirm_mode_key(&mut app, key.code)?;
                         }
                         Mode::WorktreeGitLogPopup => {
                             handle_worktree_git_log_mode_key(&mut app, key.code);

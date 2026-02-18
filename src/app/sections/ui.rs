@@ -69,6 +69,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         draw_branch_conflict_confirm_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::WorktreeRemoveDirtyConfirm) {
+        draw_worktree_remove_dirty_confirm_modal(frame, app);
+    }
+
     if matches!(app.mode, Mode::WorktreeGitLogPopup) {
         draw_worktree_git_log_modal(frame, app);
     }
@@ -1538,7 +1542,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("d", Style::default().fg(Color::LightRed)),
-            Span::raw(" delete selected + close terminal"),
+            Span::raw(" delete selected (prompts if dirty)"),
         ]),
         Line::from(vec![
             Span::styled("m", Style::default().fg(Color::LightGreen)),
@@ -1668,7 +1672,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- f: fetch connected parent node"),
             Line::from("- p: selected worktree add+commit+push with message popup"),
             Line::from("- n: open notes popup (notes.md)"),
-            Line::from("- d: delete selected worktree (safe checks, closes terminal)"),
+            Line::from("- d: delete selected worktree (asks force-delete if dirty)"),
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- x: prune stale worktrees"),
             Line::from("- ?: close this help"),
@@ -2036,6 +2040,80 @@ fn ansi_idx_to_color(i: u8) -> Color {
             Color::Rgb(shade, shade, shade)
         }
     }
+}
+
+fn draw_worktree_remove_dirty_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(76, 28, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Dirty Worktree")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightRed));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let target = if app.pending_remove_worktree_path.is_empty() {
+        "(selected worktree)"
+    } else {
+        app.pending_remove_worktree_path.as_str()
+    };
+
+    frame.render_widget(
+        Paragraph::new(format!(
+            "Worktree '{}' has uncommitted changes. Force delete anyway?",
+            target
+        ))
+        .style(Style::default().fg(Color::White)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(
+            "Yes runs `git worktree remove --force` and discards uncommitted changes in that worktree.",
+        )
+        .style(Style::default().fg(Color::Gray)),
+        layout[1],
+    );
+
+    let yes_style = if app.confirm_remove_worktree_yes {
+        Style::default().fg(Color::Black).bg(Color::LightRed)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let no_style = if app.confirm_remove_worktree_yes {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::Black).bg(Color::LightGreen)
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("[ Yes: force delete ]", yes_style),
+            Span::raw("   "),
+            Span::styled("[ No: keep worktree ]", no_style),
+        ]))
+        .alignment(Alignment::Center),
+        layout[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new("No is selected by default")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
+    );
 }
 
 fn draw_branch_conflict_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App) {

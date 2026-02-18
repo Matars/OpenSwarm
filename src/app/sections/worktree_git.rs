@@ -259,14 +259,31 @@ fn remove_selected_worktree(app: &mut App) -> Result<String, Box<dyn Error>> {
     let Some(selected) = app.selected_worktree() else {
         return Ok("No worktree selected".to_string());
     };
-
     let selected_path = selected.path.clone();
+    remove_worktree_by_path(app, selected_path.as_str(), false)
+}
+
+fn remove_worktree_by_path(
+    app: &mut App,
+    worktree_path: &str,
+    force: bool,
+) -> Result<String, Box<dyn Error>> {
+    let Some(selected) = app
+        .worktrees
+        .iter()
+        .find(|worktree| worktree.path == worktree_path)
+        .cloned()
+    else {
+        return Ok(format!("Worktree not found: {}", worktree_path));
+    };
+
+    let selected_path = selected.path;
 
     if selected.is_current {
         return Ok("Refusing to remove current worktree".to_string());
     }
 
-    if selected.dirty {
+    if selected.dirty && !force {
         return Ok("Refusing to remove dirty worktree (clean it first)".to_string());
     }
 
@@ -277,7 +294,11 @@ fn remove_selected_worktree(app: &mut App) -> Result<String, Box<dyn Error>> {
         app.agent_popup_path = None;
     }
 
-    let remove_output = run_git(&["worktree", "remove", selected_path.as_str()])?;
+    let remove_output = if force {
+        run_git(&["worktree", "remove", "--force", selected_path.as_str()])?
+    } else {
+        run_git(&["worktree", "remove", selected_path.as_str()])?
+    };
     if had_live_session {
         Ok(format!(
             "{} (closed terminal session for worktree)",
