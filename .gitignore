@@ -1,0 +1,7 @@
+/target/
+
+# OS files
+.DS_Store
+
+# Rust backup files
+**/*.rs.bk
