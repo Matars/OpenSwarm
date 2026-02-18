@@ -309,10 +309,12 @@ fn remove_worktree_by_path(
     }
 }
 
-fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
+fn merge_selected_into_parent(app: &mut App) -> Result<String, Box<dyn Error>> {
     if app.selected_worktree >= app.worktrees.len() {
         return Ok("No worktree selected".to_string());
     }
+
+    app.pending_conflict_context = None;
 
     let selected = app.worktrees[app.selected_worktree].clone();
     if selected.detached || selected.branch.is_empty() {
@@ -363,8 +365,14 @@ fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
     if !merge.status.success() {
         let conflicts = conflicted_files_in_worktree(parent.path.as_str());
         if !conflicts.is_empty() {
+            app.pending_conflict_context = Some(ConflictResolveContext {
+                parent_path: parent.path.clone(),
+                source_branch: selected.branch.clone(),
+                target_branch: parent.branch.clone(),
+                conflicted_files: conflicts.clone(),
+            });
             return Ok(format!(
-                "Merge '{}' -> '{}' has conflicts in {} file(s): {}. Resolve conflicts in parent worktree '{}', then commit or abort the merge.",
+                "Merge '{}' -> '{}' has conflicts in {} file(s): {}. Resolve in parent worktree '{}' (press o for agent picker or z for shell), then commit or abort the merge.",
                 selected.branch,
                 parent.branch,
                 conflicts.len(),

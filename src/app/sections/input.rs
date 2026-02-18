@@ -111,7 +111,7 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
                 "Create worktree: choose base with ←/→, then type branch name".to_string();
         }
         KeyCode::Char('o') => {
-            open_terminal_popup_for_selected_worktree(app)?;
+            open_agent_picker_for_selected_worktree(app)?;
         }
         KeyCode::Char('z') => {
             open_terminal_popup_for_selected_worktree(app)?;
@@ -183,17 +183,195 @@ fn reset_worktree_canvas_view(app: &mut App) {
 }
 
 fn open_terminal_popup_for_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>> {
-    if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
-        app.agent_popup_path = Some(path.clone());
-        app.mode = Mode::AgentPopup;
-        app.terminal_popup_mode = TerminalPopupMode::Input;
-        if !has_live_terminal_session(app, path.as_str()) {
-            launch_shell_session(app, path.as_str())?;
-        } else {
-            app.status_line = "Reopened terminal session".to_string();
-        }
+    let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) else {
+        app.status_line = "No worktree selected".to_string();
+        return Ok(());
+    };
+    open_terminal_popup_for_path(app, path.as_str())?;
+    Ok(())
+}
+
+fn open_terminal_popup_for_path(app: &mut App, path: &str) -> Result<(), Box<dyn Error>> {
+    app.agent_popup_path = Some(path.to_string());
+    app.mode = Mode::AgentPopup;
+    app.terminal_popup_mode = TerminalPopupMode::Input;
+    if !has_live_terminal_session(app, path) {
+        launch_shell_session(app, path)?;
+    } else {
+        app.status_line = "Reopened terminal session".to_string();
     }
     Ok(())
+}
+
+fn open_agent_picker_for_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>> {
+    refresh_detected_agents(app);
+
+    let selected_path = app.selected_worktree().map(|wt| wt.path.clone());
+    let conflict_path = app
+        .pending_conflict_context
+        .as_ref()
+        .map(|ctx| ctx.parent_path.clone());
+    let target_path = conflict_path.or(selected_path);
+
+    let Some(path) = target_path else {
+        app.status_line = "No worktree selected".to_string();
+        return Ok(());
+    };
+
+    app.agent_select_path = Some(path.clone());
+    app.agent_select_index = app
+        .agent_select_index
+        .min(app.detected_agents.len().saturating_sub(1));
+
+    if app.detected_agents.is_empty() {
+        app.status_line =
+            "No supported agent CLI found (expected: opencode or claude). Opened shell."
+                .to_string();
+        open_terminal_popup_for_path(app, path.as_str())?;
+        return Ok(());
+    }
+
+    app.mode = Mode::AgentSelectPopup;
+    app.status_line = "Choose an agent and press Enter".to_string();
+    Ok(())
+}
+
+fn handle_agent_select_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Error>> {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.agent_select_path = None;
+            app.status_line = "Agent selection cancelled".to_string();
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if app.agent_select_index > 0 {
+                app.agent_select_index -= 1;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if app.agent_select_index + 1 < app.detected_agents.len() {
+                app.agent_select_index += 1;
+            }
+        }
+        KeyCode::Enter => {
+            let Some(agent) = app.detected_agents.get(app.agent_select_index).copied() else {
+                app.mode = Mode::Normal;
+                app.agent_select_path = None;
+                app.status_line = "No available agent selected".to_string();
+                return Ok(());
+            };
+
+            let Some(path) = app.agent_select_path.clone() else {
+                app.mode = Mode::Normal;
+                app.status_line = "Missing target worktree for agent launch".to_string();
+                return Ok(());
+            };
+
+            open_terminal_popup_for_path(app, path.as_str())?;
+            launch_agent_in_terminal(app, path.as_str(), agent)?;
+            app.agent_select_path = None;
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn launch_agent_in_terminal(
+    app: &mut App,
+    path: &str,
+    agent: ExternalAgent,
+) -> Result<(), Box<dyn Error>> {
+    let launch_cmd = format!("{}\r", agent.command_name());
+    write_to_agent(app, path, launch_cmd.as_str())?;
+
+    if let Some(context) = app.pending_conflict_context.as_ref() {
+        if context.parent_path == path {
+            let prompt = build_conflict_resolve_prompt(path, context);
+            let prompt_with_enter = format!("{}\r", normalize_terminal_newlines(prompt.as_str()));
+            write_to_agent(app, path, prompt_with_enter.as_str())?;
+            app.pending_conflict_context = None;
+            app.status_line = format!(
+                "Launched {} and pasted conflict-resolution prompt",
+                agent.display_name()
+            );
+            return Ok(());
+        }
+    }
+
+    app.status_line = format!("Launched {} in terminal", agent.display_name());
+    Ok(())
+}
+
+fn normalize_terminal_newlines(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\n', "\r")
+}
+
+fn refresh_detected_agents(app: &mut App) {
+    app.detected_agents = detect_available_agents();
+    app.agent_select_index = app
+        .agent_select_index
+        .min(app.detected_agents.len().saturating_sub(1));
+}
+
+fn detect_available_agents() -> Vec<ExternalAgent> {
+    let mut out = Vec::new();
+    if command_exists_on_path("opencode") {
+        out.push(ExternalAgent::Opencode);
+    }
+    if command_exists_on_path("claude") {
+        out.push(ExternalAgent::Claude);
+    }
+    out
+}
+
+fn command_exists_on_path(command: &str) -> bool {
+    let Some(paths) = std::env::var_os("PATH") else {
+        return false;
+    };
+
+    for dir in std::env::split_paths(paths.as_os_str()) {
+        let candidate = dir.join(command);
+        if candidate.is_file() {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn build_conflict_resolve_prompt(path: &str, context: &ConflictResolveContext) -> String {
+    let template =
+        load_conflict_prompt_template(path).unwrap_or_else(default_conflict_prompt_template);
+    let files = if context.conflicted_files.is_empty() {
+        "(none reported)".to_string()
+    } else {
+        context.conflicted_files.join("\n")
+    };
+
+    template
+        .replace("{parent_path}", context.parent_path.as_str())
+        .replace("{source_branch}", context.source_branch.as_str())
+        .replace("{target_branch}", context.target_branch.as_str())
+        .replace("{conflicted_files}", files.as_str())
+}
+
+fn load_conflict_prompt_template(path: &str) -> Option<String> {
+    let root = repo_container_from_path(path).or_else(repo_root)?;
+    let dir = format!("{}/.openswarm", root);
+    let prompt_path = format!("{}/conflict-resolve-prompt.md", dir);
+
+    if !Path::new(prompt_path.as_str()).exists() {
+        let _ = fs::create_dir_all(dir.as_str());
+        let _ = fs::write(prompt_path.as_str(), default_conflict_prompt_template());
+    }
+
+    fs::read_to_string(prompt_path.as_str()).ok()
+}
+
+fn default_conflict_prompt_template() -> String {
+    "Resolve the current Git merge conflict in this worktree.\n\nContext:\n- Parent worktree path: {parent_path}\n- Merge source branch: {source_branch}\n- Merge target branch: {target_branch}\n- Conflicted files:\n{conflicted_files}\n\nInstructions:\n1) Inspect conflict markers and resolve carefully; prefer minimal safe edits.\n2) Keep intended behavior from both branches when possible.\n3) Run `git diff --name-only --diff-filter=U` and ensure it is empty.\n4) Stage resolved files with `git add`.\n5) Summarize what was resolved and any risks.\n6) Do not push. Stop after conflicts are resolved and staged."
+        .to_string()
 }
 
 fn request_quit(app: &mut App) -> bool {
