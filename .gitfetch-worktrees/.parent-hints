@@ -1,3 +1,7 @@
+1	research
+2	research
+3	research
+4	research
 UI	main
 childworktree	newworktree
 claude	main
@@ -11,6 +15,7 @@ hooks	main
 newworktree	main
 notes	main
 readme	main
+reduntenthead	main
 refusingtoremove	main
 removemovemnt	main
 research	main
