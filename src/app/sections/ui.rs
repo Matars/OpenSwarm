@@ -1582,11 +1582,11 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("o", Style::default().fg(Color::LightBlue)),
-            Span::raw(" pick agent + auto prompt"),
+            Span::raw(" open terminal popup"),
         ]),
         Line::from(vec![
-            Span::styled("z", Style::default().fg(Color::LightBlue)),
-            Span::raw(" open terminal popup"),
+            Span::styled("O", Style::default().fg(Color::LightBlue)),
+            Span::raw(" open agent picker"),
         ]),
         Line::from(vec![
             Span::styled("f", Style::default().fg(Color::Cyan)),
@@ -1722,8 +1722,9 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("Actions panel"),
             Line::from("- a: create worktree from branch name"),
             Line::from("- L: open git command history (reflog) popup"),
-            Line::from("- o: open agent picker for selected or conflicted parent"),
-            Line::from("- z: open/reopen normal terminal popup for selected node"),
+            Line::from("- o: open/reopen normal terminal popup for selected node"),
+            Line::from("- O: open agent picker for selected or conflicted parent"),
+            Line::from("- default agent and prompts are editable in ~/.config/openswarm"),
             Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
             Line::from("- f: fetch connected parent node"),
             Line::from("- p: selected worktree add+commit+push with message popup"),
@@ -2006,8 +2007,11 @@ fn draw_agent_select_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     );
 
     frame.render_widget(
-        Paragraph::new("Up/Down or j/k select, Enter launch, Esc cancel")
-            .style(Style::default().fg(Color::Gray)),
+        Paragraph::new(format!(
+            "Up/Down or j/k select, Enter launch, Esc cancel | default via {}",
+            app.config.config_path
+        ))
+        .style(Style::default().fg(Color::Gray)),
         layout[3],
     );
 }

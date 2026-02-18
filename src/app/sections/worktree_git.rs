@@ -372,7 +372,7 @@ fn merge_selected_into_parent(app: &mut App) -> Result<String, Box<dyn Error>> {
                 conflicted_files: conflicts.clone(),
             });
             return Ok(format!(
-                "Merge '{}' -> '{}' has conflicts in {} file(s): {}. Resolve in parent worktree '{}' (press o for agent picker or z for shell), then commit or abort the merge.",
+                "Merge '{}' -> '{}' has conflicts in {} file(s): {}. Resolve in parent worktree '{}' (press o for shell or O for agent picker), then commit or abort the merge.",
                 selected.branch,
                 parent.branch,
                 conflicts.len(),

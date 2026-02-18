@@ -111,10 +111,10 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
                 "Create worktree: choose base with ←/→, then type branch name".to_string();
         }
         KeyCode::Char('o') => {
-            open_agent_picker_for_selected_worktree(app)?;
-        }
-        KeyCode::Char('z') => {
             open_terminal_popup_for_selected_worktree(app)?;
+        }
+        KeyCode::Char('O') => {
+            open_agent_selector_for_selected_worktree(app, true)?;
         }
         KeyCode::Char('p') => {
             if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
@@ -203,8 +203,11 @@ fn open_terminal_popup_for_path(app: &mut App, path: &str) -> Result<(), Box<dyn
     Ok(())
 }
 
-fn open_agent_picker_for_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>> {
-    refresh_detected_agents(app);
+fn open_agent_selector_for_selected_worktree(
+    app: &mut App,
+    allow_default_launch: bool,
+) -> Result<(), Box<dyn Error>> {
+    refresh_runtime_settings(app);
 
     let selected_path = app.selected_worktree().map(|wt| wt.path.clone());
     let conflict_path = app
@@ -218,11 +221,6 @@ fn open_agent_picker_for_selected_worktree(app: &mut App) -> Result<(), Box<dyn 
         return Ok(());
     };
 
-    app.agent_select_path = Some(path.clone());
-    app.agent_select_index = app
-        .agent_select_index
-        .min(app.detected_agents.len().saturating_sub(1));
-
     if app.detected_agents.is_empty() {
         app.status_line =
             "No supported agent CLI found (expected: opencode or claude). Opened shell."
@@ -231,8 +229,32 @@ fn open_agent_picker_for_selected_worktree(app: &mut App) -> Result<(), Box<dyn 
         return Ok(());
     }
 
+    if allow_default_launch {
+        if let Some(default_agent) = app.config.default_agent {
+            if app.detected_agents.contains(&default_agent) {
+                open_terminal_popup_for_path(app, path.as_str())?;
+                launch_agent_in_terminal(app, path.as_str(), default_agent)?;
+                return Ok(());
+            }
+            app.status_line = format!(
+                "Configured default agent '{}' is not installed; choose one in picker",
+                default_agent.command_name()
+            );
+        }
+    }
+
+    app.agent_select_path = Some(path);
+    app.agent_select_index = app
+        .config
+        .default_agent
+        .and_then(|agent| app.detected_agents.iter().position(|item| *item == agent))
+        .unwrap_or_else(|| {
+            app.agent_select_index
+                .min(app.detected_agents.len().saturating_sub(1))
+        });
+
     app.mode = Mode::AgentSelectPopup;
-    app.status_line = "Choose an agent and press Enter".to_string();
+    app.status_line = format!("Choose an agent (config: {})", app.config.config_path);
     Ok(())
 }
 
@@ -287,7 +309,7 @@ fn launch_agent_in_terminal(
 
     if let Some(context) = app.pending_conflict_context.as_ref() {
         if context.parent_path == path {
-            let prompt = build_conflict_resolve_prompt(path, context);
+            let prompt = build_conflict_resolve_prompt(app, context);
             let prompt_with_enter = format!("{}\r", normalize_terminal_newlines(prompt.as_str()));
             write_to_agent(app, path, prompt_with_enter.as_str())?;
             app.pending_conflict_context = None;
@@ -307,7 +329,8 @@ fn normalize_terminal_newlines(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\n', "\r")
 }
 
-fn refresh_detected_agents(app: &mut App) {
+fn refresh_runtime_settings(app: &mut App) {
+    app.config = load_openswarm_config();
     app.detected_agents = detect_available_agents();
     app.agent_select_index = app
         .agent_select_index
@@ -340,9 +363,9 @@ fn command_exists_on_path(command: &str) -> bool {
     false
 }
 
-fn build_conflict_resolve_prompt(path: &str, context: &ConflictResolveContext) -> String {
+fn build_conflict_resolve_prompt(app: &App, context: &ConflictResolveContext) -> String {
     let template =
-        load_conflict_prompt_template(path).unwrap_or_else(default_conflict_prompt_template);
+        load_conflict_prompt_template(app).unwrap_or_else(default_conflict_prompt_template);
     let files = if context.conflicted_files.is_empty() {
         "(none reported)".to_string()
     } else {
@@ -356,17 +379,112 @@ fn build_conflict_resolve_prompt(path: &str, context: &ConflictResolveContext) -
         .replace("{conflicted_files}", files.as_str())
 }
 
-fn load_conflict_prompt_template(path: &str) -> Option<String> {
-    let root = repo_container_from_path(path).or_else(repo_root)?;
-    let dir = format!("{}/.openswarm", root);
-    let prompt_path = format!("{}/conflict-resolve-prompt.md", dir);
+fn load_conflict_prompt_template(app: &App) -> Option<String> {
+    let prompt_path = app.config.conflict_resolve_prompt_path.as_str();
 
-    if !Path::new(prompt_path.as_str()).exists() {
-        let _ = fs::create_dir_all(dir.as_str());
-        let _ = fs::write(prompt_path.as_str(), default_conflict_prompt_template());
+    if !Path::new(prompt_path).exists() {
+        if let Some(parent) = Path::new(prompt_path).parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(prompt_path, default_conflict_prompt_template());
     }
 
-    fs::read_to_string(prompt_path.as_str()).ok()
+    fs::read_to_string(prompt_path).ok()
+}
+
+fn load_openswarm_config() -> OpenSwarmConfig {
+    let config_dir = openswarm_config_dir();
+    let prompts_dir = config_dir.join("prompts");
+    let config_path = config_dir.join("config.toml");
+
+    let _ = fs::create_dir_all(prompts_dir.as_path());
+    if !config_path.exists() {
+        let _ = fs::write(config_path.as_path(), default_openswarm_config_text());
+    }
+
+    let mut default_agent: Option<ExternalAgent> = None;
+    let mut conflict_prompt_path = prompts_dir.join("conflict-resolve-prompt.md");
+
+    if let Ok(raw) = fs::read_to_string(config_path.as_path()) {
+        for line in raw.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            let Some((key, value)) = trimmed.split_once('=') else {
+                continue;
+            };
+            let key = key.trim();
+            let value = parse_config_string(value.trim());
+            match key {
+                "default_agent" => {
+                    default_agent = value
+                        .as_deref()
+                        .and_then(parse_external_agent)
+                        .or(default_agent);
+                }
+                "conflict_resolve_prompt" => {
+                    if let Some(v) = value {
+                        let candidate = PathBuf::from(v.as_str());
+                        conflict_prompt_path = if candidate.is_absolute() {
+                            candidate
+                        } else {
+                            config_dir.join(candidate)
+                        };
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if !conflict_prompt_path.exists() {
+        if let Some(parent) = conflict_prompt_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(
+            conflict_prompt_path.as_path(),
+            default_conflict_prompt_template(),
+        );
+    }
+
+    OpenSwarmConfig {
+        config_path: config_path.to_string_lossy().to_string(),
+        default_agent,
+        conflict_resolve_prompt_path: conflict_prompt_path.to_string_lossy().to_string(),
+    }
+}
+
+fn openswarm_config_dir() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".config").join("openswarm")
+    } else {
+        PathBuf::from(".").join(".config").join("openswarm")
+    }
+}
+
+fn default_openswarm_config_text() -> String {
+    "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from ~/.config/openswarm\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n"
+        .to_string()
+}
+
+fn parse_config_string(value: &str) -> Option<String> {
+    let head = value.split('#').next().unwrap_or(value).trim();
+    if head.is_empty() {
+        return None;
+    }
+    if let Some(stripped) = head.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
+        return Some(stripped.to_string());
+    }
+    Some(head.to_string())
+}
+
+fn parse_external_agent(value: &str) -> Option<ExternalAgent> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "opencode" => Some(ExternalAgent::Opencode),
+        "claude" => Some(ExternalAgent::Claude),
+        _ => None,
+    }
 }
 
 fn default_conflict_prompt_template() -> String {
