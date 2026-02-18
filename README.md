@@ -42,6 +42,14 @@ OpenSwarm is actively evolving and still experimental.
 
 ## Run
 
+For the simplest local dev loop:
+
+```bash
+make dev
+```
+
+This builds and runs OpenSwarm in one step.
+
 ```bash
 cargo run --bin openswarm
 ```
