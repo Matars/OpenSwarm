@@ -1074,7 +1074,10 @@ fn draw_canvas_label(
         return;
     };
     let label_width = label.chars().count() as u16;
-    let box_width = label_width.saturating_add(2);
+    let horizontal_padding = 1u16;
+    let box_width = label_width
+        .saturating_add(horizontal_padding.saturating_mul(2))
+        .saturating_add(2);
     let box_height = 3u16;
     if label_width == 0 || box_width >= area.width || box_height > area.height {
         return;
@@ -1096,13 +1099,19 @@ fn draw_canvas_label(
     frame.render_widget(
         Block::default()
             .borders(Borders::ALL)
+            .border_type(ratatui::widgets::BorderType::Rounded)
             .border_style(style)
             .style(style),
         rect,
     );
     frame.render_widget(
         Paragraph::new(label.to_string()).style(style),
-        Rect::new(x.saturating_add(1), y.saturating_add(1), label_width, 1),
+        Rect::new(
+            x.saturating_add(1 + horizontal_padding),
+            y.saturating_add(1),
+            label_width,
+            1,
+        ),
     );
 }
 
