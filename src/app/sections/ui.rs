@@ -1020,13 +1020,14 @@ fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String
     }
 
     let agent = agent_badge_for_node(app, entry.path.as_str());
-    let agent_short = if agent.is_empty() { "" } else { " ..." };
 
     if selected {
         let state = if entry.dirty { "*" } else { "" };
-        format!("{}{}{}", name, state, agent_short)
+        format!("{}{}{}", name, state, agent)
     } else if entry.dirty {
-        format!("{}*", name)
+        format!("{}*{}", name, agent)
+    } else if !agent.is_empty() {
+        format!("{}{}", name, agent)
     } else {
         name
     }
@@ -1603,6 +1604,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Top node (magenta) = current HEAD branch"),
             Line::from("- Cyan ring = selected worktree"),
             Line::from("- Yellow nodes = dirty (uncommitted changes)"),
+            Line::from("- Node suffix shows terminal state: A active, I12s idle, D done, F failed"),
             Line::from("- Lines show parent branch relationships"),
             Line::from(""),
             Line::from("Navigation:"),
