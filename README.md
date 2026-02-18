@@ -29,13 +29,14 @@ OpenSwarm is actively evolving and still experimental.
 ## Run
 
 ```bash
-cargo run
+cargo run --bin openswarm
 ```
 
-Build release binary:
+Build once and print the CLI path automatically:
 
 ```bash
-cargo build --release
+cargo build --release --bin openswarm
+printf '%s\n' "$(pwd)/target/release/openswarm"
 ```
 
 ## Core keybindings

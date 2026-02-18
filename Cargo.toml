@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Experimental TUI scaffold for gitfetch"
 
+[[bin]]
+name = "openswarm"
+path = "src/main.rs"
+
 [dependencies]
 crossterm = "0.29"
 ratatui = "0.29"
