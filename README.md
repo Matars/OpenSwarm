@@ -85,9 +85,17 @@ printf '%s\n' "$(pwd)/target/release/openswarm"
 
 - `Enter` or `Space`: stage/unstage selected file
 - `c`: commit mode
+- `n`: open notes editor (`notes.md` in repo root)
 - `p`: push branch (with upstream handling)
 - `s`: stash (including untracked)
 - `S`: stash pop
+
+### Notes editor
+
+- `n`: open the notes popup from changes/worktree views
+- Type normally to edit your notes
+- `Ctrl+S`: save notes without closing
+- `Esc`: save and close
 
 ### Terminal popup controls
 
