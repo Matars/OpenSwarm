@@ -1129,24 +1129,41 @@ fn agent_badge_for_node(app: &App, path: &str) -> String {
 
     if agent_session_is_live(session) {
         if agent_session_is_active(session, now) {
+            let spinner = animated_agent_spinner(session, now);
             if in_foreground {
-                return " A*".to_string();
+                return format!(" {}*", spinner);
             }
-            return " A".to_string();
+            return format!(" {}", spinner);
         }
 
         let idle = agent_session_idle_seconds(session, now);
         if in_foreground {
-            return format!(" I{}s*", idle);
+            return format!(" idle({}s)*", idle);
         }
-        return format!(" I{}s", idle);
+        return format!(" idle({}s)", idle);
     }
 
     match session.state {
-        AgentState::Done => " D".to_string(),
-        AgentState::Failed => " F".to_string(),
-        AgentState::Launching | AgentState::Running => " I".to_string(),
+        AgentState::Done => " done".to_string(),
+        AgentState::Failed => " fail".to_string(),
+        AgentState::Launching | AgentState::Running => {
+            let spinner = animated_agent_spinner(session, now);
+            if in_foreground {
+                format!(" {}*", spinner)
+            } else {
+                format!(" {}", spinner)
+            }
+        }
     }
+}
+
+fn animated_agent_spinner(session: &AgentSession, now: Instant) -> char {
+    const FRAMES: [char; 4] = ['|', '/', '-', '\\'];
+    let tick = now
+        .saturating_duration_since(session.launched_at)
+        .as_millis()
+        / 140;
+    FRAMES[(tick % FRAMES.len() as u128) as usize]
 }
 
 fn graph_layout(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
@@ -1604,7 +1621,8 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Top node (magenta) = current HEAD branch"),
             Line::from("- Cyan ring = selected worktree"),
             Line::from("- Yellow nodes = dirty (uncommitted changes)"),
-            Line::from("- Node suffix shows terminal state: A active, I12s idle, D done, F failed"),
+            Line::from("- Node suffix animates for active: | / - \\"),
+            Line::from("- Idle sessions show idle(12s), completed show done/fail"),
             Line::from("- Lines show parent branch relationships"),
             Line::from(""),
             Line::from("Navigation:"),
