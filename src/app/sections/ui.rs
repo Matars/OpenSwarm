@@ -1510,7 +1510,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("d", Style::default().fg(Color::LightRed)),
-            Span::raw(" delete selected"),
+            Span::raw(" delete selected + close terminal"),
         ]),
         Line::from(vec![
             Span::styled("m", Style::default().fg(Color::LightGreen)),
@@ -1636,7 +1636,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- f: fetch connected parent node"),
             Line::from("- p: selected worktree add+commit+push with message popup"),
             Line::from("- n: open notes popup (notes.md)"),
-            Line::from("- d: delete selected worktree (safe checks)"),
+            Line::from("- d: delete selected worktree (safe checks, closes terminal)"),
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- x: prune stale worktrees"),
             Line::from("- ?: close this help"),

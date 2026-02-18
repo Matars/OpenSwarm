@@ -255,10 +255,12 @@ fn normalize_path(path: &str) -> String {
         .to_string()
 }
 
-fn remove_selected_worktree(app: &App) -> Result<String, Box<dyn Error>> {
+fn remove_selected_worktree(app: &mut App) -> Result<String, Box<dyn Error>> {
     let Some(selected) = app.selected_worktree() else {
         return Ok("No worktree selected".to_string());
     };
+
+    let selected_path = selected.path.clone();
 
     if selected.is_current {
         return Ok("Refusing to remove current worktree".to_string());
@@ -268,7 +270,22 @@ fn remove_selected_worktree(app: &App) -> Result<String, Box<dyn Error>> {
         return Ok("Refusing to remove dirty worktree (clean it first)".to_string());
     }
 
-    run_git(&["worktree", "remove", selected.path.as_str()])
+    let had_live_session = has_live_terminal_session(app, selected_path.as_str());
+    terminate_terminal_session(app, selected_path.as_str());
+
+    if app.agent_popup_path.as_deref() == Some(selected_path.as_str()) {
+        app.agent_popup_path = None;
+    }
+
+    let remove_output = run_git(&["worktree", "remove", selected_path.as_str()])?;
+    if had_live_session {
+        Ok(format!(
+            "{} (closed terminal session for worktree)",
+            remove_output
+        ))
+    } else {
+        Ok(remove_output)
+    }
 }
 
 fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
@@ -1717,4 +1734,3 @@ fn preferred_remote() -> Result<String, Box<dyn Error>> {
         Ok("origin".to_string())
     }
 }
-
