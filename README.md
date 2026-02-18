@@ -32,12 +32,21 @@ OpenSwarm is actively evolving and still experimental.
 cargo run --bin openswarm
 ```
 
+Install globally (so `openswarm` works on `PATH`):
+
+```bash
+cargo install --path . --bin openswarm --force
+openswarm
+```
+
 Build once and print the CLI path automatically:
 
 ```bash
 cargo build --release --bin openswarm
 printf '%s\n' "$(pwd)/target/release/openswarm"
 ```
+
+`cargo build --release` creates `./target/release/openswarm`; it does not install a global command.
 
 ## Core keybindings
 
