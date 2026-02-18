@@ -160,6 +160,7 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
 fn start_onboarding_demo(app: &mut App) {
     app.mode = Mode::OnboardingTour;
     app.onboarding_slide_index = 0;
+    app.onboarding_demo_node_idx = 0;
     app.status_line =
         "Opened onboarding demo (fabricated walkthrough, no repo mutations)".to_string();
 }
@@ -183,8 +184,10 @@ fn handle_onboarding_prompt_mode_key(app: &mut App, code: KeyCode) -> Result<(),
             if app.onboarding_prompt_yes {
                 app.mode = Mode::OnboardingTour;
                 app.onboarding_slide_index = 0;
+                app.onboarding_demo_node_idx = 0;
                 app.status_line =
-                    "Onboarding started. Use Left/Right or j/k to move through slides".to_string();
+                    "Onboarding started. Use arrows to explore demo graph, Enter for next step"
+                        .to_string();
             } else {
                 complete_onboarding_skip(app);
             }
@@ -201,15 +204,24 @@ fn handle_onboarding_tour_mode_key(app: &mut App, code: KeyCode) -> Result<(), B
         KeyCode::Esc | KeyCode::Char('q') => {
             complete_onboarding_finish(app, false);
         }
-        KeyCode::Left | KeyCode::Up | KeyCode::Char('h') | KeyCode::Char('k') => {
+        KeyCode::Left
+        | KeyCode::Right
+        | KeyCode::Up
+        | KeyCode::Down
+        | KeyCode::Char('h')
+        | KeyCode::Char('j')
+        | KeyCode::Char('k')
+        | KeyCode::Char('l') => {
+            move_onboarding_demo_focus(app, code);
+        }
+        KeyCode::Backspace | KeyCode::PageUp | KeyCode::Char('[') => {
             app.onboarding_slide_index = app.onboarding_slide_index.saturating_sub(1);
         }
-        KeyCode::Right
-        | KeyCode::Down
-        | KeyCode::Char('l')
-        | KeyCode::Char('j')
-        | KeyCode::Char(' ')
-        | KeyCode::Enter => {
+        KeyCode::Char(' ')
+        | KeyCode::Enter
+        | KeyCode::Tab
+        | KeyCode::PageDown
+        | KeyCode::Char(']') => {
             if app.onboarding_slide_index >= last_idx {
                 complete_onboarding_finish(app, true);
             } else {
@@ -222,10 +234,40 @@ fn handle_onboarding_tour_mode_key(app: &mut App, code: KeyCode) -> Result<(), B
     Ok(())
 }
 
+fn move_onboarding_demo_focus(app: &mut App, code: KeyCode) {
+    let next = match (app.onboarding_demo_node_idx, code) {
+        (0, KeyCode::Left | KeyCode::Char('h')) => 1,
+        (0, KeyCode::Right | KeyCode::Char('l')) => 3,
+        (0, KeyCode::Down | KeyCode::Char('j')) => 2,
+
+        (1, KeyCode::Right | KeyCode::Char('l')) => 2,
+        (1, KeyCode::Up | KeyCode::Char('k')) => 0,
+        (1, KeyCode::Down | KeyCode::Char('j')) => 4,
+
+        (2, KeyCode::Left | KeyCode::Char('h')) => 1,
+        (2, KeyCode::Right | KeyCode::Char('l')) => 3,
+        (2, KeyCode::Up | KeyCode::Char('k')) => 0,
+        (2, KeyCode::Down | KeyCode::Char('j')) => 4,
+
+        (3, KeyCode::Left | KeyCode::Char('h')) => 2,
+        (3, KeyCode::Up | KeyCode::Char('k')) => 0,
+        (3, KeyCode::Down | KeyCode::Char('j')) => 4,
+
+        (4, KeyCode::Left | KeyCode::Char('h')) => 1,
+        (4, KeyCode::Right | KeyCode::Char('l')) => 3,
+        (4, KeyCode::Up | KeyCode::Char('k')) => 2,
+
+        _ => app.onboarding_demo_node_idx,
+    };
+
+    app.onboarding_demo_node_idx = next;
+}
+
 fn complete_onboarding_skip(app: &mut App) {
     write_onboarding_completed_flag(app);
     app.mode = Mode::Normal;
     app.onboarding_slide_index = 0;
+    app.onboarding_demo_node_idx = 0;
     app.status_line = "Onboarding skipped. Press ? in worktree view anytime for help".to_string();
 }
 
@@ -236,6 +278,7 @@ fn complete_onboarding_finish(app: &mut App, reached_end: bool) {
     app.worktree_focus = WorktreePane::Canvas;
     app.show_panel_help = false;
     app.onboarding_slide_index = 0;
+    app.onboarding_demo_node_idx = 0;
     if reached_end {
         app.status_line =
             "Onboarding complete. Press a to create worktree, O to launch an agent".to_string();

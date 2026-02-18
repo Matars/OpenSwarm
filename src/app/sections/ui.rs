@@ -185,6 +185,7 @@ fn draw_onboarding_tour_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
         .margin(1)
         .constraints([
             Constraint::Length(2),
+            Constraint::Percentage(58),
             Constraint::Min(8),
             Constraint::Length(1),
         ])
@@ -211,23 +212,25 @@ fn draw_onboarding_tour_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
         layout[0],
     );
 
+    draw_onboarding_demo_graph(frame, app, layout[1]);
+
     frame.render_widget(
         Paragraph::new(body)
             .block(Block::default().borders(Borders::ALL).title("guide"))
             .style(Style::default().fg(Color::White)),
-        layout[1],
+        layout[2],
     );
 
     let footer = if index + 1 >= total {
-        "Left/Right or h/l move, Enter finishes, Esc closes"
+        "Arrows/hjkl move demo graph, Enter next/finish, Backspace previous, Esc close"
     } else {
-        "Left/Right or h/l move, Enter advances, Esc closes"
+        "Arrows/hjkl move demo graph, Enter next, Backspace previous, Esc close"
     };
     frame.render_widget(
         Paragraph::new(footer)
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Gray)),
-        layout[2],
+        layout[3],
     );
 }
 
@@ -287,8 +290,293 @@ fn onboarding_slide(index: usize) -> (&'static str, Vec<Line<'static>>) {
                 Line::from("4) Repeat for another task in parallel"),
                 Line::from("5) Press m to merge selected worktree into parent when ready"),
                 Line::from(""),
+                Line::from("Use arrows now to inspect the dummy graph + popups above."),
+                Line::from(""),
                 Line::from("Press Enter now to finish onboarding and jump into worktree view."),
             ],
+        ),
+    }
+}
+
+#[derive(Clone, Copy)]
+struct OnboardingDemoNode {
+    label: &'static str,
+    x_pct: u16,
+    y_pct: u16,
+}
+
+fn onboarding_demo_nodes() -> [OnboardingDemoNode; 5] {
+    [
+        OnboardingDemoNode {
+            label: "main",
+            x_pct: 50,
+            y_pct: 10,
+        },
+        OnboardingDemoNode {
+            label: "wt/auth-refactor",
+            x_pct: 22,
+            y_pct: 40,
+        },
+        OnboardingDemoNode {
+            label: "wt/ui-refresh",
+            x_pct: 50,
+            y_pct: 40,
+        },
+        OnboardingDemoNode {
+            label: "wt/test-hardening",
+            x_pct: 78,
+            y_pct: 40,
+        },
+        OnboardingDemoNode {
+            label: "wt/conflict-fix",
+            x_pct: 50,
+            y_pct: 72,
+        },
+    ]
+}
+
+fn onboarding_demo_node_point(area: Rect, node: OnboardingDemoNode) -> (u16, u16) {
+    let x_span = area.width.saturating_sub(1).max(1);
+    let y_span = area.height.saturating_sub(1).max(1);
+    let x = area
+        .x
+        .saturating_add(((x_span as u32 * node.x_pct as u32) / 100) as u16);
+    let y = area
+        .y
+        .saturating_add(((y_span as u32 * node.y_pct as u32) / 100) as u16);
+    (x, y)
+}
+
+fn draw_onboarding_demo_graph(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
+    let border = Block::default()
+        .title("dummy graph (safe demo)")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::LightBlue))
+        .style(Style::default().bg(Color::Black));
+    let inner = border.inner(area);
+    frame.render_widget(border, area);
+
+    if inner.width < 32 || inner.height < 10 {
+        frame.render_widget(
+            Paragraph::new("Resize terminal for onboarding graph")
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::Gray)),
+            inner,
+        );
+        return;
+    }
+
+    let nodes = onboarding_demo_nodes();
+    let points = nodes
+        .iter()
+        .map(|node| onboarding_demo_node_point(inner, *node))
+        .collect::<Vec<(u16, u16)>>();
+
+    {
+        let buf = frame.buffer_mut();
+        onboarding_draw_edge(buf, inner, points[0], points[1]);
+        onboarding_draw_edge(buf, inner, points[0], points[2]);
+        onboarding_draw_edge(buf, inner, points[0], points[3]);
+        onboarding_draw_edge(buf, inner, points[2], points[4]);
+    }
+
+    for (idx, node) in nodes.iter().enumerate() {
+        let selected = idx
+            == app
+                .onboarding_demo_node_idx
+                .min(nodes.len().saturating_sub(1));
+        let (x, y) = points[idx];
+        let glyph = if selected { '◉' } else { '○' };
+        let color = if selected {
+            Color::LightCyan
+        } else if idx == 0 {
+            Color::LightMagenta
+        } else {
+            Color::White
+        };
+
+        {
+            let buf = frame.buffer_mut();
+            let local_x = x.saturating_sub(inner.x);
+            let local_y = y.saturating_sub(inner.y);
+            paint_graph_char(
+                buf,
+                inner,
+                local_x,
+                local_y,
+                glyph,
+                Style::default().fg(color),
+            );
+        }
+
+        let label = if selected {
+            format!("> {}", node.label)
+        } else {
+            node.label.to_string()
+        };
+        let max_w = inner.width.saturating_sub(2) as usize;
+        let text = truncate_text(label.as_str(), max_w.max(12));
+        let lx = x.saturating_add(1).min(inner.right().saturating_sub(1));
+        let ly = y.min(inner.bottom().saturating_sub(1));
+        frame.render_widget(
+            Paragraph::new(text).style(Style::default().fg(color)),
+            Rect::new(lx, ly, inner.right().saturating_sub(lx).max(1), 1),
+        );
+    }
+
+    draw_onboarding_demo_popup(frame, app, inner, points);
+}
+
+fn onboarding_draw_edge(buf: &mut Buffer, area: Rect, from: (u16, u16), to: (u16, u16)) {
+    let mut x = from.0 as i32;
+    let mut y = from.1 as i32;
+    let tx = to.0 as i32;
+    let ty = to.1 as i32;
+    let step_x = if tx > x {
+        1
+    } else if tx < x {
+        -1
+    } else {
+        0
+    };
+    let step_y = if ty > y {
+        1
+    } else if ty < y {
+        -1
+    } else {
+        0
+    };
+
+    while x != tx || y != ty {
+        if x != tx {
+            x += step_x;
+        }
+        if y != ty {
+            y += step_y;
+        }
+
+        let ch = if x == tx && y == ty {
+            '▼'
+        } else if step_x == 0 {
+            '│'
+        } else if step_y == 0 {
+            '─'
+        } else if step_x > 0 {
+            '╲'
+        } else {
+            '╱'
+        };
+
+        if x < area.x as i32
+            || y < area.y as i32
+            || x >= area.right() as i32
+            || y >= area.bottom() as i32
+        {
+            continue;
+        }
+        let local_x = (x as u16).saturating_sub(area.x);
+        let local_y = (y as u16).saturating_sub(area.y);
+        paint_graph_char(
+            buf,
+            area,
+            local_x,
+            local_y,
+            ch,
+            Style::default().fg(Color::DarkGray),
+        );
+    }
+}
+
+fn draw_onboarding_demo_popup(
+    frame: &mut ratatui::Frame<'_>,
+    app: &App,
+    area: Rect,
+    points: Vec<(u16, u16)>,
+) {
+    if points.is_empty() {
+        return;
+    }
+
+    let selected = app
+        .onboarding_demo_node_idx
+        .min(points.len().saturating_sub(1));
+    let anchor = points[selected];
+    let (title, body) = onboarding_demo_popup_text(app.onboarding_slide_index, selected);
+
+    let width = area.width.min(40).max(22);
+    let height = 5u16;
+    let right_x = anchor.0.saturating_add(2);
+    let x = if right_x.saturating_add(width) < area.right() {
+        right_x
+    } else {
+        anchor.0.saturating_sub(width.saturating_add(2)).max(area.x)
+    };
+    let y = anchor
+        .1
+        .saturating_sub(1)
+        .clamp(area.y, area.bottom().saturating_sub(height));
+
+    let popup = Rect::new(x, y, width, height);
+    frame.render_widget(Clear, popup);
+    frame.render_widget(
+        Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow))
+            .style(Style::default().bg(Color::Black)),
+        popup,
+    );
+
+    frame.render_widget(
+        Paragraph::new(body)
+            .style(Style::default().fg(Color::White))
+            .alignment(Alignment::Left),
+        Rect::new(
+            popup.x.saturating_add(1),
+            popup.y.saturating_add(1),
+            popup.width.saturating_sub(2),
+            popup.height.saturating_sub(2),
+        ),
+    );
+}
+
+fn onboarding_demo_popup_text(slide: usize, selected: usize) -> (&'static str, String) {
+    match (slide.min(3), selected) {
+        (0, 0) => (
+            "Main",
+            "Base branch. Parallel tasks branch out from here.".to_string(),
+        ),
+        (0, _) => (
+            "Worktree",
+            "Each node is isolated. Nothing here mutates your real repo in demo mode.".to_string(),
+        ),
+        (1, 1) => (
+            "Auth Stream",
+            "Feature stream A: auth refactor can move independently.".to_string(),
+        ),
+        (1, 2) => (
+            "UI Stream",
+            "Feature stream B: UI refresh runs in parallel with auth.".to_string(),
+        ),
+        (1, 3) => (
+            "Tests Stream",
+            "Feature stream C: harden tests while others ship features.".to_string(),
+        ),
+        (2, 4) => (
+            "Conflict Fix",
+            "Example conflict branch. O would launch an agent with a resolve prompt.".to_string(),
+        ),
+        (2, _) => (
+            "Agent Flow",
+            "Use O on any node to launch an agent in that worktree.".to_string(),
+        ),
+        (_, 0) => (
+            "Merge Target",
+            "When ready, merge selected worktree back toward its parent.".to_string(),
+        ),
+        _ => (
+            "Next Step",
+            "Use arrows to inspect nodes, then Enter to advance onboarding.".to_string(),
         ),
     }
 }

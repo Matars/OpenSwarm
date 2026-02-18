@@ -52,7 +52,7 @@ This builds and runs OpenSwarm in one step.
 
 On first launch, OpenSwarm prompts for a quick onboarding tour (`Yes/No`).
 The tour highlights why parallel worktrees beat a single-branch loop, how to launch agents with `O`, and how conflict-resolution prompts work during merges.
-The tour is a fabricated walkthrough and does not modify your repository.
+The tour is interactive (dummy graph + arrow navigation + contextual popups), fully fabricated, and does not modify your repository.
 
 ```bash
 cargo run --bin openswarm

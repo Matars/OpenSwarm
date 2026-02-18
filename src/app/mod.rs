@@ -144,6 +144,7 @@ struct App {
     notes_scroll: u16,
     onboarding_prompt_yes: bool,
     onboarding_slide_index: usize,
+    onboarding_demo_node_idx: usize,
     agent_tx: Sender<AgentEvent>,
     agent_rx: Receiver<AgentEvent>,
 }
@@ -331,6 +332,7 @@ impl App {
             notes_scroll: 0,
             onboarding_prompt_yes: true,
             onboarding_slide_index: 0,
+            onboarding_demo_node_idx: 0,
             agent_tx,
             agent_rx,
         }
