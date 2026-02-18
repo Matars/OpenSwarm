@@ -50,6 +50,10 @@ make dev
 
 This builds and runs OpenSwarm in one step.
 
+On first launch, OpenSwarm prompts for a quick onboarding tour (`Yes/No`).
+The tour highlights why parallel worktrees beat a single-branch loop, how to launch agents with `O`, and how conflict-resolution prompts work during merges.
+The tour is a fabricated walkthrough and does not modify your repository.
+
 ```bash
 cargo run --bin openswarm
 ```
@@ -95,6 +99,7 @@ printf '%s\n' "$(pwd)/target/release/openswarm"
 - `Enter` or `Space`: stage/unstage selected file
 - `c`: commit mode
 - `n`: open notes editor (`notes.md` in repo root)
+- `;`: replay onboarding demo
 - `p`: push branch (with upstream handling)
 - `s`: stash (including untracked)
 - `S`: stash pop

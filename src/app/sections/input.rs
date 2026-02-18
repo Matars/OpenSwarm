@@ -47,6 +47,9 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
         KeyCode::Char('n') => {
             open_notes_popup(app)?;
         }
+        KeyCode::Char(';') => {
+            start_onboarding_demo(app);
+        }
         KeyCode::Char('p') => {
             let output = push_with_upstream()?;
             app.status_line = output;
@@ -145,10 +148,121 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
         KeyCode::Char('n') => {
             open_notes_popup(app)?;
         }
+        KeyCode::Char(';') => {
+            start_onboarding_demo(app);
+        }
         _ => {}
     }
 
     Ok(false)
+}
+
+fn start_onboarding_demo(app: &mut App) {
+    app.mode = Mode::OnboardingTour;
+    app.onboarding_slide_index = 0;
+    app.status_line =
+        "Opened onboarding demo (fabricated walkthrough, no repo mutations)".to_string();
+}
+
+fn handle_onboarding_prompt_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Error>> {
+    match code {
+        KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
+            app.onboarding_prompt_yes = !app.onboarding_prompt_yes;
+        }
+        KeyCode::Char('y') | KeyCode::Char('Y') => {
+            app.onboarding_prompt_yes = true;
+        }
+        KeyCode::Char('n') | KeyCode::Char('N') => {
+            app.onboarding_prompt_yes = false;
+        }
+        KeyCode::Esc => {
+            app.onboarding_prompt_yes = false;
+            complete_onboarding_skip(app);
+        }
+        KeyCode::Enter => {
+            if app.onboarding_prompt_yes {
+                app.mode = Mode::OnboardingTour;
+                app.onboarding_slide_index = 0;
+                app.status_line =
+                    "Onboarding started. Use Left/Right or j/k to move through slides".to_string();
+            } else {
+                complete_onboarding_skip(app);
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn handle_onboarding_tour_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Error>> {
+    let last_idx = onboarding_slide_count().saturating_sub(1);
+    match code {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            complete_onboarding_finish(app, false);
+        }
+        KeyCode::Left | KeyCode::Up | KeyCode::Char('h') | KeyCode::Char('k') => {
+            app.onboarding_slide_index = app.onboarding_slide_index.saturating_sub(1);
+        }
+        KeyCode::Right
+        | KeyCode::Down
+        | KeyCode::Char('l')
+        | KeyCode::Char('j')
+        | KeyCode::Char(' ')
+        | KeyCode::Enter => {
+            if app.onboarding_slide_index >= last_idx {
+                complete_onboarding_finish(app, true);
+            } else {
+                app.onboarding_slide_index += 1;
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn complete_onboarding_skip(app: &mut App) {
+    write_onboarding_completed_flag(app);
+    app.mode = Mode::Normal;
+    app.onboarding_slide_index = 0;
+    app.status_line = "Onboarding skipped. Press ? in worktree view anytime for help".to_string();
+}
+
+fn complete_onboarding_finish(app: &mut App, reached_end: bool) {
+    write_onboarding_completed_flag(app);
+    app.mode = Mode::Normal;
+    app.view_mode = ViewMode::Worktrees;
+    app.worktree_focus = WorktreePane::Canvas;
+    app.show_panel_help = false;
+    app.onboarding_slide_index = 0;
+    if reached_end {
+        app.status_line =
+            "Onboarding complete. Press a to create worktree, O to launch an agent".to_string();
+    } else {
+        app.status_line =
+            "Onboarding closed. Press ? in worktree view for the key guide".to_string();
+    }
+    refresh_worktrees(app);
+}
+
+fn write_onboarding_completed_flag(app: &mut App) {
+    if app.config.onboarding_completed {
+        return;
+    }
+
+    if let Err(err) = set_config_bool(
+        app.config.config_path.as_str(),
+        "onboarding_completed",
+        true,
+    ) {
+        app.status_line = format!(
+            "Onboarding state not persisted ({}). You may see the prompt again.",
+            single_line(err.to_string().as_str())
+        );
+        return;
+    }
+    app.config.onboarding_completed = true;
 }
 
 fn zoom_worktree_canvas(app: &mut App, zoom_in: bool) {
@@ -398,12 +512,14 @@ fn load_openswarm_config() -> OpenSwarmConfig {
     let config_path = config_dir.join("config.toml");
 
     let _ = fs::create_dir_all(prompts_dir.as_path());
-    if !config_path.exists() {
+    let config_preexisting = config_path.exists();
+    if !config_preexisting {
         let _ = fs::write(config_path.as_path(), default_openswarm_config_text());
     }
 
     let mut default_agent: Option<ExternalAgent> = None;
     let mut conflict_prompt_path = prompts_dir.join("conflict-resolve-prompt.md");
+    let mut onboarding_completed = config_preexisting;
 
     if let Ok(raw) = fs::read_to_string(config_path.as_path()) {
         for line in raw.lines() {
@@ -433,6 +549,11 @@ fn load_openswarm_config() -> OpenSwarmConfig {
                         };
                     }
                 }
+                "onboarding_completed" => {
+                    if let Some(flag) = value.as_deref().and_then(parse_config_bool) {
+                        onboarding_completed = flag;
+                    }
+                }
                 _ => {}
             }
         }
@@ -452,6 +573,7 @@ fn load_openswarm_config() -> OpenSwarmConfig {
         config_path: config_path.to_string_lossy().to_string(),
         default_agent,
         conflict_resolve_prompt_path: conflict_prompt_path.to_string_lossy().to_string(),
+        onboarding_completed,
     }
 }
 
@@ -464,7 +586,7 @@ fn openswarm_config_dir() -> PathBuf {
 }
 
 fn default_openswarm_config_text() -> String {
-    "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from ~/.config/openswarm\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n"
+    "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from ~/.config/openswarm\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n\n# first-launch onboarding gate (OpenSwarm flips this to true after prompt/tour)\nonboarding_completed = false\n"
         .to_string()
 }
 
@@ -477,6 +599,55 @@ fn parse_config_string(value: &str) -> Option<String> {
         return Some(stripped.to_string());
     }
     Some(head.to_string())
+}
+
+fn parse_config_bool(value: &str) -> Option<bool> {
+    let head = value.split('#').next().unwrap_or(value).trim();
+    if head.is_empty() {
+        return None;
+    }
+
+    let normalized = head.trim_matches('"').to_ascii_lowercase();
+    match normalized.as_str() {
+        "true" | "yes" | "1" => Some(true),
+        "false" | "no" | "0" => Some(false),
+        _ => None,
+    }
+}
+
+fn set_config_bool(config_path: &str, key: &str, value: bool) -> Result<(), Box<dyn Error>> {
+    let mut lines = fs::read_to_string(config_path)
+        .unwrap_or_default()
+        .lines()
+        .map(|line| line.to_string())
+        .collect::<Vec<String>>();
+
+    let bool_text = if value { "true" } else { "false" };
+    let mut replaced = false;
+    for line in &mut lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') || trimmed.is_empty() {
+            continue;
+        }
+        if let Some((existing_key, _)) = trimmed.split_once('=') {
+            if existing_key.trim() == key {
+                *line = format!("{} = {}", key, bool_text);
+                replaced = true;
+                break;
+            }
+        }
+    }
+
+    if !replaced {
+        lines.push(format!("{} = {}", key, bool_text));
+    }
+
+    let mut body = lines.join("\n");
+    if !body.ends_with('\n') {
+        body.push('\n');
+    }
+    fs::write(config_path, body)?;
+    Ok(())
 }
 
 fn parse_external_agent(value: &str) -> Option<ExternalAgent> {

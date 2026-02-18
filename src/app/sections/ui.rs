@@ -5,6 +5,16 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         frame.area(),
     );
 
+    if matches!(app.mode, Mode::OnboardingPrompt) {
+        draw_onboarding_prompt_modal(frame, app);
+        return;
+    }
+
+    if matches!(app.mode, Mode::OnboardingTour) {
+        draw_onboarding_tour_modal(frame, app);
+        return;
+    }
+
     if matches!(app.mode, Mode::AgentPopup) {
         draw_agent_popup(frame, app);
         return;
@@ -87,6 +97,199 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
 
     if app.view_mode == ViewMode::Worktrees && app.show_panel_help {
         draw_worktree_help_modal(frame, app);
+    }
+}
+
+fn onboarding_slide_count() -> usize {
+    4
+}
+
+fn draw_onboarding_prompt_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(68, 32, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Welcome To OpenSwarm")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightCyan));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    frame.render_widget(
+        Paragraph::new(
+            "Start a quick onboarding tour? It covers parallel worktrees, O agent launch, and conflict resolution.",
+        )
+        .style(Style::default().fg(Color::White)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Recommended: Yes (about 45 seconds)")
+            .style(Style::default().fg(Color::Gray)),
+        layout[1],
+    );
+
+    let yes_style = if app.onboarding_prompt_yes {
+        Style::default().fg(Color::Black).bg(Color::LightGreen)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let no_style = if app.onboarding_prompt_yes {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::Black).bg(Color::LightRed)
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("[ Yes: show tour ]", yes_style),
+            Span::raw("   "),
+            Span::styled("[ No: continue ]", no_style),
+        ]))
+        .alignment(Alignment::Center),
+        layout[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Use <- -> (or y/n), Enter confirm")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
+    );
+}
+
+fn draw_onboarding_tour_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(82, 76, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("OpenSwarm Onboarding")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightGreen));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(8),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let total = onboarding_slide_count().max(1);
+    let index = app.onboarding_slide_index.min(total - 1);
+    let (title, body) = onboarding_slide(index);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!("Step {}/{}", index + 1, total),
+                Style::default().fg(Color::LightBlue),
+            ),
+            Span::raw("  "),
+            Span::styled(
+                title,
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ])),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(body)
+            .block(Block::default().borders(Borders::ALL).title("guide"))
+            .style(Style::default().fg(Color::White)),
+        layout[1],
+    );
+
+    let footer = if index + 1 >= total {
+        "Left/Right or h/l move, Enter finishes, Esc closes"
+    } else {
+        "Left/Right or h/l move, Enter advances, Esc closes"
+    };
+    frame.render_widget(
+        Paragraph::new(footer)
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[2],
+    );
+}
+
+fn onboarding_slide(index: usize) -> (&'static str, Vec<Line<'static>>) {
+    match index {
+        0 => (
+            "Why OpenSwarm",
+            vec![
+                Line::from(
+                    "OpenSwarm is built for parallel branch execution, not linear branch juggling.",
+                ),
+                Line::from(""),
+                Line::from("- Spawn isolated worktrees for separate features or fixes"),
+                Line::from("- Run multiple terminal/agent sessions side by side"),
+                Line::from("- Merge only ready work back to a parent branch"),
+                Line::from(""),
+                Line::from("Result: fewer rebases, less context loss, faster throughput."),
+                Line::from("This tour is demo-only and does not modify your current repo."),
+            ],
+        ),
+        1 => (
+            "Parallel Worktrees > Single Branch",
+            vec![
+                Line::from("Single-branch loops serialize everything into one queue."),
+                Line::from(""),
+                Line::from("- In one branch, unrelated edits collide and reviews get noisy"),
+                Line::from("- In worktrees, each task has clean git status and clear scope"),
+                Line::from("- You can stage/commit/push each stream independently"),
+                Line::from(""),
+                Line::from("Fabricated example graph: main -> wt/auth, wt/ui, wt/tests"),
+                Line::from(""),
+                Line::from("This keeps merges safer and makes rollback decisions obvious."),
+            ],
+        ),
+        2 => (
+            "Agents And Conflict Resolver",
+            vec![
+                Line::from("Use O on a selected node to open the agent picker (OpenCode/Claude)."),
+                Line::from(""),
+                Line::from("- o opens a plain terminal popup in the worktree"),
+                Line::from("- O launches an agent inside that worktree terminal"),
+                Line::from(
+                    "- If merge conflicts happen, O can launch with a prefilled resolve prompt",
+                ),
+                Line::from(""),
+                Line::from("Fabricated conflict demo: src/auth.rs, src/ui/login.tsx"),
+                Line::from(""),
+                Line::from("That keeps conflict triage localized to the parent worktree."),
+            ],
+        ),
+        _ => (
+            "Suggested First Minute",
+            vec![
+                Line::from("1) Press w to open the worktree graph"),
+                Line::from("2) Press a to create a feature worktree branch"),
+                Line::from("3) Press O to launch an agent in that worktree"),
+                Line::from("4) Repeat for another task in parallel"),
+                Line::from("5) Press m to merge selected worktree into parent when ready"),
+                Line::from(""),
+                Line::from("Press Enter now to finish onboarding and jump into worktree view."),
+            ],
+        ),
     }
 }
 
@@ -555,6 +758,10 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
         Line::from(vec![
             Span::styled("n", Style::default().fg(Color::LightCyan)),
             Span::raw(" notes popup"),
+        ]),
+        Line::from(vec![
+            Span::styled(";", Style::default().fg(Color::LightGreen)),
+            Span::raw(" replay onboarding demo"),
         ]),
         Line::from(vec![
             Span::styled("p", Style::default().fg(Color::Magenta)),
@@ -1636,6 +1843,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" notes popup"),
         ]),
         Line::from(vec![
+            Span::styled(";", Style::default().fg(Color::LightGreen)),
+            Span::raw(" replay onboarding demo"),
+        ]),
+        Line::from(vec![
             Span::styled("x", Style::default().fg(Color::Yellow)),
             Span::raw(" prune stale"),
         ]),
@@ -1751,6 +1962,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- L: open git command history (reflog) popup"),
             Line::from("- o: open/reopen normal terminal popup for selected node"),
             Line::from("- O: open agent picker for selected or conflicted parent"),
+            Line::from("- ;: replay onboarding demo (fabricated, no repo mutations)"),
             Line::from("- default agent and prompts are editable in ~/.config/openswarm"),
             Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
             Line::from("- f: fetch connected parent node"),

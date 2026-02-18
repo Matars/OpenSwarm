@@ -37,6 +37,8 @@ struct FileEntry {
 #[derive(Clone, Debug)]
 enum Mode {
     Normal,
+    OnboardingPrompt,
+    OnboardingTour,
     CommitInput,
     WorktreeCommitPushInput,
     WorktreeCreateInput,
@@ -84,6 +86,7 @@ struct OpenSwarmConfig {
     config_path: String,
     default_agent: Option<ExternalAgent>,
     conflict_resolve_prompt_path: String,
+    onboarding_completed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -139,6 +142,8 @@ struct App {
     notes_cursor_row: usize,
     notes_cursor_col: usize,
     notes_scroll: u16,
+    onboarding_prompt_yes: bool,
+    onboarding_slide_index: usize,
     agent_tx: Sender<AgentEvent>,
     agent_rx: Receiver<AgentEvent>,
 }
@@ -272,6 +277,11 @@ impl App {
     fn new() -> Self {
         let (agent_tx, agent_rx) = mpsc::channel();
         let config = load_openswarm_config();
+        let initial_mode = if config.onboarding_completed {
+            Mode::Normal
+        } else {
+            Mode::OnboardingPrompt
+        };
         Self {
             branch: "unknown".to_string(),
             ahead: 0,
@@ -283,7 +293,7 @@ impl App {
             active_pane: ActivePane::Files,
             overview_scroll: 0,
             status_line: "Ready".to_string(),
-            mode: Mode::Normal,
+            mode: initial_mode,
             view_mode: ViewMode::Changes,
             commit_input: String::new(),
             worktrees: Vec::new(),
@@ -319,6 +329,8 @@ impl App {
             notes_cursor_row: 0,
             notes_cursor_col: 0,
             notes_scroll: 0,
+            onboarding_prompt_yes: true,
+            onboarding_slide_index: 0,
             agent_tx,
             agent_rx,
         }
@@ -454,6 +466,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     match app.mode {
                         Mode::Normal => {
                             should_quit = handle_normal_mode_key(&mut app, key.code)?;
+                        }
+                        Mode::OnboardingPrompt => {
+                            handle_onboarding_prompt_mode_key(&mut app, key.code)?;
+                        }
+                        Mode::OnboardingTour => {
+                            handle_onboarding_tour_mode_key(&mut app, key.code)?;
                         }
                         Mode::CommitInput => {
                             handle_commit_mode_key(&mut app, key.code)?;
