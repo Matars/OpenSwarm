@@ -758,6 +758,7 @@ fn draw_unicode_worktree_graph(
     let width = area.width as usize;
     let height = area.height as usize;
     let mut cells = vec![GraphCell::new(); width * height];
+    let root_branch = current_session_branch(app);
 
     for (idx, parent) in parents.iter().enumerate() {
         if Some(idx) == collapsed_root_idx {
@@ -770,6 +771,17 @@ fn draw_unicode_worktree_graph(
             .and_then(|p| node_points.get(p).copied())
             .or(root_point)
             .unwrap_or((to_x, to_y));
+        let is_head_to_main_edge = parent.is_none()
+            && app
+                .worktrees
+                .get(idx)
+                .map(|entry| !entry.detached && entry.branch == root_branch)
+                .unwrap_or(false);
+        let edge_from = if is_head_to_main_edge {
+            shorten_edge_from_start(from, (to_x, to_y), 0.5)
+        } else {
+            from
+        };
 
         let is_selected_edge =
             idx == selected_idx || parent.map(|p| p == selected_idx).unwrap_or(false);
@@ -779,7 +791,14 @@ fn draw_unicode_worktree_graph(
         }
         let edge_style = Style::default().fg(edge_color);
         let priority = if is_selected_edge { 3 } else { 1 };
-        draw_smooth_branch_path(&mut cells, area, from, (to_x, to_y), edge_style, priority);
+        draw_smooth_branch_path(
+            &mut cells,
+            area,
+            edge_from,
+            (to_x, to_y),
+            edge_style,
+            priority,
+        );
     }
 
     for y in 0..height {
@@ -841,6 +860,14 @@ fn draw_unicode_worktree_graph(
             Style::default().fg(node_color),
         );
     }
+}
+
+fn shorten_edge_from_start(from: (u16, u16), to: (u16, u16), length_scale: f32) -> (u16, u16) {
+    let clamped = length_scale.clamp(0.0, 1.0);
+    let move_toward_end = 1.0 - clamped;
+    let nx = from.0 as f32 + (to.0 as f32 - from.0 as f32) * move_toward_end;
+    let ny = from.1 as f32 + (to.1 as f32 - from.1 as f32) * move_toward_end;
+    (nx.round() as u16, ny.round() as u16)
 }
 
 fn draw_smooth_branch_path(
