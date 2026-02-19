@@ -609,9 +609,9 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
         || app.worktree_canvas_pan_x != 0.0
         || app.worktree_canvas_pan_y != 0.0
     {
-        format!("worktree graph  z:{:.1}x", app.worktree_canvas_zoom)
+        format!("worktree graph [?]  z:{:.1}x", app.worktree_canvas_zoom)
     } else {
-        "worktree graph".to_string()
+        "worktree graph [?]".to_string()
     };
     let block = Block::default()
         .title(title)
@@ -1696,19 +1696,18 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
         WorktreePane::Canvas => vec![
             Line::from("Worktree Graph"),
             Line::from(""),
+            Line::from("- Each node is an isolated git worktree for parallel agent runs"),
+            Line::from("- Edges show parent/child branch lineage for safe merges"),
             Line::from("- Blue node = current branch worktree"),
-            Line::from("- Cyan ring = selected worktree"),
+            Line::from("- Cyan ring = selected worktree (drives details + actions)"),
             Line::from("- Yellow nodes = dirty (uncommitted changes)"),
-            Line::from("- Node suffix animates for active: | / - \\"),
-            Line::from("- Active state uses a braille spinner"),
-            Line::from("- Idle sessions show idle(12s), completed show done/fail"),
-            Line::from("- Node labels are boxed with ratatui borders"),
-            Line::from("- Lines show parent branch relationships"),
+            Line::from("- Spinner suffix means active session; done/fail marks completion"),
             Line::from(""),
             Line::from("Navigation:"),
             Line::from("  arrows  - move by graph direction"),
-            Line::from("  h/l     - left/right among siblings"),
-            Line::from("  j/k     - down/up by graph level"),
+            Line::from("  h/l     - move between siblings"),
+            Line::from("  j/k     - move child/parent levels"),
+            Line::from("  Tab     - cycle graph/details/actions panels"),
             Line::from("  L       - open git command history popup"),
             Line::from(""),
             Line::from("Camera:"),
@@ -1716,31 +1715,34 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("  0       - reset view"),
             Line::from("  Shift+WASD - pan"),
             Line::from(""),
+            Line::from("Flow: o/O launch shells or agents, c/p/m/d run git lifecycle"),
+            Line::from(""),
             Line::from("  ?: close this help"),
         ],
         WorktreePane::Details => vec![
             Line::from("Details panel"),
-            Line::from("- Shows branch/path/head and repo flags"),
+            Line::from("- Reflects the selected graph node"),
+            Line::from("- Shows branch/path/HEAD and worktree flags"),
             Line::from("- Shows ahead/behind and dirty/locked state"),
-            Line::from("- Reflects current canvas selection"),
-            Line::from("- tab: move focus to next panel"),
+            Line::from("- Status section reports the latest command outcome"),
+            Line::from("- Use this panel to validate readiness before push/merge"),
+            Line::from("- Tab: move focus to next panel"),
             Line::from("- ?: close this help"),
         ],
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
-            Line::from("- a: create worktree from branch name"),
-            Line::from("- L: open git command history (reflog) popup"),
-            Line::from("- o: open/reopen normal terminal popup for selected node"),
-            Line::from("- O: open agent picker for selected or conflicted parent"),
-            Line::from("- default agent and prompts are editable in ~/.config/openswarm"),
-            Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
-            Line::from("- f: fetch + pull connected parent node"),
-            Line::from("- c: selected worktree add+commit with message popup"),
-            Line::from("- p: push selected worktree branch"),
-            Line::from("- n: open notes popup (notes.md)"),
-            Line::from("- d: delete selected worktree (asks force-delete if dirty)"),
-            Line::from("- m: merge selected branch into connected parent node"),
+            Line::from("- a: create worktree from a branch name"),
+            Line::from("- o: open/reopen terminal for selected node"),
+            Line::from("- O: open agent picker for selected/conflicted parent"),
+            Line::from("- c: stage all + commit in selected worktree"),
+            Line::from("- p: push selected branch (sets upstream if needed)"),
+            Line::from("- f: fetch + pull connected parent"),
+            Line::from("- m: merge selected branch into connected parent"),
+            Line::from("- d: remove selected worktree (prompts if dirty)"),
             Line::from("- x: prune stale worktrees"),
+            Line::from("- n: open notes popup (notes.md), L: git command history"),
+            Line::from("- Terminal popup: ':' control mode, Ctrl+G toggles input/control"),
+            Line::from("- Agent defaults/prompts live in ~/.config/openswarm"),
             Line::from("- ?: close this help"),
         ],
     }
