@@ -152,6 +152,7 @@ Docs are now powered by Jekyll + Just the Docs.
 - While a git action is running, the worktree actions/details panels and pulse panel show a live busy spinner with elapsed time.
 - If launched outside a Git repo, commands will fail until you run it inside one.
 - Agent defaults and prompt templates live in `~/.config/openswarm`.
+- Conflict resolution launched with OpenCode now passes the rendered template via `opencode --prompt ...`.
 
 ## Project origin
 
