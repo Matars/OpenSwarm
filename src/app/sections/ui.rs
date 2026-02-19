@@ -561,7 +561,7 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
         ]),
         Line::from(vec![
             Span::styled("n", Style::default().fg(Color::LightCyan)),
-            Span::raw(" notes (vim)"),
+            Span::raw(" notes (vim-style)"),
         ]),
         Line::from(vec![
             Span::styled("p", Style::default().fg(Color::Magenta)),
@@ -1926,7 +1926,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("n", Style::default().fg(Color::LightCyan)),
-            Span::raw(" notes (vim)"),
+            Span::raw(" notes (vim-style)"),
         ]),
         Line::from(vec![
             Span::styled("x", Style::default().fg(Color::Yellow)),
@@ -2052,7 +2052,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- d: delete selected worktree (asks force-delete if dirty)"),
             Line::from("- x: prune stale worktrees"),
-            Line::from("- n: open notes.md in vim popup, L: git command history"),
+            Line::from("- n: open notes.md (vim-style editor), L: git command history"),
             Line::from("- Terminal popup: ':' control mode, Ctrl+G toggles input/control"),
             Line::from("- Agent defaults/prompts live in ~/.config/openswarm"),
             Line::from("- ?: close this help"),
@@ -3447,13 +3447,17 @@ fn draw_notes_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     let popup = centered_rect(86, 82, frame.area());
     frame.render_widget(Clear, popup);
 
+    let mode = match app.notes_edit_mode {
+        NotesEditMode::Normal => "NORMAL",
+        NotesEditMode::Insert => "INSERT",
+    };
     let title = match app.notes_context {
-        NotesContext::Notes => "Notes (notes.md)",
-        NotesContext::ConflictPrompt => "Conflict Prompt (config)",
+        NotesContext::Notes => format!("Notes (notes.md) [{}]", mode),
+        NotesContext::ConflictPrompt => format!("Conflict Prompt (config) [{}]", mode),
     };
 
     let border = Block::default()
-        .title(title)
+        .title(title.as_str())
         .borders(Borders::ALL)
         .style(Style::default().bg(Color::Black))
         .border_style(Style::default().fg(Color::LightCyan));
@@ -3533,12 +3537,22 @@ fn draw_notes_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
 
     frame.render_widget(
         Paragraph::new(match app.notes_context {
-            NotesContext::Notes => {
-                "Type to edit. Enter newline, arrows move, Ctrl+S saves, Esc saves+closes"
-            }
-            NotesContext::ConflictPrompt => {
-                "Edit template. Placeholders stay supported. Ctrl+S save, Esc save+back"
-            }
+            NotesContext::Notes => match app.notes_edit_mode {
+                NotesEditMode::Normal => {
+                    "NORMAL: i/a/o/O insert, hjkl move, dd delete line, q save+close, Ctrl+S save"
+                }
+                NotesEditMode::Insert => {
+                    "INSERT: type/edit text. Esc returns to NORMAL, Ctrl+S saves"
+                }
+            },
+            NotesContext::ConflictPrompt => match app.notes_edit_mode {
+                NotesEditMode::Normal => {
+                    "NORMAL: i/a/o/O insert, hjkl move, dd delete line, q save+back, Ctrl+S save"
+                }
+                NotesEditMode::Insert => {
+                    "INSERT: edit template text. Esc returns to NORMAL, Ctrl+S saves"
+                }
+            },
         })
         .alignment(Alignment::Center)
         .style(Style::default().fg(Color::Gray)),

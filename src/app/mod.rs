@@ -59,6 +59,12 @@ enum NotesContext {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NotesEditMode {
+    Normal,
+    Insert,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ExternalAgent {
     Opencode,
     Claude,
@@ -163,6 +169,8 @@ struct App {
     notes_cursor_col: usize,
     notes_scroll: u16,
     notes_context: NotesContext,
+    notes_edit_mode: NotesEditMode,
+    notes_pending_op: Option<char>,
     agent_tx: Sender<AgentEvent>,
     agent_rx: Receiver<AgentEvent>,
 }
@@ -382,6 +390,8 @@ impl App {
             notes_cursor_col: 0,
             notes_scroll: 0,
             notes_context: NotesContext::Notes,
+            notes_edit_mode: NotesEditMode::Normal,
+            notes_pending_op: None,
             agent_tx,
             agent_rx,
         }

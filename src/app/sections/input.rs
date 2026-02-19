@@ -1016,29 +1016,8 @@ fn open_notes_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
     if !notes_file.exists() {
         fs::write(notes_file, "# Notes\n")?;
     }
-
-    let notes_parent = notes_file
-        .parent()
-        .map(|parent| parent.to_string_lossy().to_string())
-        .unwrap_or_else(|| ".".to_string());
-
-    if let Some(editor) = preferred_vim_command() {
-        open_terminal_popup_for_path(app, notes_parent.as_str())?;
-        let launch_cmd = format!(
-            "{} {}\r",
-            editor,
-            shell_quote_single(notes_file.to_string_lossy().as_ref())
-        );
-        write_to_agent(app, notes_parent.as_str(), launch_cmd.as_str())?;
-        app.status_line = format!("Opened {} in {}", path, editor);
-        return Ok(());
-    }
-
     open_notes_popup_inline(app, path.as_str(), NotesContext::Notes)?;
-    app.status_line = format!(
-        "No vim editor found (nvim/vim/vi); opened inline editor for {}",
-        app.notes_path
-    );
+    app.status_line = format!("Opened {} (vim-style mode)", app.notes_path);
     Ok(())
 }
 
@@ -1062,6 +1041,8 @@ fn open_notes_popup_inline(
     app.notes_cursor_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
     app.notes_scroll = 0;
     app.notes_context = context;
+    app.notes_edit_mode = NotesEditMode::Normal;
+    app.notes_pending_op = None;
     app.mode = Mode::NotesPopup;
     Ok(())
 }
@@ -1080,22 +1061,6 @@ fn open_conflict_prompt_editor(app: &mut App) -> Result<(), Box<dyn Error>> {
     open_notes_popup_inline(app, prompt_path.as_str(), NotesContext::ConflictPrompt)?;
     app.status_line = format!("Editing conflict prompt: {}", app.notes_path);
     Ok(())
-}
-
-fn preferred_vim_command() -> Option<&'static str> {
-    if command_exists_on_path("nvim") {
-        Some("nvim")
-    } else if command_exists_on_path("vim") {
-        Some("vim")
-    } else if command_exists_on_path("vi") {
-        Some("vi")
-    } else {
-        None
-    }
-}
-
-fn shell_quote_single(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "'\\''"))
 }
 
 fn save_notes_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
@@ -1128,123 +1093,126 @@ fn handle_notes_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
         app.notes_lines.push(String::new());
     }
 
-    match key.code {
-        KeyCode::Esc => {
-            save_notes_popup(app)?;
-            match app.notes_context {
-                NotesContext::Notes => {
-                    app.mode = Mode::Normal;
-                    app.status_line = format!("Saved notes to {}", app.notes_path);
-                }
-                NotesContext::ConflictPrompt => {
-                    refresh_runtime_settings(app);
-                    app.mode = if app.pending_conflict_context.is_some() {
-                        Mode::WorktreeConflictResolveConfirm
-                    } else {
-                        Mode::Normal
-                    };
-                    app.status_line =
-                        "Saved conflict prompt. Press Enter to launch OpenCode".to_string();
-                }
+    if app.notes_edit_mode == NotesEditMode::Insert {
+        match key.code {
+            KeyCode::Esc => {
+                app.notes_edit_mode = NotesEditMode::Normal;
+                app.notes_pending_op = None;
             }
-        }
-        KeyCode::Up => {
-            if app.notes_cursor_row > 0 {
-                app.notes_cursor_row -= 1;
-            }
-            clamp_notes_cursor(app);
-        }
-        KeyCode::Down => {
-            if app.notes_cursor_row + 1 < app.notes_lines.len() {
-                app.notes_cursor_row += 1;
-            }
-            clamp_notes_cursor(app);
-        }
-        KeyCode::Left => {
-            if app.notes_cursor_col > 0 {
-                app.notes_cursor_col -= 1;
-            } else if app.notes_cursor_row > 0 {
-                app.notes_cursor_row -= 1;
+            KeyCode::Up => move_notes_up(app),
+            KeyCode::Down => move_notes_down(app),
+            KeyCode::Left => move_notes_left(app),
+            KeyCode::Right => move_notes_right(app),
+            KeyCode::Home => app.notes_cursor_col = 0,
+            KeyCode::End => {
                 app.notes_cursor_col =
                     line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
             }
+            KeyCode::PageUp => {
+                app.notes_cursor_row = app.notes_cursor_row.saturating_sub(10);
+                clamp_notes_cursor(app);
+            }
+            KeyCode::PageDown => {
+                let max_row = app.notes_lines.len().saturating_sub(1);
+                app.notes_cursor_row = (app.notes_cursor_row + 10).min(max_row);
+                clamp_notes_cursor(app);
+            }
+            KeyCode::Enter => insert_newline_at_cursor(app),
+            KeyCode::Backspace => backspace_in_notes(app),
+            KeyCode::Delete => delete_at_cursor(app),
+            KeyCode::Tab => insert_text_at_cursor(app, "    "),
+            KeyCode::Char(c) => insert_char_at_cursor(app, c),
+            _ => {}
         }
-        KeyCode::Right => {
-            let line_len = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
-            if app.notes_cursor_col < line_len {
-                app.notes_cursor_col += 1;
-            } else if app.notes_cursor_row + 1 < app.notes_lines.len() {
-                app.notes_cursor_row += 1;
+    } else {
+        match key.code {
+            KeyCode::Esc => {
+                app.notes_pending_op = None;
+            }
+            KeyCode::Up | KeyCode::Char('k') => move_notes_up(app),
+            KeyCode::Down | KeyCode::Char('j') => move_notes_down(app),
+            KeyCode::Left | KeyCode::Char('h') => move_notes_left(app),
+            KeyCode::Right | KeyCode::Char('l') => move_notes_right(app),
+            KeyCode::Home | KeyCode::Char('0') => app.notes_cursor_col = 0,
+            KeyCode::End | KeyCode::Char('$') => {
+                app.notes_cursor_col =
+                    line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+            }
+            KeyCode::PageUp => {
+                app.notes_cursor_row = app.notes_cursor_row.saturating_sub(10);
+                clamp_notes_cursor(app);
+            }
+            KeyCode::PageDown => {
+                let max_row = app.notes_lines.len().saturating_sub(1);
+                app.notes_cursor_row = (app.notes_cursor_row + 10).min(max_row);
+                clamp_notes_cursor(app);
+            }
+            KeyCode::Char('q') => {
+                close_notes_popup_after_save(app)?;
+            }
+            KeyCode::Char('i') => {
+                app.notes_edit_mode = NotesEditMode::Insert;
+                app.notes_pending_op = None;
+            }
+            KeyCode::Char('a') => {
+                let line_len = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+                if app.notes_cursor_col < line_len {
+                    app.notes_cursor_col += 1;
+                }
+                app.notes_edit_mode = NotesEditMode::Insert;
+                app.notes_pending_op = None;
+            }
+            KeyCode::Char('A') => {
+                app.notes_cursor_col =
+                    line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+                app.notes_edit_mode = NotesEditMode::Insert;
+                app.notes_pending_op = None;
+            }
+            KeyCode::Char('o') => {
+                let insert_at = app.notes_cursor_row.saturating_add(1);
+                app.notes_lines.insert(insert_at, String::new());
+                app.notes_cursor_row = insert_at;
                 app.notes_cursor_col = 0;
+                app.notes_edit_mode = NotesEditMode::Insert;
+                app.notes_pending_op = None;
+            }
+            KeyCode::Char('O') => {
+                let insert_at = app.notes_cursor_row;
+                app.notes_lines.insert(insert_at, String::new());
+                app.notes_cursor_col = 0;
+                app.notes_edit_mode = NotesEditMode::Insert;
+                app.notes_pending_op = None;
+            }
+            KeyCode::Char('x') | KeyCode::Delete => {
+                delete_at_cursor(app);
+                app.notes_pending_op = None;
+            }
+            KeyCode::Char('G') => {
+                app.notes_cursor_row = app.notes_lines.len().saturating_sub(1);
+                clamp_notes_cursor(app);
+                app.notes_pending_op = None;
+            }
+            KeyCode::Char('d') => {
+                if app.notes_pending_op == Some('d') {
+                    delete_current_line(app);
+                    app.notes_pending_op = None;
+                } else {
+                    app.notes_pending_op = Some('d');
+                }
+            }
+            KeyCode::Char('g') => {
+                if app.notes_pending_op == Some('g') {
+                    app.notes_cursor_row = 0;
+                    clamp_notes_cursor(app);
+                    app.notes_pending_op = None;
+                } else {
+                    app.notes_pending_op = Some('g');
+                }
+            }
+            _ => {
+                app.notes_pending_op = None;
             }
         }
-        KeyCode::Home => {
-            app.notes_cursor_col = 0;
-        }
-        KeyCode::End => {
-            app.notes_cursor_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
-        }
-        KeyCode::PageUp => {
-            app.notes_cursor_row = app.notes_cursor_row.saturating_sub(10);
-            clamp_notes_cursor(app);
-        }
-        KeyCode::PageDown => {
-            let max_row = app.notes_lines.len().saturating_sub(1);
-            app.notes_cursor_row = (app.notes_cursor_row + 10).min(max_row);
-            clamp_notes_cursor(app);
-        }
-        KeyCode::Enter => {
-            let current = app.notes_lines[app.notes_cursor_row].clone();
-            let split_idx = char_to_byte_idx(current.as_str(), app.notes_cursor_col);
-            let before = current[..split_idx].to_string();
-            let after = current[split_idx..].to_string();
-            app.notes_lines[app.notes_cursor_row] = before;
-            app.notes_lines.insert(app.notes_cursor_row + 1, after);
-            app.notes_cursor_row += 1;
-            app.notes_cursor_col = 0;
-        }
-        KeyCode::Backspace => {
-            if app.notes_cursor_col > 0 {
-                let line = &mut app.notes_lines[app.notes_cursor_row];
-                let end = char_to_byte_idx(line.as_str(), app.notes_cursor_col);
-                let start = char_to_byte_idx(line.as_str(), app.notes_cursor_col - 1);
-                line.replace_range(start..end, "");
-                app.notes_cursor_col -= 1;
-            } else if app.notes_cursor_row > 0 {
-                let current = app.notes_lines.remove(app.notes_cursor_row);
-                app.notes_cursor_row -= 1;
-                app.notes_cursor_col =
-                    line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
-                app.notes_lines[app.notes_cursor_row].push_str(current.as_str());
-            }
-        }
-        KeyCode::Delete => {
-            let row = app.notes_cursor_row;
-            let col = app.notes_cursor_col;
-            let line_len = line_char_len(app.notes_lines[row].as_str());
-            if col < line_len {
-                let line = &mut app.notes_lines[row];
-                let start = char_to_byte_idx(line.as_str(), col);
-                let end = char_to_byte_idx(line.as_str(), col + 1);
-                line.replace_range(start..end, "");
-            } else if row + 1 < app.notes_lines.len() {
-                let next = app.notes_lines.remove(row + 1);
-                app.notes_lines[row].push_str(next.as_str());
-            }
-        }
-        KeyCode::Tab => {
-            let line = &mut app.notes_lines[app.notes_cursor_row];
-            let idx = char_to_byte_idx(line.as_str(), app.notes_cursor_col);
-            line.insert_str(idx, "    ");
-            app.notes_cursor_col += 4;
-        }
-        KeyCode::Char(c) => {
-            let line = &mut app.notes_lines[app.notes_cursor_row];
-            let idx = char_to_byte_idx(line.as_str(), app.notes_cursor_col);
-            line.insert(idx, c);
-            app.notes_cursor_col += 1;
-        }
-        _ => {}
     }
 
     if app.notes_lines.is_empty() {
@@ -1258,6 +1226,132 @@ fn handle_notes_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
     }
 
     Ok(())
+}
+
+fn close_notes_popup_after_save(app: &mut App) -> Result<(), Box<dyn Error>> {
+    save_notes_popup(app)?;
+    app.notes_pending_op = None;
+    app.notes_edit_mode = NotesEditMode::Normal;
+    match app.notes_context {
+        NotesContext::Notes => {
+            app.mode = Mode::Normal;
+            app.status_line = format!("Saved notes to {}", app.notes_path);
+        }
+        NotesContext::ConflictPrompt => {
+            refresh_runtime_settings(app);
+            app.mode = if app.pending_conflict_context.is_some() {
+                Mode::WorktreeConflictResolveConfirm
+            } else {
+                Mode::Normal
+            };
+            app.status_line = "Saved conflict prompt. Press Enter to launch OpenCode".to_string();
+        }
+    }
+
+    Ok(())
+}
+
+fn move_notes_up(app: &mut App) {
+    if app.notes_cursor_row > 0 {
+        app.notes_cursor_row -= 1;
+    }
+    clamp_notes_cursor(app);
+}
+
+fn move_notes_down(app: &mut App) {
+    if app.notes_cursor_row + 1 < app.notes_lines.len() {
+        app.notes_cursor_row += 1;
+    }
+    clamp_notes_cursor(app);
+}
+
+fn move_notes_left(app: &mut App) {
+    if app.notes_cursor_col > 0 {
+        app.notes_cursor_col -= 1;
+    } else if app.notes_cursor_row > 0 {
+        app.notes_cursor_row -= 1;
+        app.notes_cursor_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+    }
+}
+
+fn move_notes_right(app: &mut App) {
+    let line_len = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+    if app.notes_cursor_col < line_len {
+        app.notes_cursor_col += 1;
+    } else if app.notes_cursor_row + 1 < app.notes_lines.len() {
+        app.notes_cursor_row += 1;
+        app.notes_cursor_col = 0;
+    }
+}
+
+fn insert_newline_at_cursor(app: &mut App) {
+    let current = app.notes_lines[app.notes_cursor_row].clone();
+    let split_idx = char_to_byte_idx(current.as_str(), app.notes_cursor_col);
+    let before = current[..split_idx].to_string();
+    let after = current[split_idx..].to_string();
+    app.notes_lines[app.notes_cursor_row] = before;
+    app.notes_lines.insert(app.notes_cursor_row + 1, after);
+    app.notes_cursor_row += 1;
+    app.notes_cursor_col = 0;
+}
+
+fn backspace_in_notes(app: &mut App) {
+    if app.notes_cursor_col > 0 {
+        let line = &mut app.notes_lines[app.notes_cursor_row];
+        let end = char_to_byte_idx(line.as_str(), app.notes_cursor_col);
+        let start = char_to_byte_idx(line.as_str(), app.notes_cursor_col - 1);
+        line.replace_range(start..end, "");
+        app.notes_cursor_col -= 1;
+    } else if app.notes_cursor_row > 0 {
+        let current = app.notes_lines.remove(app.notes_cursor_row);
+        app.notes_cursor_row -= 1;
+        app.notes_cursor_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+        app.notes_lines[app.notes_cursor_row].push_str(current.as_str());
+    }
+}
+
+fn delete_at_cursor(app: &mut App) {
+    let row = app.notes_cursor_row;
+    let col = app.notes_cursor_col;
+    let line_len = line_char_len(app.notes_lines[row].as_str());
+    if col < line_len {
+        let line = &mut app.notes_lines[row];
+        let start = char_to_byte_idx(line.as_str(), col);
+        let end = char_to_byte_idx(line.as_str(), col + 1);
+        line.replace_range(start..end, "");
+    } else if row + 1 < app.notes_lines.len() {
+        let next = app.notes_lines.remove(row + 1);
+        app.notes_lines[row].push_str(next.as_str());
+    }
+}
+
+fn delete_current_line(app: &mut App) {
+    if app.notes_lines.len() == 1 {
+        app.notes_lines[0].clear();
+        app.notes_cursor_row = 0;
+        app.notes_cursor_col = 0;
+        return;
+    }
+
+    app.notes_lines.remove(app.notes_cursor_row);
+    if app.notes_cursor_row >= app.notes_lines.len() {
+        app.notes_cursor_row = app.notes_lines.len().saturating_sub(1);
+    }
+    clamp_notes_cursor(app);
+}
+
+fn insert_text_at_cursor(app: &mut App, text: &str) {
+    let line = &mut app.notes_lines[app.notes_cursor_row];
+    let idx = char_to_byte_idx(line.as_str(), app.notes_cursor_col);
+    line.insert_str(idx, text);
+    app.notes_cursor_col += text.chars().count();
+}
+
+fn insert_char_at_cursor(app: &mut App, c: char) {
+    let line = &mut app.notes_lines[app.notes_cursor_row];
+    let idx = char_to_byte_idx(line.as_str(), app.notes_cursor_col);
+    line.insert(idx, c);
+    app.notes_cursor_col += 1;
 }
 
 fn clamp_notes_cursor(app: &mut App) {

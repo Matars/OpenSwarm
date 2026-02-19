@@ -8,8 +8,12 @@
 ## Notes Popup Behavior
 
 - Open with `n` from changes or worktree view.
+- Starts in vim-style `NORMAL` mode.
+- Enter `INSERT` with `i`, `a`, `o`, or `O`.
+- Use `h` / `j` / `k` / `l` and `dd` in `NORMAL` mode.
 - Save in place with `Ctrl+S`.
-- `Esc` saves and exits.
+- `q` (from `NORMAL`) saves and exits.
+- `Esc` (from `INSERT`) returns to `NORMAL`.
 - Supports multiline editing and cursor movement keys.
 
 ## Conflict Prompt Editor

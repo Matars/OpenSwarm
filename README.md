@@ -125,9 +125,13 @@ make docs-build
 ### Notes editor
 
 - `n`: open the notes popup from changes/worktree views
-- Type normally to edit your notes
+- Opens in vim-style `NORMAL` mode by default
+- `i` / `a` / `o` / `O`: enter `INSERT` mode
+- `h` `j` `k` `l`: move cursor in `NORMAL` mode
+- `dd`: delete current line in `NORMAL` mode
 - `Ctrl+S`: save notes without closing
-- `Esc`: save and close
+- `q` (from `NORMAL`): save and close
+- `Esc` (from `INSERT`): return to `NORMAL`
 
 ### Terminal popup controls
 

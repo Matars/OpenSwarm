@@ -56,6 +56,11 @@ This page lists core keybindings by view.
 
 ## Notes Popup
 
-- `Ctrl+S`: save
-- `Esc`: save and close
+- Opens in `NORMAL` mode (vim-style)
+- `i` / `a` / `o` / `O`: enter `INSERT` mode
+- `h` / `j` / `k` / `l`: move cursor in `NORMAL` mode
+- `dd`: delete current line in `NORMAL` mode
+- `q`: save and close (`NORMAL` mode)
+- `Ctrl+S`: save without closing
+- `Esc`: return to `NORMAL` (from `INSERT` mode)
 - Arrow keys, Home/End, PageUp/PageDown: cursor/navigation
