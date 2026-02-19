@@ -70,6 +70,28 @@ printf '%s\n' "$(pwd)/target/release/openswarm"
 
 `cargo build --release` creates `./target/release/openswarm`; it does not install a global command.
 
+## Documentation (Divio)
+
+This repo includes a Divio-style docs structure under `docs/`:
+
+- `tutorials/`
+- `how-to/`
+- `reference/`
+- `explanation/`
+
+To run docs locally:
+
+```bash
+python3 -m pip install -r requirements-docs.txt
+make docs-serve
+```
+
+To build docs strictly:
+
+```bash
+make docs-build
+```
+
 ## Core workflow keybindings
 
 ### Navigation
