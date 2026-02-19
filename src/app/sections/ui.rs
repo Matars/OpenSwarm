@@ -402,32 +402,6 @@ fn draw_pulse_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
         status_limit.max(10),
     );
 
-    let now = Instant::now();
-    let mut active_sessions = 0usize;
-    let mut idle_sessions = 0usize;
-    let mut live_summary: Vec<(bool, u64, u64, String)> = app
-        .agent_sessions
-        .iter()
-        .filter_map(|(path, session)| {
-            if !agent_session_is_live(session) {
-                return None;
-            }
-            let is_active = agent_session_is_active(session, now);
-            if is_active {
-                active_sessions += 1;
-            } else {
-                idle_sessions += 1;
-            }
-            Some((
-                is_active,
-                agent_session_avg_bps(session, now),
-                agent_session_idle_seconds(session, now),
-                session_label_from_path(path),
-            ))
-        })
-        .collect();
-    live_summary.sort_by(|a, b| b.cmp(a));
-
     let info = vec![
         Line::from(vec![
             Span::styled("Branch: ", Style::default().fg(Color::Gray)),
@@ -457,65 +431,6 @@ fn draw_pulse_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
                 Style::default().fg(Color::Yellow),
             ),
         ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("PTY sessions: ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                format!("{} live", active_sessions + idle_sessions),
-                Style::default().fg(Color::LightCyan),
-            ),
-            Span::raw("  "),
-            Span::styled("active ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                active_sessions.to_string(),
-                Style::default().fg(Color::Green),
-            ),
-            Span::raw("  "),
-            Span::styled("idle ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                idle_sessions.to_string(),
-                Style::default().fg(Color::Yellow),
-            ),
-        ]),
-        Line::from({
-            if live_summary.is_empty() {
-                vec![
-                    Span::styled("Live PTY: ", Style::default().fg(Color::Gray)),
-                    Span::raw("none"),
-                ]
-            } else {
-                let mut spans = vec![Span::styled("Live PTY: ", Style::default().fg(Color::Gray))];
-                for (idx, (is_active, bps, idle_secs, label)) in
-                    live_summary.iter().take(2).enumerate()
-                {
-                    if idx > 0 {
-                        spans.push(Span::raw("  "));
-                    }
-                    let mode = if *is_active { "A" } else { "I" };
-                    let color = if *is_active {
-                        Color::LightGreen
-                    } else {
-                        Color::Yellow
-                    };
-                    spans.push(Span::styled(
-                        format!(
-                            "{} {} {}B/s {}s",
-                            truncate_text(label, 12),
-                            mode,
-                            bps,
-                            idle_secs
-                        ),
-                        Style::default().fg(color),
-                    ));
-                }
-                spans
-            }
-        }),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Live refresh every ~700ms",
-            Style::default().fg(Color::Blue),
-        )),
         Line::from(""),
         Line::from(vec![
             Span::styled("Status: ", Style::default().fg(Color::Gray)),
@@ -1373,17 +1288,30 @@ fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String
     }
 
     let agent = agent_badge_for_node(app, entry.path.as_str());
+    let write_rate = pty_write_badge_for_node(app, entry.path.as_str());
 
     if selected {
         let state = if entry.dirty { "*" } else { "" };
-        format!("{}{}{}", name, state, agent)
+        format!("{}{}{}{}", name, state, agent, write_rate)
     } else if entry.dirty {
-        format!("{}*{}", name, agent)
-    } else if !agent.is_empty() {
-        format!("{}{}", name, agent)
+        format!("{}*{}{}", name, agent, write_rate)
+    } else if !agent.is_empty() || !write_rate.is_empty() {
+        format!("{}{}{}", name, agent, write_rate)
     } else {
         name
     }
+}
+
+fn pty_write_badge_for_node(app: &App, path: &str) -> String {
+    let Some(session) = app.agent_sessions.get(path) else {
+        return String::new();
+    };
+    if !agent_session_is_live(session) {
+        return String::new();
+    }
+
+    let write_bps = agent_session_write_bps(session, Instant::now());
+    format!(" tx:{}B/s", write_bps)
 }
 
 #[derive(Clone, Copy)]
@@ -1528,6 +1456,14 @@ fn agent_badge_for_node(app: &App, path: &str) -> String {
             }
         }
     }
+}
+
+fn agent_session_write_bps(session: &AgentSession, now: Instant) -> u64 {
+    let seconds = now
+        .saturating_duration_since(session.launched_at)
+        .as_secs()
+        .max(1);
+    session.bytes_to_agent / seconds
 }
 
 fn animated_agent_spinner(session: &AgentSession, now: Instant) -> char {
@@ -1763,6 +1699,18 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     let mut lines: Vec<Line<'_>> = Vec::new();
     let root_branch = current_session_branch(app);
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
+    let now = Instant::now();
+    let live_sessions = app
+        .agent_sessions
+        .values()
+        .filter(|session| agent_session_is_live(session))
+        .count();
+    let active_sessions = app
+        .agent_sessions
+        .values()
+        .filter(|session| agent_session_is_active(session, now))
+        .count();
+    let idle_sessions = live_sessions.saturating_sub(active_sessions);
 
     if let Some(selected) = app.selected_worktree() {
         lines.push(Line::from(vec![
@@ -1830,6 +1778,25 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::styled(
                 worktree_flags(selected),
                 Style::default().fg(Color::LightMagenta),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("pty:    ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{} live", live_sessions),
+                Style::default().fg(Color::LightCyan),
+            ),
+            Span::raw("  "),
+            Span::styled("active ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                active_sessions.to_string(),
+                Style::default().fg(Color::Green),
+            ),
+            Span::raw("  "),
+            Span::styled("idle ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                idle_sessions.to_string(),
+                Style::default().fg(Color::Yellow),
             ),
         ]));
         lines.push(Line::from(""));
@@ -2010,6 +1977,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from(""),
             Line::from("- Each node is an isolated git worktree for parallel agent runs"),
             Line::from("- Edges show parent/child branch lineage for safe merges"),
+            Line::from("- Live PTY write throughput is shown per node as tx:<bytes>/s"),
             Line::from("- Blue node = current branch worktree"),
             Line::from("- Cyan ring = selected worktree (drives details + actions)"),
             Line::from("- Yellow nodes = dirty (uncommitted changes)"),
@@ -2036,6 +2004,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Reflects the selected graph node"),
             Line::from("- Shows branch/path/HEAD and worktree flags"),
             Line::from("- Shows ahead/behind and dirty/locked state"),
+            Line::from("- Includes total PTY counts (live/active/idle)"),
             Line::from("- Status section reports the latest command outcome"),
             Line::from("- Use this panel to validate readiness before push/merge"),
             Line::from("- Tab: move focus to next panel"),
