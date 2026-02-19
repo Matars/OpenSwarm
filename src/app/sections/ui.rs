@@ -691,6 +691,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
         }
         let selected = idx == selected_idx;
         let label = canvas_node_label(app, entry, selected);
+        let (badge_text, badge_style) = node_merge_badge(entry);
         let style = if selected {
             Style::default()
                 .fg(Color::LightCyan)
@@ -717,6 +718,8 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
             node_points[idx],
             label.as_str(),
             style,
+            badge_text,
+            badge_style,
         ) {
             label_areas.insert(entry.path.clone(), label_area);
             if selected {
@@ -738,14 +741,20 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
         draw_spinning_border_shine(frame.buffer_mut(), selected_area);
         if let Some(selected) = app.selected_worktree() {
             let selected_label = canvas_node_label(app, selected, true);
+            let (selected_badge, selected_badge_style) = node_merge_badge(selected);
             let text_x = selected_area.x.saturating_add(2);
             let text_y = selected_area.y.saturating_add(1);
             frame.render_widget(
-                Paragraph::new(selected_label).style(
-                    Style::default()
-                        .fg(Color::LightCyan)
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Paragraph::new(Line::from(vec![
+                    Span::styled(
+                        selected_label,
+                        Style::default()
+                            .fg(Color::LightCyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(selected_badge, selected_badge_style),
+                ])),
                 Rect::new(text_x, text_y, selected_area.width.saturating_sub(4), 1),
             );
         }
@@ -1348,6 +1357,18 @@ fn build_node_delete_effect() -> tachyonfx::Effect {
     fx::fade_to_fg(Color::Rgb(36, 42, 64), (520, Interpolation::SineInOut))
 }
 
+fn tracking_fully_merged(entry: &WorktreeEntry) -> bool {
+    !entry.detached && !entry.dirty && entry.ahead == 0 && entry.behind == 0
+}
+
+fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
+    if tracking_fully_merged(entry) {
+        ("\u{2713} merged", Style::default().fg(Color::Green))
+    } else {
+        ("\u{2717} dirty", Style::default().fg(Color::Red))
+    }
+}
+
 fn star_seed(x: i64, y: i64) -> u64 {
     let mut h = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     h ^= (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
@@ -1374,12 +1395,7 @@ fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String
 
     let agent = agent_badge_for_node(app, entry.path.as_str());
 
-    if selected {
-        let state = if entry.dirty { "*" } else { "" };
-        format!("{}{}{}", name, state, agent)
-    } else if entry.dirty {
-        format!("{}*{}", name, agent)
-    } else if !agent.is_empty() {
+    if selected || !agent.is_empty() {
         format!("{}{}", name, agent)
     } else {
         name
@@ -1417,18 +1433,22 @@ fn draw_canvas_label(
     bounds: CanvasBounds,
     point: (f64, f64),
     label: &str,
-    style: Style,
+    label_style: Style,
+    badge: &str,
+    badge_style: Style,
 ) -> Option<Rect> {
     let Some((sx, sy)) = canvas_point_to_screen(area, bounds, point) else {
         return None;
     };
     let label_width = label.chars().count() as u16;
+    let badge_width = badge.chars().count() as u16;
+    let content_width = label_width.saturating_add(1).saturating_add(badge_width);
     let horizontal_padding = 1u16;
-    let box_width = label_width
+    let box_width = content_width
         .saturating_add(horizontal_padding.saturating_mul(2))
         .saturating_add(2);
     let box_height = 3u16;
-    if label_width == 0 || box_width >= area.width || box_height > area.height {
+    if content_width == 0 || box_width >= area.width || box_height > area.height {
         return None;
     }
 
@@ -1449,16 +1469,20 @@ fn draw_canvas_label(
         Block::default()
             .borders(Borders::ALL)
             .border_type(ratatui::widgets::BorderType::Rounded)
-            .border_style(style)
+            .border_style(label_style)
             .style(Style::default().bg(Color::Black)),
         rect,
     );
     frame.render_widget(
-        Paragraph::new(label.to_string()).style(style),
+        Paragraph::new(Line::from(vec![
+            Span::styled(label, label_style),
+            Span::raw(" "),
+            Span::styled(badge, badge_style),
+        ])),
         Rect::new(
             x.saturating_add(1 + horizontal_padding),
             y.saturating_add(1),
-            label_width,
+            content_width,
             1,
         ),
     );
