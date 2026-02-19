@@ -281,17 +281,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
-name = "gitfetch-tui"
-version = "0.1.0"
-dependencies = [
- "crossterm 0.29.0",
- "portable-pty",
- "ratatui",
- "tachyonfx",
- "vt100",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -447,6 +436,17 @@ dependencies = [
  "libc",
  "memoffset",
  "pin-utils",
+]
+
+[[package]]
+name = "openclaw"
+version = "0.1.0"
+dependencies = [
+ "crossterm 0.29.0",
+ "portable-pty",
+ "ratatui",
+ "tachyonfx",
+ "vt100",
 ]
 
 [[package]]

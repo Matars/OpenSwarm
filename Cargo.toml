@@ -1,8 +1,8 @@
 [package]
-name = "gitfetch-tui"
+name = "openclaw"
 version = "0.1.0"
 edition = "2021"
-description = "Experimental TUI scaffold for gitfetch"
+description = "Experimental TUI for worktree and Agent managmenet" 
 
 [[bin]]
 name = "openswarm"
