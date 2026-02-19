@@ -745,17 +745,22 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
             let text_x = selected_area.x.saturating_add(2);
             let text_y = selected_area.y.saturating_add(1);
             frame.render_widget(
-                Paragraph::new(Line::from(vec![
-                    Span::styled(
-                        selected_label,
-                        Style::default()
-                            .fg(Color::LightCyan)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::raw(" "),
-                    Span::styled(selected_badge, selected_badge_style),
-                ])),
+                Paragraph::new(selected_label).style(
+                    Style::default()
+                        .fg(Color::LightCyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Rect::new(text_x, text_y, selected_area.width.saturating_sub(4), 1),
+            );
+            frame.render_widget(
+                Paragraph::new(selected_badge)
+                    .style(selected_badge_style.add_modifier(Modifier::DIM)),
+                Rect::new(
+                    text_x,
+                    text_y.saturating_add(1),
+                    selected_area.width.saturating_sub(4),
+                    1,
+                ),
             );
         }
     }
@@ -1442,12 +1447,12 @@ fn draw_canvas_label(
     };
     let label_width = label.chars().count() as u16;
     let badge_width = badge.chars().count() as u16;
-    let content_width = label_width.saturating_add(1).saturating_add(badge_width);
+    let content_width = label_width.max(badge_width);
     let horizontal_padding = 1u16;
     let box_width = content_width
         .saturating_add(horizontal_padding.saturating_mul(2))
         .saturating_add(2);
-    let box_height = 3u16;
+    let box_height = 4u16;
     if content_width == 0 || box_width >= area.width || box_height > area.height {
         return None;
     }
@@ -1474,14 +1479,19 @@ fn draw_canvas_label(
         rect,
     );
     frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(label, label_style),
-            Span::raw(" "),
-            Span::styled(badge, badge_style),
-        ])),
+        Paragraph::new(label).style(label_style),
         Rect::new(
             x.saturating_add(1 + horizontal_padding),
             y.saturating_add(1),
+            content_width,
+            1,
+        ),
+    );
+    frame.render_widget(
+        Paragraph::new(badge).style(badge_style.add_modifier(Modifier::DIM)),
+        Rect::new(
+            x.saturating_add(1 + horizontal_padding),
+            y.saturating_add(2),
             content_width,
             1,
         ),
