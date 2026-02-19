@@ -336,12 +336,25 @@ fn launch_agent_in_terminal(
     path: &str,
     agent: ExternalAgent,
 ) -> Result<(), Box<dyn Error>> {
-    let launch_cmd = format!("{}\r", agent.command_name());
-    write_to_agent(app, path, launch_cmd.as_str())?;
-
     if let Some(context) = app.pending_conflict_context.as_ref() {
         if context.parent_path == path {
             let prompt = build_conflict_resolve_prompt(app, context);
+
+            if agent == ExternalAgent::Opencode {
+                let launch_cmd = format!(
+                    "{} --prompt {}\r",
+                    agent.command_name(),
+                    shell_single_quote(prompt.as_str())
+                );
+                write_to_agent(app, path, launch_cmd.as_str())?;
+                app.pending_conflict_context = None;
+                app.status_line =
+                    "Launched OpenCode with conflict-resolution prompt (--prompt)".to_string();
+                return Ok(());
+            }
+
+            let launch_cmd = format!("{}\r", agent.command_name());
+            write_to_agent(app, path, launch_cmd.as_str())?;
             let prompt_with_enter = format!("{}\r", normalize_terminal_newlines(prompt.as_str()));
             write_to_agent(app, path, prompt_with_enter.as_str())?;
             app.pending_conflict_context = None;
@@ -352,6 +365,9 @@ fn launch_agent_in_terminal(
             return Ok(());
         }
     }
+
+    let launch_cmd = format!("{}\r", agent.command_name());
+    write_to_agent(app, path, launch_cmd.as_str())?;
 
     app.status_line = format!("Launched {} in terminal", agent.display_name());
     Ok(())
@@ -376,22 +392,17 @@ fn launch_opencode_conflict_resolution(app: &mut App) -> Result<(), Box<dyn Erro
     }
 
     open_terminal_popup_for_path(app, context.parent_path.as_str())?;
-    let prompt = build_conflict_resolve_prompt(app, &context);
-    write_to_agent(app, context.parent_path.as_str(), "opencode\r")?;
-    let prompt_with_enter = format!("{}\r", normalize_terminal_newlines(prompt.as_str()));
-    write_to_agent(
-        app,
-        context.parent_path.as_str(),
-        prompt_with_enter.as_str(),
-    )?;
-    app.pending_conflict_context = None;
+    launch_agent_in_terminal(app, context.parent_path.as_str(), ExternalAgent::Opencode)?;
     app.confirm_conflict_resolve_yes = false;
-    app.status_line = "Launched OpenCode and pasted configured conflict prompt".to_string();
     Ok(())
 }
 
 fn normalize_terminal_newlines(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\n', "\r")
+}
+
+fn shell_single_quote(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
 }
 
 fn refresh_runtime_settings(app: &mut App) {
