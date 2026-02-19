@@ -155,6 +155,9 @@ fn refresh_worktrees(app: &mut App) {
             .then_with(|| a.path.cmp(&b.path))
     });
 
+    let new_paths: BTreeSet<String> = entries.iter().map(|entry| entry.path.clone()).collect();
+    app.sync_worktree_animations(&new_paths);
+
     app.worktrees = entries;
     if let Some(target_path) = app.changes_worktree_path.as_deref() {
         let exists = app.worktrees.iter().any(|entry| entry.path == target_path);

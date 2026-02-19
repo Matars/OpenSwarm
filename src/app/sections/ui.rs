@@ -1,4 +1,4 @@
-fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
+fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
     frame.render_widget(Clear, frame.area());
     frame.render_widget(
         Block::default().style(Style::default().bg(Color::Black).fg(Color::White)),
@@ -599,7 +599,7 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
     frame.render_widget(panel, area);
 }
 
-fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
+fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, area: Rect) {
     let border_color = if app.worktree_focus == WorktreePane::Canvas {
         Color::Cyan
     } else {
@@ -680,6 +680,11 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
         collapsed_root_idx,
     );
 
+    let mut label_areas: BTreeMap<String, Rect> = BTreeMap::new();
+    let mut node_centers: BTreeMap<String, (u16, u16)> = BTreeMap::new();
+    let mut logical_points_by_path: BTreeMap<String, (f64, f64)> = BTreeMap::new();
+    let mut selected_label_area: Option<Rect> = None;
+
     for (idx, entry) in app.worktrees.iter().enumerate() {
         if Some(idx) == collapsed_root_idx {
             continue;
@@ -699,15 +704,102 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
         } else {
             Style::default().fg(Color::White)
         };
-        draw_canvas_label(
+        logical_points_by_path.insert(entry.path.clone(), node_points[idx]);
+
+        if let Some((sx, sy)) = canvas_point_to_screen(inner, bounds, node_points[idx]) {
+            node_centers.insert(entry.path.clone(), (sx, sy));
+        }
+
+        if let Some(label_area) = draw_canvas_label(
             frame,
             inner,
             bounds,
             node_points[idx],
             label.as_str(),
             style,
-        );
+        ) {
+            label_areas.insert(entry.path.clone(), label_area);
+            if selected {
+                selected_label_area = Some(label_area);
+            }
+        }
     }
+
+    app.last_worktree_node_points = logical_points_by_path;
+
+    if let Some(selected_area) = selected_label_area {
+        let elapsed = app.canvas_selected_border_last_tick.elapsed();
+        app.canvas_selected_border_last_tick = Instant::now();
+        app.canvas_selected_border_effects.process_effects(
+            elapsed.into(),
+            frame.buffer_mut(),
+            selected_area,
+        );
+        if let Some(selected) = app.selected_worktree() {
+            let selected_label = canvas_node_label(app, selected, true);
+            let text_x = selected_area.x.saturating_add(2);
+            let text_y = selected_area.y.saturating_add(1);
+            frame.render_widget(
+                Paragraph::new(selected_label).style(
+                    Style::default()
+                        .fg(Color::LightCyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Rect::new(text_x, text_y, selected_area.width.saturating_sub(4), 1),
+            );
+        }
+    }
+
+    app.canvas_node_animations.retain_mut(|animation| {
+        let target_area = match &animation.target {
+            CanvasNodeAnimationTarget::Path(path) => label_areas.get(path).copied().or_else(|| {
+                node_centers
+                    .get(path)
+                    .copied()
+                    .map(|point| pulse_rect(inner, point))
+            }),
+            CanvasNodeAnimationTarget::Point(point) => {
+                canvas_point_to_screen(inner, bounds, *point)
+                    .map(|screen| pulse_rect(inner, screen))
+            }
+        };
+
+        let Some(effect_area) = target_area else {
+            return animation.effects.is_running();
+        };
+
+        if animation.kind == CanvasNodeAnimationKind::Deleted {
+            let center_x = effect_area.x + effect_area.width / 2;
+            let center_y = effect_area.y + effect_area.height / 2;
+            if let Some(cell) = frame.buffer_mut().cell_mut((center_x, center_y)) {
+                cell.set_symbol("◌");
+                cell.set_style(Style::default().fg(Color::DarkGray));
+            }
+        }
+
+        let elapsed = animation.last_tick.elapsed();
+        animation.last_tick = Instant::now();
+        animation
+            .effects
+            .process_effects(elapsed.into(), frame.buffer_mut(), effect_area);
+        animation.effects.is_running()
+    });
+}
+
+fn pulse_rect(area: Rect, center: (u16, u16)) -> Rect {
+    let width = 5u16.min(area.width.max(1));
+    let height = 3u16.min(area.height.max(1));
+    let half_w = width / 2;
+    let half_h = height / 2;
+
+    let min_x = area.x;
+    let min_y = area.y;
+    let max_x = area.right().saturating_sub(width);
+    let max_y = area.bottom().saturating_sub(height);
+
+    let x = center.0.saturating_sub(half_w).clamp(min_x, max_x);
+    let y = center.1.saturating_sub(half_h).clamp(min_y, max_y);
+    Rect::new(x, y, width, height)
 }
 
 #[derive(Clone, Copy)]
@@ -1052,25 +1144,23 @@ fn graph_palette_color(idx: usize) -> Color {
     GRAPH_PALETTE[idx % GRAPH_PALETTE.len()]
 }
 
-fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &App) {
+fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &mut App) {
     if area.width < 3 || area.height < 3 {
         return;
     }
 
-    let seconds = std::time::SystemTime::now()
+    let glitter_step = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_secs_f64())
-        .unwrap_or(0.0)
-        % 10_000.0;
-    let drift_x = (seconds * 0.35).floor() as i64;
-    let drift_y = (seconds * 0.17).floor() as i64;
+        .map(|elapsed| elapsed.as_millis() as u64 / 260)
+        .unwrap_or(0)
+        % 1_000_000;
     let pan_x = (app.worktree_canvas_pan_x * 200.0).round() as i64;
     let pan_y = (app.worktree_canvas_pan_y * 140.0).round() as i64;
 
     for y in 0..area.height {
         for x in 0..area.width {
-            let wx = x as i64 + pan_x + drift_x;
-            let wy = y as i64 + pan_y + drift_y;
+            let wx = x as i64 + pan_x;
+            let wy = y as i64 + pan_y;
             let seed = star_seed(wx, wy);
 
             let dust_roll = seed & 0xFF;
@@ -1085,40 +1175,54 @@ fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &App) {
                 );
             }
 
-            let star_roll = (seed >> 8) % 1000;
-            if star_roll >= 9 {
+            let glitter_seed = star_seed(
+                wx ^ ((glitter_step as i64) << 1),
+                wy ^ ((glitter_step as i64).wrapping_mul(31)),
+            );
+            let glitter_roll = glitter_seed % 1000;
+            if glitter_roll >= 8 {
                 continue;
             }
 
-            let phase = ((seed >> 20) & 0x3FF) as f64 / 31.0;
-            let speed = 0.65 + ((seed >> 30) & 0xF) as f64 * 0.08;
-            let twinkle = ((seconds * speed + phase).sin() + 1.0) * 0.5;
-
-            let (glyph, color) = if star_roll <= 1 {
-                if twinkle > 0.88 {
-                    ('✦', Color::White)
-                } else if twinkle > 0.72 {
-                    ('⋆', Color::LightCyan)
-                } else {
-                    ('·', Color::Rgb(132, 148, 184))
-                }
-            } else if star_roll <= 4 {
-                if twinkle > 0.86 {
-                    ('✧', Color::Rgb(220, 233, 255))
-                } else if twinkle > 0.68 {
-                    ('•', Color::Rgb(170, 192, 235))
-                } else {
-                    ('·', Color::Rgb(109, 122, 157))
-                }
-            } else if twinkle > 0.8 {
-                ('•', Color::Rgb(190, 206, 242))
+            let sparkle_kind = (glitter_seed >> 12) % 6;
+            let (glyph, color) = if sparkle_kind <= 1 {
+                ('✦', Color::White)
+            } else if sparkle_kind <= 3 {
+                ('✧', Color::Rgb(220, 233, 255))
             } else {
-                ('·', Color::Rgb(104, 118, 150))
+                ('•', Color::Rgb(182, 201, 242))
             };
 
             paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
         }
     }
+
+    let elapsed = app.canvas_bg_last_tick.elapsed();
+    app.canvas_bg_last_tick = Instant::now();
+    app.canvas_bg_effects
+        .process_effects(elapsed.into(), buf, area);
+}
+
+fn build_canvas_bg_effect() -> tachyonfx::Effect {
+    fx::repeating(fx::ping_pong(fx::hsl_shift_fg(
+        [12.0, 10.0, 8.0],
+        (1800, Interpolation::SineInOut),
+    )))
+}
+
+fn build_selected_node_border_effect() -> tachyonfx::Effect {
+    fx::repeating(fx::ping_pong(fx::hsl_shift_fg(
+        [10.0, 26.0, 11.0],
+        (700, Interpolation::SineInOut),
+    )))
+}
+
+fn build_node_create_effect() -> tachyonfx::Effect {
+    fx::hsl_shift_fg([18.0, 34.0, 14.0], (600, Interpolation::SineInOut))
+}
+
+fn build_node_delete_effect() -> tachyonfx::Effect {
+    fx::fade_to_fg(Color::Rgb(36, 42, 64), (520, Interpolation::SineInOut))
 }
 
 fn star_seed(x: i64, y: i64) -> u64 {
@@ -1187,9 +1291,9 @@ fn draw_canvas_label(
     point: (f64, f64),
     label: &str,
     style: Style,
-) {
+) -> Option<Rect> {
     let Some((sx, sy)) = canvas_point_to_screen(area, bounds, point) else {
-        return;
+        return None;
     };
     let label_width = label.chars().count() as u16;
     let horizontal_padding = 1u16;
@@ -1198,7 +1302,7 @@ fn draw_canvas_label(
         .saturating_add(2);
     let box_height = 3u16;
     if label_width == 0 || box_width >= area.width || box_height > area.height {
-        return;
+        return None;
     }
 
     let mut x = sx.saturating_sub(box_width / 2);
@@ -1231,6 +1335,7 @@ fn draw_canvas_label(
             1,
         ),
     );
+    Some(rect)
 }
 
 fn canvas_point_to_screen(

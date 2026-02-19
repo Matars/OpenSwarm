@@ -8,7 +8,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fs,
 };
 
@@ -25,6 +25,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
 use ratatui::Terminal;
+use tachyonfx::{fx, EffectManager, Interpolation};
 
 #[derive(Clone, Debug)]
 struct FileEntry {
@@ -115,6 +116,13 @@ struct App {
     worktree_canvas_zoom: f64,
     worktree_canvas_pan_x: f64,
     worktree_canvas_pan_y: f64,
+    canvas_bg_effects: EffectManager<&'static str>,
+    canvas_bg_last_tick: Instant,
+    canvas_selected_border_effects: EffectManager<&'static str>,
+    canvas_selected_border_last_tick: Instant,
+    canvas_node_animations: Vec<CanvasNodeAnimation>,
+    last_worktree_node_points: BTreeMap<String, (f64, f64)>,
+    worktree_animations_ready: bool,
     show_panel_help: bool,
     new_worktree_branch: String,
     new_worktree_base: WorktreeCreateBase,
@@ -269,6 +277,25 @@ struct DiffPreviewLine {
     text: String,
 }
 
+#[derive(Clone)]
+enum CanvasNodeAnimationTarget {
+    Path(String),
+    Point((f64, f64)),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CanvasNodeAnimationKind {
+    Created,
+    Deleted,
+}
+
+struct CanvasNodeAnimation {
+    target: CanvasNodeAnimationTarget,
+    kind: CanvasNodeAnimationKind,
+    effects: EffectManager<&'static str>,
+    last_tick: Instant,
+}
+
 #[derive(Clone, Debug)]
 enum DiffPreviewKind {
     Added,
@@ -281,6 +308,11 @@ impl App {
     fn new() -> Self {
         let (agent_tx, agent_rx) = mpsc::channel();
         let config = load_openswarm_config();
+        let mut canvas_bg_effects = EffectManager::default();
+        canvas_bg_effects.add_unique_effect("bg-polish", build_canvas_bg_effect());
+        let mut canvas_selected_border_effects = EffectManager::default();
+        canvas_selected_border_effects
+            .add_unique_effect("selected-border", build_selected_node_border_effect());
         Self {
             branch: "unknown".to_string(),
             ahead: 0,
@@ -302,6 +334,13 @@ impl App {
             worktree_canvas_zoom: 1.0,
             worktree_canvas_pan_x: 0.0,
             worktree_canvas_pan_y: 0.0,
+            canvas_bg_effects,
+            canvas_bg_last_tick: Instant::now(),
+            canvas_selected_border_effects,
+            canvas_selected_border_last_tick: Instant::now(),
+            canvas_node_animations: Vec::new(),
+            last_worktree_node_points: BTreeMap::new(),
+            worktree_animations_ready: false,
             show_panel_help: false,
             new_worktree_branch: String::new(),
             new_worktree_base: WorktreeCreateBase::Selected,
@@ -397,6 +436,55 @@ impl App {
             WorktreeCreateBase::SelectedWithChanges => WorktreeCreateBase::Main,
         };
     }
+
+    fn queue_created_node_animation(&mut self, path: String) {
+        let mut effects = EffectManager::default();
+        effects.add_effect(build_node_create_effect());
+        self.canvas_node_animations.push(CanvasNodeAnimation {
+            target: CanvasNodeAnimationTarget::Path(path),
+            kind: CanvasNodeAnimationKind::Created,
+            effects,
+            last_tick: Instant::now(),
+        });
+        if self.canvas_node_animations.len() > 48 {
+            let keep_from = self.canvas_node_animations.len().saturating_sub(48);
+            self.canvas_node_animations.drain(0..keep_from);
+        }
+    }
+
+    fn queue_deleted_node_animation(&mut self, path: &str) {
+        let Some(point) = self.last_worktree_node_points.get(path).copied() else {
+            return;
+        };
+        let mut effects = EffectManager::default();
+        effects.add_effect(build_node_delete_effect());
+        self.canvas_node_animations.push(CanvasNodeAnimation {
+            target: CanvasNodeAnimationTarget::Point(point),
+            kind: CanvasNodeAnimationKind::Deleted,
+            effects,
+            last_tick: Instant::now(),
+        });
+        if self.canvas_node_animations.len() > 48 {
+            let keep_from = self.canvas_node_animations.len().saturating_sub(48);
+            self.canvas_node_animations.drain(0..keep_from);
+        }
+    }
+
+    fn sync_worktree_animations(&mut self, new_paths: &BTreeSet<String>) {
+        if !self.worktree_animations_ready {
+            self.worktree_animations_ready = true;
+            return;
+        }
+
+        let old_paths: BTreeSet<String> = self.worktrees.iter().map(|wt| wt.path.clone()).collect();
+
+        for path in new_paths.difference(&old_paths) {
+            self.queue_created_node_animation(path.clone());
+        }
+        for path in old_paths.difference(new_paths) {
+            self.queue_deleted_node_animation(path.as_str());
+        }
+    }
 }
 
 struct TuiGuard;
@@ -443,7 +531,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        terminal.draw(|frame| draw_ui(frame, &app))?;
+        terminal.draw(|frame| draw_ui(frame, &mut app))?;
 
         let ui_tick_rate = if matches!(app.mode, Mode::AgentPopup) {
             ui_tick_rate_fast
