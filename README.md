@@ -12,6 +12,7 @@ Instead of running one long linear loop in a single branch, you can spin up isol
 - Keep branch state isolated, reviewable, and merge-friendly.
 - Stage, commit, push, and merge from one terminal UI.
 - Jump between worktree graph and file changes without leaving flow.
+- Track live PTY telemetry in worktree view (per-node write rate + active counts).
 
 ## Parallel Worktree Model
 

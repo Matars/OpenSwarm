@@ -1581,22 +1581,6 @@ fn agent_session_is_active(session: &AgentSession, now: Instant) -> bool {
         && now.saturating_duration_since(session.last_io_at) <= AGENT_ACTIVE_WINDOW
 }
 
-fn agent_session_avg_bps(session: &AgentSession, now: Instant) -> u64 {
-    let seconds = now
-        .saturating_duration_since(session.launched_at)
-        .as_secs()
-        .max(1);
-    session.bytes_from_agent / seconds
-}
-
-fn session_label_from_path(path: &str) -> String {
-    Path::new(path)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or(path)
-        .to_string()
-}
-
 fn refresh_agent_sessions(app: &mut App) {
     for session in app.agent_sessions.values_mut() {
         if let Some(child) = session.child.as_mut() {
