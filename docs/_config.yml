@@ -1,0 +1,12 @@
+title: OpenSwarm Docs
+description: Parallel agent workflows over Git worktrees
+theme: just-the-docs
+
+url: https://example.com
+baseurl: /openswarm
+
+aux_links:
+  openswarm on GitHub: https://example.com/openswarm
+
+search_enabled: true
+heading_anchors: true

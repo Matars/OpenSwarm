@@ -1,3 +1,9 @@
+---
+title: Divio Content Model
+parent: Explanation
+nav_order: 4
+---
+
 # Explanation: Divio Content Model
 
 OpenSwarm documentation is organized by user intent, following Divio's model.

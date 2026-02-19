@@ -1,3 +1,9 @@
+---
+title: Ship Feature with 3 Worktrees
+parent: Tutorials
+nav_order: 2
+---
+
 # Tutorial: Ship One Feature with 3 Worktrees
 
 This tutorial shows how to split one feature into parallel streams (core logic, UI, tests) and merge safely.

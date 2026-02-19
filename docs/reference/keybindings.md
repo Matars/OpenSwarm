@@ -1,3 +1,9 @@
+---
+title: Keybindings
+parent: Reference
+nav_order: 1
+---
+
 # Reference: Keybindings
 
 This page lists core keybindings by view.

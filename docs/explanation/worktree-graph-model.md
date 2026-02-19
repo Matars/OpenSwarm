@@ -1,3 +1,9 @@
+---
+title: Worktree Graph Model
+parent: Explanation
+nav_order: 2
+---
+
 # Explanation: Worktree Graph Model
 
 OpenSwarm visualizes worktrees as a graph instead of a flat list.

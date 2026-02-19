@@ -1,3 +1,9 @@
+---
+title: Create and Manage Worktrees
+parent: How-To Guides
+nav_order: 1
+---
+
 # How to Create and Manage Worktrees
 
 Use this guide when you need to add, navigate, prune, or remove worktrees.

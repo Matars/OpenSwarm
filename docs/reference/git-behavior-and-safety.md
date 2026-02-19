@@ -1,3 +1,9 @@
+---
+title: Git Behavior and Safety
+parent: Reference
+nav_order: 4
+---
+
 # Reference: Git Behavior and Safety
 
 This page captures notable Git behavior in OpenSwarm.

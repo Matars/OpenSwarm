@@ -1,3 +1,9 @@
+---
+title: Commit and Push from Worktree
+parent: How-To Guides
+nav_order: 2
+---
+
 # How to Commit and Push from a Worktree
 
 Use this guide to stage changes and publish a branch from a selected worktree.

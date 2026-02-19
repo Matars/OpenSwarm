@@ -1,3 +1,9 @@
+---
+title: Notes and Popup Controls
+parent: Reference
+nav_order: 3
+---
+
 # Reference: Notes and Popup Controls
 
 ## Notes File

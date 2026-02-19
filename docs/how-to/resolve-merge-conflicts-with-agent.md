@@ -1,3 +1,9 @@
+---
+title: Resolve Merge Conflicts with Agent
+parent: How-To Guides
+nav_order: 3
+---
+
 # How to Resolve Merge Conflicts with an Agent
 
 Use this flow when `m` (merge selected worktree into parent) reports conflicts.

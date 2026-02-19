@@ -1,3 +1,9 @@
+---
+title: Configuration
+parent: Reference
+nav_order: 2
+---
+
 # Reference: Configuration
 
 ## Config Directory

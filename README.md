@@ -39,6 +39,7 @@ OpenSwarm is actively evolving and still experimental.
 - Rust toolchain (stable)
 - Git installed and available on `PATH`
 - A Git repository (OpenSwarm runs against your current repo)
+- Ruby (>= 3.0) + Bundler (for docs site)
 
 ## Run
 
@@ -79,7 +80,7 @@ This repo includes a Divio-style docs structure under `docs/`:
 - `reference/`
 - `explanation/`
 
-To run docs locally (auto-creates `.venv` and installs docs deps):
+To run docs locally (installs Ruby gems via Bundler):
 
 ```bash
 make docs
@@ -90,6 +91,8 @@ To build docs strictly:
 ```bash
 make docs-build
 ```
+
+Docs are now powered by Jekyll + Just the Docs.
 
 ## Core workflow keybindings
 
