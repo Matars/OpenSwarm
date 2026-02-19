@@ -2,158 +2,122 @@
 
 ![OpenSwarm demo](media/demo.gif)
 
-OpenSwarm is a keyboard-first Rust TUI built for **parallel agent deployment across Git worktrees**.
+A keyboard-first Rust TUI for **parallel AI agent deployment across Git worktrees**.
 
-Instead of running one long linear loop in a single branch, you can spin up isolated worktrees, run tasks in parallel, and merge back with control.
+Run 5-10 AI agents in parallel, each in its own isolated worktree, managed from a single visual interface. No terminal juggling, no `cd` between directories, no lost context.
 
 ## Why OpenSwarm
 
-- Deploy multiple agent sessions in separate worktrees at the same time.
-- Keep branch state isolated, reviewable, and merge-friendly.
-- Stage, commit, push, and merge from one terminal UI.
-- Jump between worktree graph and file changes without leaving flow.
-- Track live PTY telemetry in worktree view (per-node write rate + active counts).
+AI agents like Claude Code and OpenCode can handle longer tasks without supervision. The bottleneck isn't the agent -- it's managing the parallel execution environment. Each agent needs its own working directory, and orchestrating worktree creation, agent launching, status monitoring, staging, committing, pushing, and merging across 5+ branches from separate terminals is painful.
 
-## Parallel Worktree Model
+OpenSwarm gives you one screen:
 
-```text
-main
- ├─ wt/agent-auth     -> agent session A (auth changes)
- ├─ wt/agent-ui       -> agent session B (UI changes)
- └─ wt/agent-tests    -> agent session C (test hardening)
+- **Worktree graph** -- see all worktrees as an interactive graph with parent-child relationships, dirty state, ahead/behind counts, and live agent activity
+- **Embedded terminals** -- launch shells and agents in PTY sessions directly inside the TUI, with sessions persisting in the background
+- **Inline diffs** -- switch to changes view for file staging with method-level diff analysis (Python, Rust, JS/TS, Go)
+- **One-key git operations** -- create worktrees (`a`), commit (`c`), push (`p`), merge (`m`), delete (`d`) without leaving the TUI
+- **Agent-assisted conflict resolution** -- when merges conflict, launch an agent with a templated prompt to help resolve them
 
-Each worktree is isolated, active, and mergeable back to its parent.
-```
-
-This lets you run concurrent implementation streams while preserving clean Git boundaries.
-
-## Current status
-
-OpenSwarm is actively evolving and still experimental.
-
-- Expect rapid iteration.
-- Keybindings and UI behavior may change.
-- Feedback and bug reports are welcome.
-
-## Requirements
-
-- Rust toolchain (stable)
-- Git installed and available on `PATH`
-- A Git repository (OpenSwarm runs against your current repo)
-- Ruby (>= 3.0) + Bundler (for docs site)
-
-## Run
-
-For the simplest local dev loop:
+## Quick start
 
 ```bash
-make dev
-```
-
-This builds and runs OpenSwarm in one step.
-
-```bash
-cargo run --bin openswarm
-```
-
-Install globally (so `openswarm` works on `PATH`):
-
-```bash
+# Install
 cargo install --path . --bin openswarm --force
+
+# Or build and run directly
+make dev
+
+# Launch inside any Git repo
 openswarm
 ```
 
-Build once and print the CLI path automatically:
+Then:
+1. Press `a` to create a worktree
+2. Press `O` to launch an agent in it
+3. Repeat for parallel streams
+4. Press `c` to commit, `p` to push, `m` to merge back
 
-```bash
-cargo build --release --bin openswarm
-printf '%s\n' "$(pwd)/target/release/openswarm"
-```
+## Core keybindings
 
-`cargo build --release` creates `./target/release/openswarm`; it does not install a global command.
+### Navigation
 
-## Documentation (Divio)
+| Key | Action |
+|-----|--------|
+| `w` | Toggle Changes / Worktrees views |
+| Arrow keys / `h` `j` `k` `l` | Move selection |
+| `Tab` | Cycle panes |
+| `+` / `-` / `0` | Zoom in / out / reset |
+| `W` `A` `S` `D` | Pan canvas |
 
-This repo includes a Divio-style docs structure under `docs/`:
+### Worktree actions
 
-- `tutorials/`
-- `how-to/`
-- `reference/`
-- `explanation/`
+| Key | Action |
+|-----|--------|
+| `a` | Create worktree |
+| `o` | Open shell |
+| `O` | Open agent picker |
+| `c` | Commit |
+| `p` | Push |
+| `f` | Fetch/pull parent |
+| `m` | Merge into parent |
+| `d` | Delete worktree |
 
-To run docs locally (installs Ruby gems via Bundler):
+### Changes view
+
+| Key | Action |
+|-----|--------|
+| `Space` / `Enter` | Stage / unstage file |
+| `c` | Commit staged |
+| `p` | Push |
+| `s` / `S` | Stash push / pop |
+
+### Terminal popup
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+G` | Toggle input / control mode |
+| `Esc` | Close popup (session stays alive) |
+| `q` | Terminate session |
+
+See the [full keybindings reference](https://matars.github.io/OpenSwarm/keybindings.html) for all shortcuts including the notes editor, modals, and git reflog viewer.
+
+## Documentation
+
+Docs are at [matars.github.io/OpenSwarm](https://matars.github.io/OpenSwarm/) and live under `docs/`.
+
+To run docs locally:
 
 ```bash
 make docs
 ```
 
-To build docs strictly:
+## Requirements
+
+- Rust toolchain (stable)
+- Git on PATH
+- A Git repository
+
+## Build commands
 
 ```bash
-make docs-build
+make dev                                          # Build and install globally
+cargo run --bin openswarm                         # Run directly
+cargo build --release --bin openswarm             # Build release binary
+cargo install --path . --bin openswarm --force    # Install to PATH
 ```
 
-Docs are now powered by Jekyll + Just the Docs.
+## Configuration
 
-## Core workflow keybindings
-
-### Navigation
-
-- `w`: switch between changes and worktree views
-- `Tab`: cycle panes in worktree view
-- Arrow keys / `h` `j` `k` `l`: move selection
-- `+` / `-` / `0`: zoom worktree canvas in/out/reset
-- `W` `A` `S` `D`: pan worktree canvas
-
-### Worktree orchestration
-
-- `a`: create a worktree branch
-- `o`: open terminal popup in selected worktree
-- `O`: open agent picker popup (if installed)
-- `c`: stage all and commit in selected worktree (message prompt)
-- `p`: push selected worktree branch (with upstream handling)
-- `f`: update connected parent
-- `m`: merge selected worktree into connected parent
-- `d`: remove selected worktree
-- `x`: prune worktrees
-
-### Change management
-
-- `Enter` or `Space`: stage/unstage selected file
-- `c`: commit mode
-- `n`: open notes editor (`notes.md` in repo root)
-- `p`: push branch (with upstream handling)
-- `s`: stash (including untracked)
-- `S`: stash pop
-
-### Notes editor
-
-- `n`: open the notes popup from changes/worktree views
-- Opens in vim-style `NORMAL` mode by default
-- `i` / `a` / `o` / `O`: enter `INSERT` mode
-- `h` `j` `k` `l`: move cursor in `NORMAL` mode
-- `dd`: delete current line in `NORMAL` mode
-- `Ctrl+S`: save notes without closing
-- `q` (from `NORMAL`): save and close
-- `Esc` (from `INSERT`): return to `NORMAL`
-
-### Terminal popup controls
-
-- `Ctrl+g` (or `Cmd+g` on macOS): toggle input and control mode
-- `Esc`: close popup and keep session in background
-- `q`: terminate session
-- `r`: restart session
+Agent defaults and prompt templates live in `~/.config/openswarm/`. See the [configuration reference](https://matars.github.io/OpenSwarm/configuration.html).
 
 ## Notes
 
-- OpenSwarm uses your current shell from `SHELL`.
-- Worktree operations rely on native `git worktree` commands.
-- Long-running git actions (`push`, `fetch/pull`, `prune`) run in the background so the UI stays responsive.
-- While a git action is running, the worktree actions/details panels and pulse panel show a live busy spinner with elapsed time.
-- If launched outside a Git repo, commands will fail until you run it inside one.
-- Agent defaults and prompt templates live in `~/.config/openswarm`.
-- Conflict resolution launched with OpenCode now passes the rendered template via `opencode --prompt ...`.
+- Uses your shell from `$SHELL` for terminal sessions
+- Worktree operations use native `git worktree` commands
+- Long-running git operations run in the background with a live progress indicator
+- Auto-detects `claude` and `opencode` on PATH
+- Worktrees are placed in `.<repo>-workspaces/` sibling directory
 
-## Project origin
+## Current status
 
-OpenSwarm started as the `gitfetch` TUI and now lives as its own project focused on high-throughput, parallel worktree workflows.
+OpenSwarm is actively evolving. Expect rapid iteration -- keybindings and UI behavior may change. Feedback and bug reports are welcome.

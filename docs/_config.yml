@@ -1,13 +1,13 @@
-title: OpenSwarm Docs
-description: Parallel agent workflows over Git worktrees
+title: OpenSwarm
+description: Keyboard-first TUI for parallel AI agent deployment across Git worktrees
 theme: just-the-docs
 color_scheme: dark
 
-url: https://example.com
+url: https://github.com/Matars/OpenSwarm
 baseurl: ""
 
 aux_links:
-  openswarm on GitHub: https://example.com/openswarm
+  openswarm on GitHub: https://github.com/Matars/OpenSwarm
 
 just_the_docs:
   show_sidebar: true
