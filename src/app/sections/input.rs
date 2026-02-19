@@ -367,6 +367,8 @@ fn shell_ansi_c_quote(text: &str) -> String {
 }
 
 fn launch_opencode_conflict_resolution(app: &mut App) -> Result<(), Box<dyn Error>> {
+    refresh_runtime_settings(app);
+
     let Some(context) = app.pending_conflict_context.clone() else {
         app.mode = Mode::Normal;
         app.confirm_conflict_resolve_yes = false;
@@ -747,6 +749,9 @@ fn handle_conflict_resolve_confirm_mode_key(
         }
         KeyCode::Char('y') => app.confirm_conflict_resolve_yes = true,
         KeyCode::Char('n') => app.confirm_conflict_resolve_yes = false,
+        KeyCode::Char('e') | KeyCode::Char('E') => {
+            open_conflict_prompt_editor(app)?;
+        }
         KeyCode::Enter => {
             if app.confirm_conflict_resolve_yes {
                 launch_opencode_conflict_resolution(app)?;
@@ -1040,8 +1045,40 @@ fn open_notes_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
     app.notes_cursor_row = app.notes_lines.len().saturating_sub(1);
     app.notes_cursor_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
     app.notes_scroll = 0;
+    app.notes_context = NotesContext::Notes;
     app.mode = Mode::NotesPopup;
     app.status_line = format!("Opened {}", app.notes_path);
+    Ok(())
+}
+
+fn open_conflict_prompt_editor(app: &mut App) -> Result<(), Box<dyn Error>> {
+    refresh_runtime_settings(app);
+    let prompt_path = app.config.conflict_resolve_prompt_path.clone();
+
+    if !Path::new(prompt_path.as_str()).exists() {
+        if let Some(parent) = Path::new(prompt_path.as_str()).parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(prompt_path.as_str(), default_conflict_prompt_template())?;
+    }
+
+    let content = fs::read_to_string(prompt_path.as_str())?;
+    let mut lines = content
+        .split('\n')
+        .map(|line| line.to_string())
+        .collect::<Vec<String>>();
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+
+    app.notes_path = prompt_path;
+    app.notes_lines = lines;
+    app.notes_cursor_row = app.notes_lines.len().saturating_sub(1);
+    app.notes_cursor_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
+    app.notes_scroll = 0;
+    app.notes_context = NotesContext::ConflictPrompt;
+    app.mode = Mode::NotesPopup;
+    app.status_line = format!("Editing conflict prompt: {}", app.notes_path);
     Ok(())
 }
 
@@ -1051,7 +1088,12 @@ fn save_notes_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
     }
     let body = app.notes_lines.join("\n");
     fs::write(app.notes_path.as_str(), body)?;
-    app.status_line = format!("Saved {}", app.notes_path);
+    app.status_line = match app.notes_context {
+        NotesContext::Notes => format!("Saved {}", app.notes_path),
+        NotesContext::ConflictPrompt => {
+            format!("Saved conflict resolve prompt to {}", app.notes_path)
+        }
+    };
     Ok(())
 }
 
@@ -1073,8 +1115,22 @@ fn handle_notes_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
     match key.code {
         KeyCode::Esc => {
             save_notes_popup(app)?;
-            app.mode = Mode::Normal;
-            app.status_line = format!("Saved notes to {}", app.notes_path);
+            match app.notes_context {
+                NotesContext::Notes => {
+                    app.mode = Mode::Normal;
+                    app.status_line = format!("Saved notes to {}", app.notes_path);
+                }
+                NotesContext::ConflictPrompt => {
+                    refresh_runtime_settings(app);
+                    app.mode = if app.pending_conflict_context.is_some() {
+                        Mode::WorktreeConflictResolveConfirm
+                    } else {
+                        Mode::Normal
+                    };
+                    app.status_line =
+                        "Saved conflict prompt. Press Enter to launch OpenCode".to_string();
+                }
+            }
         }
         KeyCode::Up => {
             if app.notes_cursor_row > 0 {

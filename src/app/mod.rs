@@ -52,6 +52,12 @@ enum Mode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NotesContext {
+    Notes,
+    ConflictPrompt,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ExternalAgent {
     Opencode,
     Claude,
@@ -148,6 +154,7 @@ struct App {
     notes_cursor_row: usize,
     notes_cursor_col: usize,
     notes_scroll: u16,
+    notes_context: NotesContext,
     agent_tx: Sender<AgentEvent>,
     agent_rx: Receiver<AgentEvent>,
 }
@@ -335,6 +342,7 @@ impl App {
             notes_cursor_row: 0,
             notes_cursor_col: 0,
             notes_scroll: 0,
+            notes_context: NotesContext::Notes,
             agent_tx,
             agent_rx,
         }

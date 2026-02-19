@@ -1731,6 +1731,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
         ],
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
+<<<<<<< HEAD
             Line::from("- a: create worktree from branch name"),
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- O: open agent picker for selected/conflicted parent"),
@@ -1739,6 +1740,16 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- f: fetch + pull connected parent node"),
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- d: delete selected worktree (asks force-delete if dirty)"),
+=======
+            Line::from("- a: create worktree from a branch name"),
+            Line::from("- o: open/reopen terminal for selected node"),
+            Line::from("- O: open agent picker for selected/conflicted parent"),
+            Line::from("- c: stage all + commit in selected worktree"),
+            Line::from("- p: push selected branch (sets upstream if needed)"),
+            Line::from("- f: fetch + pull connected parent"),
+            Line::from("- m: merge selected branch into connected parent"),
+            Line::from("- d: remove selected worktree (prompts if dirty)"),
+>>>>>>> 5b19feaf80d68f3f35c1a875daf9743ebf589163
             Line::from("- x: prune stale worktrees"),
             Line::from("- n: open notes popup (notes.md), L: git command history"),
             Line::from("- Terminal popup: ':' control mode, Ctrl+G toggles input/control"),
@@ -2351,11 +2362,11 @@ fn draw_branch_conflict_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App)
 }
 
 fn draw_conflict_resolve_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
-    let popup = centered_rect(78, 36, frame.area());
+    let popup = centered_rect(84, 62, frame.area());
     frame.render_widget(Clear, popup);
 
     let border = Block::default()
-        .title("Resolve With Agent")
+        .title("Resolve With OpenCode")
         .borders(Borders::ALL)
         .style(Style::default().bg(Color::Black))
         .border_style(Style::default().fg(Color::LightBlue));
@@ -2366,33 +2377,46 @@ fn draw_conflict_resolve_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App
         .margin(1)
         .constraints([
             Constraint::Length(2),
-            Constraint::Length(2),
             Constraint::Length(1),
-            Constraint::Min(3),
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Min(8),
             Constraint::Length(3),
             Constraint::Length(1),
         ])
         .split(popup);
 
-    let parent_path = app
-        .pending_conflict_context
-        .as_ref()
-        .map(|ctx| ctx.parent_path.as_str())
-        .unwrap_or("(unknown)");
-    let files = app
-        .pending_conflict_context
-        .as_ref()
-        .map(|ctx| {
-            if ctx.conflicted_files.is_empty() {
-                "(none reported)".to_string()
-            } else {
-                truncate_text(ctx.conflicted_files.join(", ").as_str(), 120)
-            }
-        })
-        .unwrap_or_else(|| "(none reported)".to_string());
+    let Some(context) = app.pending_conflict_context.as_ref() else {
+        frame.render_widget(
+            Paragraph::new("No merge-conflict context found")
+                .style(Style::default().fg(Color::Red)),
+            layout[0],
+        );
+        return;
+    };
+
+    let files = if context.conflicted_files.is_empty() {
+        "(none reported)".to_string()
+    } else {
+        truncate_text(context.conflicted_files.join(", ").as_str(), 180)
+    };
+    let prompt = build_conflict_resolve_prompt(app, context);
+    let prompt_path = truncate_text(
+        app.config.conflict_resolve_prompt_path.as_str(),
+        layout[4].width.saturating_sub(4) as usize,
+    );
+    let prompt_lines = wrap_text_lines(
+        prompt.as_str(),
+        layout[5].width.saturating_sub(4) as usize,
+        layout[5].height.saturating_sub(2) as usize,
+    )
+    .into_iter()
+    .map(Line::from)
+    .collect::<Vec<Line<'_>>>();
 
     frame.render_widget(
-        Paragraph::new("Merge conflicts were detected. Launch OpenCode now?")
+        Paragraph::new("Merge conflicts were detected. Resolve with OpenCode using this prompt?")
             .style(Style::default().fg(Color::White)),
         layout[0],
     );
@@ -2400,7 +2424,10 @@ fn draw_conflict_resolve_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("parent: ", Style::default().fg(Color::Gray)),
-            Span::styled(parent_path, Style::default().fg(Color::White)),
+            Span::styled(
+                context.parent_path.as_str(),
+                Style::default().fg(Color::White),
+            ),
         ])),
         layout[1],
     );
@@ -2415,6 +2442,23 @@ fn draw_conflict_resolve_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App
             .block(Block::default().borders(Borders::ALL))
             .style(Style::default().fg(Color::White)),
         layout[3],
+    );
+
+    frame.render_widget(
+        Paragraph::new(format!("prompt file: {}", prompt_path))
+            .style(Style::default().fg(Color::Gray)),
+        layout[4],
+    );
+
+    frame.render_widget(
+        Paragraph::new(prompt_lines)
+            .block(
+                Block::default()
+                    .title("prompt preview")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(Color::White)),
+        layout[5],
     );
 
     let yes_style = if app.confirm_conflict_resolve_yes {
@@ -2435,16 +2479,16 @@ fn draw_conflict_resolve_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App
             Span::styled("[ No: resolve manually ]", no_style),
         ]))
         .alignment(Alignment::Center),
-        layout[4],
+        layout[6],
     );
 
     frame.render_widget(
         Paragraph::new(
-            "No is selected by default | <-/-> toggle, y/n set, Enter confirm, Esc cancel",
+            "No is default | <-/-> toggle | e edit+save prompt | Enter confirm | Esc cancel",
         )
         .alignment(Alignment::Center)
         .style(Style::default().fg(Color::Gray)),
-        layout[5],
+        layout[7],
     );
 }
 
@@ -3102,8 +3146,13 @@ fn draw_notes_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     let popup = centered_rect(86, 82, frame.area());
     frame.render_widget(Clear, popup);
 
+    let title = match app.notes_context {
+        NotesContext::Notes => "Notes (notes.md)",
+        NotesContext::ConflictPrompt => "Conflict Prompt (config)",
+    };
+
     let border = Block::default()
-        .title("Notes (notes.md)")
+        .title(title)
         .borders(Borders::ALL)
         .style(Style::default().bg(Color::Black))
         .border_style(Style::default().fg(Color::LightCyan));
@@ -3182,9 +3231,16 @@ fn draw_notes_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     }
 
     frame.render_widget(
-        Paragraph::new("Type to edit. Enter newline, arrows move, Ctrl+S saves, Esc saves+closes")
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Gray)),
+        Paragraph::new(match app.notes_context {
+            NotesContext::Notes => {
+                "Type to edit. Enter newline, arrows move, Ctrl+S saves, Esc saves+closes"
+            }
+            NotesContext::ConflictPrompt => {
+                "Edit template. Placeholders stay supported. Ctrl+S save, Esc save+back"
+            }
+        })
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::Gray)),
         layout[2],
     );
 }
