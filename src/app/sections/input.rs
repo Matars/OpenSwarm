@@ -116,13 +116,20 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
         KeyCode::Char('O') => {
             open_agent_selector_for_selected_worktree(app, true)?;
         }
-        KeyCode::Char('p') => {
+        KeyCode::Char('c') => {
             if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
                 app.mode = Mode::WorktreeCommitPushInput;
                 app.worktree_commit_input.clear();
                 app.worktree_commit_path = Some(path);
                 app.status_line =
-                    "Worktree push mode: commit message, Enter to add/commit/push".to_string();
+                    "Worktree commit mode: commit message, Enter to add/commit".to_string();
+            }
+        }
+        KeyCode::Char('p') => {
+            if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
+                app.status_line = push_with_upstream_at(path.as_str())?;
+                refresh_worktrees(app);
+                refresh_status(app);
             }
         }
         KeyCode::Char('f') => {
@@ -1395,12 +1402,12 @@ fn handle_worktree_commit_push_mode_key(
             app.mode = Mode::Normal;
             app.worktree_commit_input.clear();
             app.worktree_commit_path = None;
-            app.status_line = "Worktree commit/push cancelled".to_string();
+            app.status_line = "Worktree commit cancelled".to_string();
         }
         KeyCode::Enter => {
             let message = app.worktree_commit_input.trim().to_string();
             let Some(path) = app.worktree_commit_path.clone() else {
-                app.status_line = "No worktree selected for commit/push".to_string();
+                app.status_line = "No worktree selected for commit".to_string();
                 app.mode = Mode::Normal;
                 return Ok(());
             };
@@ -1408,7 +1415,7 @@ fn handle_worktree_commit_push_mode_key(
             if message.is_empty() {
                 app.status_line = "Commit message is empty".to_string();
             } else {
-                app.status_line = commit_and_push_worktree(path.as_str(), message.as_str())?;
+                app.status_line = commit_worktree(path.as_str(), message.as_str())?;
                 refresh_worktrees(app);
                 refresh_status(app);
             }

@@ -85,6 +85,8 @@ printf '%s\n' "$(pwd)/target/release/openswarm"
 - `a`: create a worktree branch
 - `o`: open terminal popup in selected worktree
 - `O`: open agent picker popup (if installed)
+- `c`: stage all and commit in selected worktree (message prompt)
+- `p`: push selected worktree branch (with upstream handling)
 - `f`: update connected parent
 - `m`: merge selected worktree into connected parent
 - `d`: remove selected worktree

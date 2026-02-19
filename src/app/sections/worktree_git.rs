@@ -1789,7 +1789,7 @@ fn push_with_upstream() -> Result<String, Box<dyn Error>> {
     }
 }
 
-fn commit_and_push_worktree(path: &str, message: &str) -> Result<String, Box<dyn Error>> {
+fn commit_worktree(path: &str, message: &str) -> Result<String, Box<dyn Error>> {
     let add = Command::new("git")
         .args(["-C", path, "add", "."])
         .output()?;
@@ -1836,13 +1836,8 @@ fn commit_and_push_worktree(path: &str, message: &str) -> Result<String, Box<dyn
         ));
     }
 
-    let push = push_with_upstream_at(path)?;
     if nothing_to_commit {
-        Ok(format!(
-            "No new commit in {}; pushed current HEAD - {}",
-            path,
-            single_line(push.as_str())
-        ))
+        Ok(format!("No new commit in {} (nothing to commit)", path))
     } else {
         let commit_line = if !commit_stdout.is_empty() {
             single_line(commit_stdout.as_str())
@@ -1851,12 +1846,7 @@ fn commit_and_push_worktree(path: &str, message: &str) -> Result<String, Box<dyn
         } else {
             "commit ok".to_string()
         };
-        Ok(format!(
-            "Committed+Pushed in {} - {} | {}",
-            path,
-            commit_line,
-            single_line(push.as_str())
-        ))
+        Ok(format!("Committed in {} - {}", path, commit_line))
     }
 }
 

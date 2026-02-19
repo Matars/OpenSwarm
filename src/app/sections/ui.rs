@@ -1588,8 +1588,12 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" fetch parent"),
         ]),
         Line::from(vec![
+            Span::styled("c", Style::default().fg(Color::Magenta)),
+            Span::raw(" add+commit"),
+        ]),
+        Line::from(vec![
             Span::styled("p", Style::default().fg(Color::Magenta)),
-            Span::raw(" add+commit+push"),
+            Span::raw(" push"),
         ]),
         Line::from(vec![
             Span::styled("d", Style::default().fg(Color::LightRed)),
@@ -1722,7 +1726,8 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- default agent and prompts are editable in ~/.config/openswarm"),
             Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
             Line::from("- f: fetch connected parent node"),
-            Line::from("- p: selected worktree add+commit+push with message popup"),
+            Line::from("- c: selected worktree add+commit with message popup"),
+            Line::from("- p: push selected worktree branch"),
             Line::from("- n: open notes popup (notes.md)"),
             Line::from("- d: delete selected worktree (asks force-delete if dirty)"),
             Line::from("- m: merge selected branch into connected parent node"),
@@ -2926,7 +2931,7 @@ fn draw_worktree_commit_push_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     frame.render_widget(Clear, popup);
 
     let border = Block::default()
-        .title("Worktree Commit+Push")
+        .title("Worktree Commit")
         .borders(Borders::ALL)
         .style(Style::default().bg(Color::Black))
         .border_style(Style::default().fg(Color::LightGreen));
@@ -2957,7 +2962,7 @@ fn draw_worktree_commit_push_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     );
 
     frame.render_widget(
-        Paragraph::new("Enter message, then Enter runs: git add . -> git commit -m -> git push")
+        Paragraph::new("Enter message, then Enter runs: git add . -> git commit -m")
             .alignment(Alignment::Left)
             .style(Style::default().fg(Color::White)),
         layout[1],
