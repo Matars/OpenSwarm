@@ -79,11 +79,10 @@ This repo includes a Divio-style docs structure under `docs/`:
 - `reference/`
 - `explanation/`
 
-To run docs locally:
+To run docs locally (auto-creates `.venv` and installs docs deps):
 
 ```bash
-python3 -m pip install -r requirements-docs.txt
-make docs-serve
+make docs
 ```
 
 To build docs strictly:
