@@ -1303,9 +1303,13 @@ fn tracking_fully_merged(entry: &WorktreeEntry) -> bool {
 
 fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
     if tracking_fully_merged(entry) {
-        ("\u{2713} merged", Style::default().fg(Color::Green))
+        ("\u{2713} up to date", Style::default().fg(Color::Green))
+    } else if entry.detached {
+        ("\u{2717} detached", Style::default().fg(Color::Red))
+    } else if entry.dirty {
+        ("\u{2717} uncommitted", Style::default().fg(Color::Red))
     } else {
-        ("\u{2717} dirty", Style::default().fg(Color::Red))
+        ("\u{2717} out of sync", Style::default().fg(Color::Red))
     }
 }
 
