@@ -1,5 +1,8 @@
 fn refresh_status(app: &mut App) {
-    let output = match run_git(&["status", "--porcelain=1", "-b", "-uall"]) {
+    let output = match run_git_in(
+        app.changes_worktree_path.as_deref(),
+        &["status", "--porcelain=1", "-b", "-uall"],
+    ) {
         Ok(text) => text,
         Err(err) => {
             app.status_line = err.to_string();
@@ -35,7 +38,7 @@ fn refresh_status(app: &mut App) {
     }
 
     app.files = files;
-    app.tree_items = build_tree_items(&app.files);
+    app.tree_items = build_tree_items(&app.files, app.changes_worktree_path.as_deref());
 
     if app.tree_items.is_empty() {
         app.selected = 0;
@@ -153,6 +156,12 @@ fn refresh_worktrees(app: &mut App) {
     });
 
     app.worktrees = entries;
+    if let Some(target_path) = app.changes_worktree_path.as_deref() {
+        let exists = app.worktrees.iter().any(|entry| entry.path == target_path);
+        if !exists {
+            app.changes_worktree_path = None;
+        }
+    }
     if app.worktrees.is_empty() {
         app.selected_worktree = 0;
     } else if app.selected_worktree >= app.worktrees.len() {
@@ -1242,9 +1251,15 @@ fn toggle_stage(app: &mut App) -> Result<(), Box<dyn Error>> {
     };
 
     if item.staged {
-        app.status_line = run_git(&["restore", "--staged", "--", &item.path])?;
+        app.status_line = run_git_in(
+            app.changes_worktree_path.as_deref(),
+            &["restore", "--staged", "--", &item.path],
+        )?;
     } else {
-        app.status_line = run_git(&["add", "--", &item.path])?;
+        app.status_line = run_git_in(
+            app.changes_worktree_path.as_deref(),
+            &["add", "--", &item.path],
+        )?;
     }
 
     Ok(())
@@ -1261,13 +1276,20 @@ fn refresh_selected_overview(app: &mut App) {
     };
 
     app.selected_overview = match item.kind {
-        TreeKind::File => Some(build_file_overview(&FileEntry {
-            path: item.path.clone(),
-            staged: item.staged,
-            unstaged: item.unstaged,
-            untracked: item.untracked,
-        })),
-        TreeKind::Folder => Some(build_folder_overview(item, &app.files)),
+        TreeKind::File => Some(build_file_overview(
+            &FileEntry {
+                path: item.path.clone(),
+                staged: item.staged,
+                unstaged: item.unstaged,
+                untracked: item.untracked,
+            },
+            app.changes_worktree_path.as_deref(),
+        )),
+        TreeKind::Folder => Some(build_folder_overview(
+            item,
+            &app.files,
+            app.changes_worktree_path.as_deref(),
+        )),
     };
 
     let max_scroll = max_overview_scroll(app);
@@ -1276,7 +1298,11 @@ fn refresh_selected_overview(app: &mut App) {
     }
 }
 
-fn build_folder_overview(folder: &TreeItem, files: &[FileEntry]) -> FileOverview {
+fn build_folder_overview(
+    folder: &TreeItem,
+    files: &[FileEntry],
+    repo_path: Option<&str>,
+) -> FileOverview {
     let prefix = format!("{}/", folder.path);
     let mut total_added = 0usize;
     let mut total_removed = 0usize;
@@ -1290,7 +1316,7 @@ fn build_folder_overview(folder: &TreeItem, files: &[FileEntry]) -> FileOverview
             continue;
         }
 
-        let overview = build_file_overview(file);
+        let overview = build_file_overview(file, repo_path);
         total_added += overview.added_lines;
         total_removed += overview.removed_lines;
         methods_added.extend(overview.methods_added);
@@ -1335,7 +1361,7 @@ fn build_folder_overview(folder: &TreeItem, files: &[FileEntry]) -> FileOverview
     }
 }
 
-fn build_file_overview(file: &FileEntry) -> FileOverview {
+fn build_file_overview(file: &FileEntry, repo_path: Option<&str>) -> FileOverview {
     let state = build_state_label(file);
     let mut added_lines = 0usize;
     let mut removed_lines = 0usize;
@@ -1345,18 +1371,24 @@ fn build_file_overview(file: &FileEntry) -> FileOverview {
     let mut traditional_diff: Vec<DiffPreviewLine> = Vec::new();
 
     if file.untracked {
-        let text = fs::read_to_string(&file.path).unwrap_or_default();
+        let file_path = repo_path
+            .map(|base| Path::new(base).join(file.path.as_str()))
+            .unwrap_or_else(|| PathBuf::from(file.path.as_str()));
+        let text = fs::read_to_string(file_path).unwrap_or_default();
         added_lines = text.lines().count();
         methods_added = sorted_from_set(collect_methods_from_content(&text, &file.path));
         traditional_diff = preview_for_untracked(&text);
-    } else if let Some(diff) = git_output(&[
-        "diff",
-        "--no-color",
-        "--unified=0",
-        "HEAD",
-        "--",
-        &file.path,
-    ]) {
+    } else if let Some(diff) = git_output_in(
+        repo_path,
+        &[
+            "diff",
+            "--no-color",
+            "--unified=0",
+            "HEAD",
+            "--",
+            &file.path,
+        ],
+    ) {
         let summary = summarize_diff(&diff, &file.path);
         added_lines = summary.added_lines;
         removed_lines = summary.removed_lines;
@@ -1695,8 +1727,12 @@ fn sanitize_for_tui(input: &str) -> String {
     out
 }
 
-fn run_git(args: &[&str]) -> Result<String, Box<dyn Error>> {
-    let output = Command::new("git").args(args).output()?;
+fn run_git_in(path: Option<&str>, args: &[&str]) -> Result<String, Box<dyn Error>> {
+    let mut cmd = Command::new("git");
+    if let Some(path) = path {
+        cmd.args(["-C", path]);
+    }
+    let output = cmd.args(args).output()?;
     let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
         .trim()
         .to_string();
@@ -1717,14 +1753,26 @@ fn run_git(args: &[&str]) -> Result<String, Box<dyn Error>> {
     }
 }
 
-fn git_output(args: &[&str]) -> Option<String> {
-    let output = Command::new("git").args(args).output().ok()?;
+fn run_git(args: &[&str]) -> Result<String, Box<dyn Error>> {
+    run_git_in(None, args)
+}
+
+fn git_output_in(path: Option<&str>, args: &[&str]) -> Option<String> {
+    let mut cmd = Command::new("git");
+    if let Some(path) = path {
+        cmd.args(["-C", path]);
+    }
+    let output = cmd.args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
     Some(sanitize_for_tui(
         String::from_utf8_lossy(&output.stdout).as_ref(),
     ))
+}
+
+fn git_output(args: &[&str]) -> Option<String> {
+    git_output_in(None, args)
 }
 
 fn push_with_upstream() -> Result<String, Box<dyn Error>> {

@@ -1426,6 +1426,15 @@ fn worktree_parent_label(app: &App, parents: &[Option<usize>]) -> String {
 }
 
 fn current_session_branch(app: &App) -> String {
+    if let Some(current) = app.worktrees.iter().find(|entry| entry.is_current) {
+        if !current.detached && !current.branch.is_empty() {
+            return current.branch.clone();
+        }
+        if !current.head.is_empty() {
+            return current.head.clone();
+        }
+    }
+
     let raw = app.branch.trim();
     let name = raw
         .strip_prefix("HEAD (detached at ")
@@ -2523,10 +2532,10 @@ fn worktree_flags(entry: &WorktreeEntry) -> String {
     }
 }
 
-fn build_tree_items(files: &[FileEntry]) -> Vec<TreeItem> {
+fn build_tree_items(files: &[FileEntry], repo_path: Option<&str>) -> Vec<TreeItem> {
     let mut file_status: BTreeMap<String, PathStatus> = BTreeMap::new();
     let mut folder_status: BTreeMap<String, PathStatus> = BTreeMap::new();
-    let mut file_delta = collect_file_deltas(files);
+    let mut file_delta = collect_file_deltas(files, repo_path);
     let mut folder_delta: BTreeMap<String, PathDelta> = BTreeMap::new();
 
     for file in files {
@@ -2538,7 +2547,10 @@ fn build_tree_items(files: &[FileEntry]) -> Vec<TreeItem> {
         file_status.insert(file.path.clone(), status);
 
         if file.untracked {
-            let added = fs::read_to_string(&file.path)
+            let file_path = repo_path
+                .map(|base| Path::new(base).join(file.path.as_str()))
+                .unwrap_or_else(|| PathBuf::from(file.path.as_str()));
+            let added = fs::read_to_string(file_path)
                 .map(|text| text.lines().count())
                 .unwrap_or(0);
             file_delta
@@ -2586,10 +2598,13 @@ fn build_tree_items(files: &[FileEntry]) -> Vec<TreeItem> {
     items
 }
 
-fn collect_file_deltas(files: &[FileEntry]) -> BTreeMap<String, PathDelta> {
+fn collect_file_deltas(
+    files: &[FileEntry],
+    repo_path: Option<&str>,
+) -> BTreeMap<String, PathDelta> {
     let mut deltas: BTreeMap<String, PathDelta> = BTreeMap::new();
 
-    if let Some(numstat) = git_output(&["diff", "--numstat", "HEAD"]) {
+    if let Some(numstat) = git_output_in(repo_path, &["diff", "--numstat", "HEAD"]) {
         for line in numstat.lines() {
             let mut parts = line.split('\t');
             let added_raw = parts.next().unwrap_or_default();
