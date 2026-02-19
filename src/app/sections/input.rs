@@ -48,13 +48,15 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
             open_notes_popup(app)?;
         }
         KeyCode::Char('p') => {
-            let output = if let Some(path) = app.changes_worktree_path.as_deref() {
-                push_with_upstream_at(path)?
+            if let Some(path) = app.changes_worktree_path.clone() {
+                start_git_task(app, "Push (changes view)", false, true, move || {
+                    git_result_text(push_with_upstream_at(path.as_str()))
+                });
             } else {
-                push_with_upstream()?
-            };
-            app.status_line = output;
-            refresh_status(app);
+                start_git_task(app, "Push (changes view)", false, true, || {
+                    git_result_text(push_with_upstream())
+                });
+            }
         }
         KeyCode::Char('s') => {
             app.status_line = run_git_in(
@@ -142,19 +144,27 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
         }
         KeyCode::Char('p') => {
             if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
-                app.status_line = push_with_upstream_at(path.as_str())?;
-                refresh_worktrees(app);
-                refresh_status(app);
+                start_git_task(app, "Push selected worktree", false, true, move || {
+                    git_result_text(push_with_upstream_at(path.as_str()))
+                });
             }
         }
         KeyCode::Char('f') => {
-            app.status_line = update_connected_parent(app)?;
-            refresh_worktrees(app);
-            refresh_status(app);
+            if let Some(parent) = connected_parent_worktree(app) {
+                let path = parent.path;
+                let branch = parent.branch;
+                start_git_task(app, "Fetch + pull parent", false, true, move || {
+                    git_result_text(update_parent_at(path.as_str(), branch.as_str()))
+                });
+            } else {
+                app.status_line =
+                    "No connected parent node found for selected worktree".to_string();
+            }
         }
         KeyCode::Char('x') => {
-            app.status_line = run_git(&["worktree", "prune"])?;
-            refresh_worktrees(app);
+            start_git_task(app, "Prune stale worktrees", true, false, || {
+                git_result_text(run_git(&["worktree", "prune"]))
+            });
         }
         KeyCode::Char('d') => {
             request_remove_selected_worktree(app)?;
@@ -1562,6 +1572,20 @@ fn drain_agent_events(app: &mut App) {
                     session.parser.process(bytes.as_slice());
                 }
             }
+        }
+    }
+}
+
+fn drain_git_task_events(app: &mut App) {
+    while let Ok(event) = app.git_task_rx.try_recv() {
+        app.git_task = None;
+        app.status_line = format!("{}: {}", event.label, single_line(event.outcome.as_str()));
+
+        if event.refresh_worktrees {
+            refresh_worktrees(app);
+        }
+        if event.refresh_status {
+            refresh_status(app);
         }
     }
 }

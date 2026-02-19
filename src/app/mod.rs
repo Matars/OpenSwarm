@@ -173,6 +173,9 @@ struct App {
     notes_pending_op: Option<char>,
     agent_tx: Sender<AgentEvent>,
     agent_rx: Receiver<AgentEvent>,
+    git_task: Option<GitTaskState>,
+    git_task_tx: Sender<GitTaskEvent>,
+    git_task_rx: Receiver<GitTaskEvent>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -204,6 +207,18 @@ struct AgentSession {
 
 enum AgentEvent {
     Output { path: String, bytes: Vec<u8> },
+}
+
+struct GitTaskState {
+    label: String,
+    started_at: Instant,
+}
+
+struct GitTaskEvent {
+    label: String,
+    outcome: String,
+    refresh_worktrees: bool,
+    refresh_status: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -322,6 +337,7 @@ enum DiffPreviewKind {
 impl App {
     fn new() -> Self {
         let (agent_tx, agent_rx) = mpsc::channel();
+        let (git_task_tx, git_task_rx) = mpsc::channel();
         let config = load_openswarm_config();
         let mut canvas_bg_effects = EffectManager::default();
         canvas_bg_effects.add_unique_effect("bg-polish", build_canvas_bg_effect());
@@ -394,6 +410,9 @@ impl App {
             notes_pending_op: None,
             agent_tx,
             agent_rx,
+            git_task: None,
+            git_task_tx,
+            git_task_rx,
         }
     }
 
@@ -537,6 +556,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     while !should_quit {
         drain_agent_events(&mut app);
+        drain_git_task_events(&mut app);
         refresh_agent_sessions(&mut app);
 
         // Resize terminal session to match actual popup dimensions
@@ -626,7 +646,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             last_ui_tick = Instant::now();
         }
 
-        let refresh_git = !matches!(app.mode, Mode::AgentPopup);
+        let refresh_git = !matches!(app.mode, Mode::AgentPopup) && app.git_task.is_none();
         if refresh_git && last_status_tick.elapsed() >= status_tick_rate {
             refresh_status(&mut app);
             last_status_tick = Instant::now();
