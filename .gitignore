@@ -1,6 +1,8 @@
 /target/
 /site/
 /.venv/
+/.bundle/
+/.jekyll-cache/
 
 # OS files
 .DS_Store

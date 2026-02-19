@@ -1,3 +1,9 @@
+---
+title: Why OpenSwarm
+parent: Explanation
+nav_order: 1
+---
+
 # Explanation: Why OpenSwarm
 
 OpenSwarm exists to remove the throughput bottleneck of one-branch-at-a-time work.

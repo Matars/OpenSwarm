@@ -1,3 +1,9 @@
+---
+title: Customize Agent and Prompts
+parent: How-To Guides
+nav_order: 4
+---
+
 # How to Customize Agent and Prompts
 
 OpenSwarm reads runtime settings from `~/.config/openswarm`.

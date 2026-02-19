@@ -1,3 +1,9 @@
+---
+title: Agent Session Lifecycle
+parent: Explanation
+nav_order: 3
+---
+
 # Explanation: Agent Session Lifecycle
 
 OpenSwarm terminal sessions are long-lived PTY processes attached to worktree paths.

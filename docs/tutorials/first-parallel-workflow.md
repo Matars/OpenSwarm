@@ -1,3 +1,9 @@
+---
+title: First Parallel Workflow
+parent: Tutorials
+nav_order: 1
+---
+
 # Tutorial: First Parallel Workflow
 
 This tutorial walks you through one complete OpenSwarm loop: create a worktree, make changes, commit, and push.

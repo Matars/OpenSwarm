@@ -1,3 +1,8 @@
+---
+title: Home
+nav_order: 1
+---
+
 # OpenSwarm Documentation
 
 Welcome to the OpenSwarm docs. This documentation follows the Divio model so you can quickly find the right kind of help:
