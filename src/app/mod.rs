@@ -290,7 +290,7 @@ impl App {
             overview_scroll: 0,
             status_line: "Ready".to_string(),
             mode: Mode::Normal,
-            view_mode: ViewMode::Changes,
+            view_mode: ViewMode::Worktrees,
             commit_input: String::new(),
             worktrees: Vec::new(),
             selected_worktree: 0,
