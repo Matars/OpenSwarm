@@ -1,0 +1,23 @@
+/* Custom "dark-moke" tweaks layered on top of just-the-docs dark scheme */
+
+:root {
+  --jtd-body-bg: #0f1113;
+  --jtd-page-bg: #0f1113;
+  --jtd-accent: #8ab4f8;
+  --jtd-border: rgba(255, 255, 255, 0.06);
+}
+
+body {
+  background-color: var(--jtd-body-bg) !important;
+}
+
+.side-bar {
+  background-color: #0b0c0d;
+  border-right: 1px solid var(--jtd-border);
+}
+
+.highlight,
+pre {
+  background: #0b0c0d;
+  color: #e6e6e6;
+}

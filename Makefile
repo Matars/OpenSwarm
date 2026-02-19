@@ -1,6 +1,7 @@
 .PHONY: dev docs docs-deps docs-venv docs-serve docs-build
 
 DOCS_BUNDLE_STAMP := .bundle/.docs-deps.stamp
+SASS_SILENCE_DEPRECATIONS ?= import,global-builtin,color-functions
 BREW_RUBY33_BIN := /opt/homebrew/opt/ruby@3.3/bin
 BREW_RUBY_BIN := /opt/homebrew/opt/ruby/bin
 
@@ -29,10 +30,10 @@ docs-deps: $(DOCS_BUNDLE_STAMP)
 docs-venv: docs-deps
 
 docs: docs-deps
-	@$(BUNDLE) exec jekyll serve --source docs --destination site --livereload
+	@SASS_SILENCE_DEPRECATIONS=$(SASS_SILENCE_DEPRECATIONS) $(BUNDLE) exec jekyll serve --source docs --destination site --livereload
 
 docs-serve:
 	@$(MAKE) docs
 
 docs-build: docs-deps
-	@$(BUNDLE) exec jekyll build --source docs --destination site
+	@SASS_SILENCE_DEPRECATIONS=$(SASS_SILENCE_DEPRECATIONS) $(BUNDLE) exec jekyll build --source docs --destination site
