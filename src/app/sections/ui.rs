@@ -617,7 +617,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
         .title(title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color))
-        .style(Style::default().bg(Color::Black));
+        .style(Style::default());
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -658,7 +658,6 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
     } else {
         selected_idx
     };
-    frame.render_widget(Clear, inner);
     let mut screen_points: Vec<(u16, u16)> = Vec::with_capacity(node_points.len());
     for point in &node_points {
         if let Some((sx, sy)) = canvas_point_to_screen(inner, bounds, *point) {
