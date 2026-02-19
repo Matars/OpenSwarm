@@ -1017,7 +1017,37 @@ fn open_notes_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
         fs::write(notes_file, "# Notes\n")?;
     }
 
-    let content = fs::read_to_string(notes_file)?;
+    let notes_parent = notes_file
+        .parent()
+        .map(|parent| parent.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string());
+
+    if let Some(editor) = preferred_vim_command() {
+        open_terminal_popup_for_path(app, notes_parent.as_str())?;
+        let launch_cmd = format!(
+            "{} {}\r",
+            editor,
+            shell_quote_single(notes_file.to_string_lossy().as_ref())
+        );
+        write_to_agent(app, notes_parent.as_str(), launch_cmd.as_str())?;
+        app.status_line = format!("Opened {} in {}", path, editor);
+        return Ok(());
+    }
+
+    open_notes_popup_inline(app, path.as_str(), NotesContext::Notes)?;
+    app.status_line = format!(
+        "No vim editor found (nvim/vim/vi); opened inline editor for {}",
+        app.notes_path
+    );
+    Ok(())
+}
+
+fn open_notes_popup_inline(
+    app: &mut App,
+    path: &str,
+    context: NotesContext,
+) -> Result<(), Box<dyn Error>> {
+    let content = fs::read_to_string(path)?;
     let mut lines = content
         .split('\n')
         .map(|line| line.to_string())
@@ -1026,14 +1056,13 @@ fn open_notes_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
         lines.push(String::new());
     }
 
-    app.notes_path = path;
+    app.notes_path = path.to_string();
     app.notes_lines = lines;
     app.notes_cursor_row = app.notes_lines.len().saturating_sub(1);
     app.notes_cursor_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
     app.notes_scroll = 0;
-    app.notes_context = NotesContext::Notes;
+    app.notes_context = context;
     app.mode = Mode::NotesPopup;
-    app.status_line = format!("Opened {}", app.notes_path);
     Ok(())
 }
 
@@ -1048,24 +1077,25 @@ fn open_conflict_prompt_editor(app: &mut App) -> Result<(), Box<dyn Error>> {
         fs::write(prompt_path.as_str(), default_conflict_prompt_template())?;
     }
 
-    let content = fs::read_to_string(prompt_path.as_str())?;
-    let mut lines = content
-        .split('\n')
-        .map(|line| line.to_string())
-        .collect::<Vec<String>>();
-    if lines.is_empty() {
-        lines.push(String::new());
-    }
-
-    app.notes_path = prompt_path;
-    app.notes_lines = lines;
-    app.notes_cursor_row = app.notes_lines.len().saturating_sub(1);
-    app.notes_cursor_col = line_char_len(app.notes_lines[app.notes_cursor_row].as_str());
-    app.notes_scroll = 0;
-    app.notes_context = NotesContext::ConflictPrompt;
-    app.mode = Mode::NotesPopup;
+    open_notes_popup_inline(app, prompt_path.as_str(), NotesContext::ConflictPrompt)?;
     app.status_line = format!("Editing conflict prompt: {}", app.notes_path);
     Ok(())
+}
+
+fn preferred_vim_command() -> Option<&'static str> {
+    if command_exists_on_path("nvim") {
+        Some("nvim")
+    } else if command_exists_on_path("vim") {
+        Some("vim")
+    } else if command_exists_on_path("vi") {
+        Some("vi")
+    } else {
+        None
+    }
+}
+
+fn shell_quote_single(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
 }
 
 fn save_notes_popup(app: &mut App) -> Result<(), Box<dyn Error>> {

@@ -561,7 +561,7 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
         ]),
         Line::from(vec![
             Span::styled("n", Style::default().fg(Color::LightCyan)),
-            Span::raw(" notes popup"),
+            Span::raw(" notes (vim)"),
         ]),
         Line::from(vec![
             Span::styled("p", Style::default().fg(Color::Magenta)),
@@ -1926,7 +1926,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("n", Style::default().fg(Color::LightCyan)),
-            Span::raw(" notes popup"),
+            Span::raw(" notes (vim)"),
         ]),
         Line::from(vec![
             Span::styled("x", Style::default().fg(Color::Yellow)),
@@ -2052,7 +2052,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- d: delete selected worktree (asks force-delete if dirty)"),
             Line::from("- x: prune stale worktrees"),
-            Line::from("- n: open notes popup (notes.md), L: git command history"),
+            Line::from("- n: open notes.md in vim popup, L: git command history"),
             Line::from("- Terminal popup: ':' control mode, Ctrl+G toggles input/control"),
             Line::from("- Agent defaults/prompts live in ~/.config/openswarm"),
             Line::from("- ?: close this help"),
