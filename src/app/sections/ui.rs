@@ -397,10 +397,30 @@ fn draw_pulse_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
         .count();
 
     let status_limit = area.width.saturating_sub(12) as usize;
-    let status_text = truncate_text(
-        single_line(app.status_line.as_str()).as_str(),
-        status_limit.max(10),
-    );
+    let (status_text, status_color) = if let Some(task) = app.git_task.as_ref() {
+        let elapsed = Instant::now().saturating_duration_since(task.started_at);
+        (
+            truncate_text(
+                format!(
+                    "[{}] {} ({:.1}s)",
+                    spinner_glyph(elapsed),
+                    task.label,
+                    elapsed.as_secs_f32()
+                )
+                .as_str(),
+                status_limit.max(10),
+            ),
+            Color::LightYellow,
+        )
+    } else {
+        (
+            truncate_text(
+                single_line(app.status_line.as_str()).as_str(),
+                status_limit.max(10),
+            ),
+            Color::White,
+        )
+    };
 
     let info = vec![
         Line::from(vec![
@@ -434,7 +454,7 @@ fn draw_pulse_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
         Line::from(""),
         Line::from(vec![
             Span::styled("Status: ", Style::default().fg(Color::Gray)),
-            Span::styled(status_text, Style::default().fg(Color::White)),
+            Span::styled(status_text, Style::default().fg(status_color)),
         ]),
     ];
 
@@ -1801,7 +1821,18 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]));
         lines.push(Line::from(""));
         let status_max = area.width.saturating_sub(4) as usize;
-        let status_text = sanitize_for_tui(app.status_line.as_str());
+        let mut status_text = sanitize_for_tui(app.status_line.as_str());
+        let mut status_color = Color::White;
+        if let Some(task) = app.git_task.as_ref() {
+            let elapsed = Instant::now().saturating_duration_since(task.started_at);
+            status_text = format!(
+                "[{}] {} ({:.1}s)",
+                spinner_glyph(elapsed),
+                task.label,
+                elapsed.as_secs_f32()
+            );
+            status_color = Color::LightYellow;
+        }
         let inner_height = area.height.saturating_sub(2) as usize;
         let status_max_lines = inner_height.saturating_sub(lines.len() + 1).max(1);
         lines.push(Line::from(vec![Span::styled(
@@ -1811,7 +1842,7 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         for wrapped in wrap_text_lines(status_text.as_str(), status_max.max(12), status_max_lines) {
             lines.push(Line::from(vec![Span::styled(
                 wrapped,
-                Style::default().fg(Color::White),
+                Style::default().fg(status_color),
             )]));
         }
     } else {
@@ -1845,7 +1876,27 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         Color::Gray
     };
 
-    let lines = vec![
+    let mut lines = Vec::new();
+
+    if let Some(task) = app.git_task.as_ref() {
+        let elapsed = Instant::now().saturating_duration_since(task.started_at);
+        let spinner = spinner_glyph(elapsed);
+        lines.push(Line::from(vec![
+            Span::styled("busy ", Style::default().fg(Color::Yellow)),
+            Span::styled(
+                format!(
+                    "[{}] {} ({:.1}s)",
+                    spinner,
+                    task.label,
+                    elapsed.as_secs_f32()
+                ),
+                Style::default().fg(Color::LightYellow),
+            ),
+        ]));
+        lines.push(Line::from(""));
+    }
+
+    lines.extend(vec![
         Line::from(vec![
             Span::styled("w", Style::default().fg(Color::LightBlue)),
             Span::raw(" file changes view"),
@@ -1936,13 +1987,19 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::styled("j/k", Style::default().fg(Color::LightBlue)),
             Span::raw(" child/parent level"),
         ]),
-    ];
+    ]);
+
+    let title = if app.git_task.is_some() {
+        "actions [?] busy"
+    } else {
+        "actions [?]"
+    };
 
     frame.render_widget(
         Paragraph::new(lines)
             .block(
                 Block::default()
-                    .title("actions [?]")
+                    .title(title)
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(border_color))
                     .style(Style::default().bg(Color::Black)),
@@ -1950,6 +2007,12 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             .style(Style::default().fg(Color::White)),
         area,
     );
+}
+
+fn spinner_glyph(elapsed: Duration) -> char {
+    const FRAMES: [char; 4] = ['|', '/', '-', '\\'];
+    let idx = ((elapsed.as_millis() / 120) as usize) % FRAMES.len();
+    FRAMES[idx]
 }
 
 fn draw_worktree_help_modal(frame: &mut ratatui::Frame<'_>, app: &App) {

@@ -601,22 +601,27 @@ fn conflicted_files_in_worktree(path: &str) -> Vec<String> {
         .collect()
 }
 
-fn update_connected_parent(app: &App) -> Result<String, Box<dyn Error>> {
-    let Some(parent_idx) = connected_parent_index(app) else {
-        return Ok("No connected parent node found for selected worktree".to_string());
-    };
-    let parent = app.worktrees[parent_idx].clone();
+fn connected_parent_worktree(app: &App) -> Option<WorktreeEntry> {
+    connected_parent_index(app)
+        .and_then(|idx| app.worktrees.get(idx))
+        .cloned()
+}
 
-    if parent.detached || parent.branch.is_empty() {
+fn update_parent_at(path: &str, branch: &str) -> Result<String, Box<dyn Error>> {
+    if branch.is_empty() {
         return Ok("Parent node is detached; cannot fetch updates".to_string());
     }
 
-    let fetch = run_git(&["-C", parent.path.as_str(), "fetch", "--all", "--prune"])?;
-    let pull = run_git(&["-C", parent.path.as_str(), "pull"])?;
+    if branch == "detached" {
+        return Ok("Parent node is detached; cannot fetch updates".to_string());
+    }
+
+    let fetch = run_git(&["-C", path, "fetch", "--all", "--prune"])?;
+    let pull = run_git(&["-C", path, "pull"])?;
 
     Ok(format!(
         "Fetched + pulled parent '{}' - fetch: {}; pull: {}",
-        parent.branch,
+        branch,
         single_line(fetch.as_str()),
         single_line(pull.as_str()),
     ))
@@ -1732,6 +1737,46 @@ fn sanitize_for_tui(input: &str) -> String {
     }
 
     out
+}
+
+fn git_result_text(result: Result<String, Box<dyn Error>>) -> String {
+    match result {
+        Ok(text) => text,
+        Err(err) => sanitize_for_tui(err.to_string().as_str()),
+    }
+}
+
+fn start_git_task<F>(
+    app: &mut App,
+    label: &str,
+    refresh_worktrees: bool,
+    refresh_status: bool,
+    task: F,
+) where
+    F: FnOnce() -> String + Send + 'static,
+{
+    if let Some(current) = app.git_task.as_ref() {
+        app.status_line = format!("Already running '{}'", current.label);
+        return;
+    }
+
+    let label_text = label.to_string();
+    app.git_task = Some(GitTaskState {
+        label: label_text.clone(),
+        started_at: Instant::now(),
+    });
+    app.status_line = format!("{}...", label_text);
+
+    let tx = app.git_task_tx.clone();
+    thread::spawn(move || {
+        let outcome = task();
+        let _ = tx.send(GitTaskEvent {
+            label: label_text,
+            outcome,
+            refresh_worktrees,
+            refresh_status,
+        });
+    });
 }
 
 fn run_git_in(path: Option<&str>, args: &[&str]) -> Result<String, Box<dyn Error>> {

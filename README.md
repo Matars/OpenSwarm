@@ -148,6 +148,8 @@ Docs are now powered by Jekyll + Just the Docs.
 
 - OpenSwarm uses your current shell from `SHELL`.
 - Worktree operations rely on native `git worktree` commands.
+- Long-running git actions (`push`, `fetch/pull`, `prune`) run in the background so the UI stays responsive.
+- While a git action is running, the worktree actions/details panels and pulse panel show a live busy spinner with elapsed time.
 - If launched outside a Git repo, commands will fail until you run it inside one.
 - Agent defaults and prompt templates live in `~/.config/openswarm`.
 
