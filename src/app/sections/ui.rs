@@ -735,6 +735,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
             frame.buffer_mut(),
             selected_area,
         );
+        draw_spinning_border_shine(frame.buffer_mut(), selected_area);
         if let Some(selected) = app.selected_worktree() {
             let selected_label = canvas_node_label(app, selected, true);
             let text_x = selected_area.x.saturating_add(2);
@@ -1149,13 +1150,14 @@ fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &mut App) 
         return;
     }
 
-    let glitter_step = std::time::SystemTime::now()
+    let now_millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as u64 / 260)
-        .unwrap_or(0)
-        % 1_000_000;
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0);
+    let time_seconds = now_millis as f64 / 1000.0;
     let pan_x = (app.worktree_canvas_pan_x * 200.0).round() as i64;
     let pan_y = (app.worktree_canvas_pan_y * 140.0).round() as i64;
+    let tau = std::f64::consts::TAU;
 
     for y in 0..area.height {
         for x in 0..area.width {
@@ -1175,23 +1177,44 @@ fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &mut App) 
                 );
             }
 
-            let glitter_seed = star_seed(
-                wx ^ ((glitter_step as i64) << 1),
-                wy ^ ((glitter_step as i64).wrapping_mul(31)),
-            );
-            let glitter_roll = glitter_seed % 1000;
-            if glitter_roll >= 8 {
+            let phase_seed = star_seed(wx ^ 0x4F2A, wy ^ 0x9813);
+            let phase = star_seed_unit(phase_seed, 16) * tau;
+            let drift_scale_x = 0.05 + star_seed_unit(phase_seed, 40) * 0.07;
+            let drift_scale_y = 0.04 + star_seed_unit(phase_seed, 22) * 0.09;
+            let drift_x = ((time_seconds * drift_scale_x + phase).sin() * 2.2
+                + (time_seconds * (drift_scale_x * 0.53) + phase * 0.31).cos() * 1.4)
+                .round() as i64;
+            let drift_y = ((time_seconds * drift_scale_y + phase * 0.73).cos() * 1.8
+                + (time_seconds * (drift_scale_y * 0.61) + phase * 0.17).sin() * 1.2)
+                .round() as i64;
+
+            let glitter_seed = star_seed(wx + drift_x, wy + drift_y);
+            if glitter_seed % 1000 >= 11 {
                 continue;
             }
 
-            let sparkle_kind = (glitter_seed >> 12) % 6;
-            let (glyph, color) = if sparkle_kind <= 1 {
-                ('✦', Color::White)
+            let twinkle_speed = 0.40 + star_seed_unit(glitter_seed, 20) * 0.55;
+            let twinkle_phase = star_seed_unit(glitter_seed, 36) * tau;
+            let twinkle = ((time_seconds * twinkle_speed + twinkle_phase).sin() + 1.0) * 0.5;
+            if twinkle < 0.10 {
+                continue;
+            }
+
+            let morph_period = 7.0 + star_seed_unit(glitter_seed, 12) * 12.0;
+            let morph_phase = star_seed_unit(glitter_seed, 48) * morph_period;
+            let morph_step = ((time_seconds + morph_phase) / morph_period).floor() as i64;
+            let morph_seed = star_seed(wx ^ (morph_step << 1), wy ^ (morph_step * 29));
+            let sparkle_kind = ((morph_seed >> 8) % 6) as u8;
+            let (glyph, base_color) = if sparkle_kind <= 1 {
+                ('✦', Color::Rgb(234, 242, 255))
             } else if sparkle_kind <= 3 {
-                ('✧', Color::Rgb(220, 233, 255))
+                ('✧', Color::Rgb(198, 217, 248))
             } else {
-                ('•', Color::Rgb(182, 201, 242))
+                ('•', Color::Rgb(166, 189, 235))
             };
+
+            let brightness = twinkle.powf(1.35) as f32;
+            let color = color_mix(Color::Rgb(24, 29, 45), base_color, brightness);
 
             paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
         }
@@ -1212,9 +1235,109 @@ fn build_canvas_bg_effect() -> tachyonfx::Effect {
 
 fn build_selected_node_border_effect() -> tachyonfx::Effect {
     fx::repeating(fx::ping_pong(fx::hsl_shift_fg(
-        [10.0, 26.0, 11.0],
-        (700, Interpolation::SineInOut),
+        [5.0, 12.0, 6.0],
+        (2200, Interpolation::SineInOut),
     )))
+}
+
+fn draw_spinning_border_shine(buf: &mut Buffer, area: Rect) {
+    if area.width < 2 || area.height < 2 {
+        return;
+    }
+
+    let now_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as f64 / 1000.0)
+        .unwrap_or(0.0);
+
+    let border_cells = border_perimeter_cells(area);
+    if border_cells.is_empty() {
+        return;
+    }
+
+    let perimeter = border_cells.len();
+    let head = ((now_seconds * 9.0) as usize) % perimeter;
+    let tail = (perimeter / 5).max(5);
+    let pulse = ((now_seconds * 2.2).sin() * 0.5 + 0.5) as f32;
+    let base_color = color_mix(
+        Color::Rgb(84, 144, 204),
+        Color::Rgb(116, 182, 232),
+        pulse * 0.55,
+    );
+
+    for (idx, (x, y)) in border_cells.iter().enumerate() {
+        let distance = (head + perimeter - idx) % perimeter;
+        let shine = if distance < tail {
+            1.0 - distance as f32 / tail as f32
+        } else {
+            0.0
+        };
+
+        let color = if shine > 0.0 {
+            color_mix(base_color, Color::Rgb(240, 248, 255), 0.25 + shine * 0.75)
+        } else {
+            base_color
+        };
+
+        if let Some(cell) = buf.cell_mut((*x, *y)) {
+            cell.set_style(Style::default().fg(color));
+        }
+    }
+}
+
+fn border_perimeter_cells(area: Rect) -> Vec<(u16, u16)> {
+    if area.width < 2 || area.height < 2 {
+        return Vec::new();
+    }
+
+    let mut cells = Vec::with_capacity((area.width as usize + area.height as usize) * 2);
+    let left = area.x;
+    let right = area.x + area.width - 1;
+    let top = area.y;
+    let bottom = area.y + area.height - 1;
+
+    for x in left..=right {
+        cells.push((x, top));
+    }
+    for y in (top + 1)..=bottom {
+        cells.push((right, y));
+    }
+    if bottom > top {
+        for x in (left..right).rev() {
+            cells.push((x, bottom));
+        }
+    }
+    if right > left {
+        for y in ((top + 1)..bottom).rev() {
+            cells.push((left, y));
+        }
+    }
+
+    cells
+}
+
+fn color_mix(from: Color, to: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    let (fr, fg, fb) = color_rgb(from);
+    let (tr, tg, tb) = color_rgb(to);
+    Color::Rgb(
+        (fr as f32 + (tr as f32 - fr as f32) * t).round() as u8,
+        (fg as f32 + (tg as f32 - fg as f32) * t).round() as u8,
+        (fb as f32 + (tb as f32 - fb as f32) * t).round() as u8,
+    )
+}
+
+fn color_rgb(color: Color) -> (u8, u8, u8) {
+    match color {
+        Color::Rgb(r, g, b) => (r, g, b),
+        Color::White => (255, 255, 255),
+        Color::Black => (0, 0, 0),
+        Color::LightCyan => (224, 255, 255),
+        Color::Cyan => (0, 255, 255),
+        Color::Gray => (128, 128, 128),
+        Color::DarkGray => (64, 64, 64),
+        _ => (180, 200, 230),
+    }
 }
 
 fn build_node_create_effect() -> tachyonfx::Effect {
@@ -1233,6 +1356,10 @@ fn star_seed(x: i64, y: i64) -> u64 {
     h ^= h >> 33;
     h = h.wrapping_mul(0xC4CE_B9FE_1A85_EC53);
     h ^ (h >> 33)
+}
+
+fn star_seed_unit(seed: u64, shift: u32) -> f64 {
+    ((seed >> shift) & 0xFF) as f64 / 255.0
 }
 
 fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String {
