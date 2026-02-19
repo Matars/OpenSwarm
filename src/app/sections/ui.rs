@@ -691,8 +691,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
                 .add_modifier(Modifier::BOLD)
         } else if entry.is_current {
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::LightMagenta)
+                .fg(Color::LightBlue)
                 .add_modifier(Modifier::BOLD)
         } else if entry.dirty {
             Style::default().fg(Color::Yellow)
@@ -811,7 +810,7 @@ fn draw_unicode_worktree_graph(
             rx.saturating_sub(area.x),
             ry.saturating_sub(area.y),
             '●',
-            Style::default().fg(Color::LightMagenta),
+            Style::default().fg(Color::LightBlue),
         );
     }
 
@@ -828,7 +827,7 @@ fn draw_unicode_worktree_graph(
         let node_color = if selected {
             Color::LightCyan
         } else if entry.is_current {
-            Color::LightMagenta
+            Color::LightBlue
         } else if entry.dirty {
             Color::Yellow
         } else {
@@ -1697,7 +1696,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
         WorktreePane::Canvas => vec![
             Line::from("Worktree Graph"),
             Line::from(""),
-            Line::from("- Magenta node = current branch worktree"),
+            Line::from("- Blue node = current branch worktree"),
             Line::from("- Cyan ring = selected worktree"),
             Line::from("- Yellow nodes = dirty (uncommitted changes)"),
             Line::from("- Node suffix animates for active: | / - \\"),
