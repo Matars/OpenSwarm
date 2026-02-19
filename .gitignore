@@ -1,4 +1,6 @@
 /target/
+/site/
+/.venv/
 
 # OS files
 .DS_Store
