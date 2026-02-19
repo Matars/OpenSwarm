@@ -687,8 +687,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
         let label = canvas_node_label(app, entry, selected);
         let style = if selected {
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::LightCyan)
+                .fg(Color::LightCyan)
                 .add_modifier(Modifier::BOLD)
         } else if entry.is_current {
             Style::default()
@@ -707,6 +706,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
             node_points[idx],
             label.as_str(),
             style,
+            selected,
         );
     }
 }
@@ -1109,16 +1109,21 @@ fn draw_canvas_label(
     point: (f64, f64),
     label: &str,
     style: Style,
+    selected: bool,
 ) {
     let Some((sx, sy)) = canvas_point_to_screen(area, bounds, point) else {
         return;
     };
     let label_width = label.chars().count() as u16;
     let horizontal_padding = 1u16;
-    let box_width = label_width
-        .saturating_add(horizontal_padding.saturating_mul(2))
-        .saturating_add(2);
-    let box_height = 3u16;
+    let box_width = if selected {
+        label_width.saturating_add(horizontal_padding.saturating_mul(2))
+    } else {
+        label_width
+            .saturating_add(horizontal_padding.saturating_mul(2))
+            .saturating_add(2)
+    };
+    let box_height = if selected { 2u16 } else { 3u16 };
     if label_width == 0 || box_width >= area.width || box_height > area.height {
         return;
     }
@@ -1136,22 +1141,29 @@ fn draw_canvas_label(
         .saturating_add(1)
         .clamp(area.y, area.bottom().saturating_sub(box_height));
     let rect = Rect::new(x, y, box_width, box_height);
-    frame.render_widget(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_type(ratatui::widgets::BorderType::Rounded)
-            .border_style(style)
-            .style(style),
-        rect,
-    );
+
+    let mut block = Block::default()
+        .borders(if selected {
+            Borders::BOTTOM
+        } else {
+            Borders::ALL
+        })
+        .border_style(style)
+        .style(Style::default().bg(Color::Black));
+    if !selected {
+        block = block.border_type(ratatui::widgets::BorderType::Rounded);
+    }
+    frame.render_widget(block, rect);
+
+    let text_x = if selected {
+        x.saturating_add(horizontal_padding)
+    } else {
+        x.saturating_add(1 + horizontal_padding)
+    };
+    let text_y = y;
     frame.render_widget(
         Paragraph::new(label.to_string()).style(style),
-        Rect::new(
-            x.saturating_add(1 + horizontal_padding),
-            y.saturating_add(1),
-            label_width,
-            1,
-        ),
+        Rect::new(text_x, text_y, label_width, 1),
     );
 }
 
