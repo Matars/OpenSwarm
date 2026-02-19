@@ -608,11 +608,13 @@ fn update_connected_parent(app: &App) -> Result<String, Box<dyn Error>> {
     }
 
     let fetch = run_git(&["-C", parent.path.as_str(), "fetch", "--all", "--prune"])?;
+    let pull = run_git(&["-C", parent.path.as_str(), "pull"])?;
 
     Ok(format!(
-        "Fetched parent '{}' - {}",
+        "Fetched + pulled parent '{}' - fetch: {}; pull: {}",
         parent.branch,
         single_line(fetch.as_str()),
+        single_line(pull.as_str()),
     ))
 }
 
