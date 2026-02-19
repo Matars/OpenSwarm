@@ -203,8 +203,7 @@ fn draw_files_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
         .highlight_style(
             Style::default()
                 .fg(Color::White)
-                .bg(Color::Rgb(42, 58, 86))
-                .add_modifier(Modifier::BOLD),
+                .add_modifier(Modifier::UNDERLINED),
         )
         .highlight_symbol("▶ ")
         .style(Style::default().bg(Color::Black));
