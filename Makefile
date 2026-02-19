@@ -8,7 +8,8 @@ dev:
 
 $(DOCS_BUNDLE_STAMP): Gemfile
 	@mkdir -p .bundle
-	@bundle install --path .bundle/gems
+	@bundle config set --local path .bundle/gems
+	@bundle install
 	@touch "$(DOCS_BUNDLE_STAMP)"
 
 docs-deps: $(DOCS_BUNDLE_STAMP)
