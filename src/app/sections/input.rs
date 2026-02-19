@@ -347,25 +347,6 @@ fn launch_agent_in_terminal(
     Ok(())
 }
 
-fn shell_ansi_c_quote(text: &str) -> String {
-    let mut out = String::from("$'");
-    for ch in text.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '\'' => out.push_str("\\'"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c.is_control() => {
-                out.push_str(format!("\\x{:02x}", c as u32).as_str());
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('\'');
-    out
-}
-
 fn launch_opencode_conflict_resolution(app: &mut App) -> Result<(), Box<dyn Error>> {
     refresh_runtime_settings(app);
 
@@ -386,14 +367,16 @@ fn launch_opencode_conflict_resolution(app: &mut App) -> Result<(), Box<dyn Erro
 
     open_terminal_popup_for_path(app, context.parent_path.as_str())?;
     let prompt = build_conflict_resolve_prompt(app, &context);
-    let cmd = format!(
-        "opencode --prompt {}\r",
-        shell_ansi_c_quote(prompt.as_str())
-    );
-    write_to_agent(app, context.parent_path.as_str(), cmd.as_str())?;
+    write_to_agent(app, context.parent_path.as_str(), "opencode\r")?;
+    let prompt_with_enter = format!("{}\r", normalize_terminal_newlines(prompt.as_str()));
+    write_to_agent(
+        app,
+        context.parent_path.as_str(),
+        prompt_with_enter.as_str(),
+    )?;
     app.pending_conflict_context = None;
     app.confirm_conflict_resolve_yes = false;
-    app.status_line = "Launched OpenCode with configured conflict prompt".to_string();
+    app.status_line = "Launched OpenCode and pasted configured conflict prompt".to_string();
     Ok(())
 }
 
@@ -964,6 +947,9 @@ fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
     }
 
     match code {
+        KeyCode::Esc => {
+            write_to_agent(app, path.as_str(), "\x1b")?;
+        }
         KeyCode::Tab => {
             write_to_agent(app, path.as_str(), "\t")?;
         }
