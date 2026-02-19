@@ -518,6 +518,7 @@ fn merge_selected_into_parent(app: &mut App) -> Result<String, Box<dyn Error>> {
     if !merge.status.success() {
         let conflicts = conflicted_files_in_worktree(parent.path.as_str());
         if !conflicts.is_empty() {
+            refresh_runtime_settings(app);
             app.pending_conflict_context = Some(ConflictResolveContext {
                 parent_path: parent.path.clone(),
                 source_branch: selected.branch.clone(),
