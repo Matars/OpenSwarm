@@ -1062,101 +1062,66 @@ fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &App) {
         .map(|elapsed| elapsed.as_secs_f64())
         .unwrap_or(0.0)
         % 10_000.0;
-    let zoom = app.worktree_canvas_zoom.clamp(0.65, 3.4);
-
-    let tile_w = (6.2 / zoom).clamp(3.6, 8.0);
-    let tile_h = (3.0 / zoom).clamp(2.1, 4.4);
-    let drift_x = seconds * 0.18;
-    let drift_y = seconds * 0.11;
+    let drift_x = (seconds * 0.35).floor() as i64;
+    let drift_y = (seconds * 0.17).floor() as i64;
+    let pan_x = (app.worktree_canvas_pan_x * 200.0).round() as i64;
+    let pan_y = (app.worktree_canvas_pan_y * 140.0).round() as i64;
 
     for y in 0..area.height {
         for x in 0..area.width {
-            let mut mask = 0u8;
-            for sub_y in 0..4u16 {
-                for sub_x in 0..2u16 {
-                    let fx = x as f64 + (sub_x as f64 + 0.5) * 0.5;
-                    let fy = y as f64 + (sub_y as f64 + 0.5) * 0.25;
-                    let px = fx / tile_w + app.worktree_canvas_pan_x * 1.1 + drift_x;
-                    let py = fy / tile_h + app.worktree_canvas_pan_y * 0.9 + drift_y;
-                    let tx = px.floor() as i64;
-                    let ty = py.floor() as i64;
-                    let ux = px - tx as f64;
-                    let uy = py - ty as f64;
+            let wx = x as i64 + pan_x + drift_x;
+            let wy = y as i64 + pan_y + drift_y;
+            let seed = star_seed(wx, wy);
 
-                    let seed = truchet_seed(tx, ty);
-                    let orient = (seed & 1) == 1;
-                    if truchet_arc_delta(ux, uy, orient) <= 0.1 {
-                        mask |= braille_bit(sub_x, sub_y);
-                    }
-                }
+            let dust_roll = seed & 0xFF;
+            if dust_roll < 26 {
+                paint_graph_char(
+                    buf,
+                    area,
+                    x,
+                    y,
+                    '·',
+                    Style::default().fg(Color::Rgb(29, 33, 51)),
+                );
             }
 
-            let center_px = (x as f64 + 0.5) / tile_w + app.worktree_canvas_pan_x * 1.1 + drift_x;
-            let center_py = (y as f64 + 0.5) / tile_h + app.worktree_canvas_pan_y * 0.9 + drift_y;
-            let center_seed = truchet_seed(center_px.floor() as i64, center_py.floor() as i64);
-
-            if mask == 0 {
-                if ((center_seed >> 3) & 31) == ((x as u64 + y as u64) & 31) {
-                    paint_graph_char(buf, area, x, y, '·', Style::default().fg(Color::DarkGray));
-                }
+            let star_roll = (seed >> 8) % 1000;
+            if star_roll >= 9 {
                 continue;
             }
 
-            let glyph = braille_char(mask);
+            let phase = ((seed >> 20) & 0x3FF) as f64 / 31.0;
+            let speed = 0.65 + ((seed >> 30) & 0xF) as f64 * 0.08;
+            let twinkle = ((seconds * speed + phase).sin() + 1.0) * 0.5;
 
-            let pulse = ((seconds * 0.8 + (center_seed % 13) as f64 * 0.12).sin() + 1.0) * 0.5;
-            let color = if pulse > 0.78 {
-                Color::DarkGray
+            let (glyph, color) = if star_roll <= 1 {
+                if twinkle > 0.88 {
+                    ('✦', Color::White)
+                } else if twinkle > 0.72 {
+                    ('⋆', Color::LightCyan)
+                } else {
+                    ('·', Color::Rgb(132, 148, 184))
+                }
+            } else if star_roll <= 4 {
+                if twinkle > 0.86 {
+                    ('✧', Color::Rgb(220, 233, 255))
+                } else if twinkle > 0.68 {
+                    ('•', Color::Rgb(170, 192, 235))
+                } else {
+                    ('·', Color::Rgb(109, 122, 157))
+                }
+            } else if twinkle > 0.8 {
+                ('•', Color::Rgb(190, 206, 242))
             } else {
-                Color::Rgb(28, 36, 52)
+                ('·', Color::Rgb(104, 118, 150))
             };
+
             paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
         }
     }
 }
 
-fn truchet_arc_delta(ux: f64, uy: f64, orient: bool) -> f64 {
-    const RADIUS: f64 = 0.92;
-
-    let centers = if orient {
-        [(0.0, 0.0), (1.0, 1.0)]
-    } else {
-        [(1.0, 0.0), (0.0, 1.0)]
-    };
-
-    let mut best_delta = f64::MAX;
-    for (cx, cy) in centers {
-        let dx = ux - cx;
-        let dy = uy - cy;
-        let dist = (dx * dx + dy * dy).sqrt();
-        let delta = (dist - RADIUS).abs();
-        if delta < best_delta {
-            best_delta = delta;
-        }
-    }
-
-    best_delta
-}
-
-fn braille_bit(sub_x: u16, sub_y: u16) -> u8 {
-    match (sub_x, sub_y) {
-        (0, 0) => 0x01,
-        (0, 1) => 0x02,
-        (0, 2) => 0x04,
-        (0, 3) => 0x40,
-        (1, 0) => 0x08,
-        (1, 1) => 0x10,
-        (1, 2) => 0x20,
-        (1, 3) => 0x80,
-        _ => 0,
-    }
-}
-
-fn braille_char(mask: u8) -> char {
-    char::from_u32(0x2800 + mask as u32).unwrap_or(' ')
-}
-
-fn truchet_seed(x: i64, y: i64) -> u64 {
+fn star_seed(x: i64, y: i64) -> u64 {
     let mut h = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     h ^= (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
     h ^= h >> 33;
