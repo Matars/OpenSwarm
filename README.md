@@ -110,11 +110,10 @@ printf '%s\n' "$(pwd)/target/release/openswarm"
 
 ### Terminal popup controls
 
-- `Ctrl+g` or `:`: toggle input and control mode
+- `Ctrl+g` (or `Cmd+g` on macOS): toggle input and control mode
 - `Esc`: close popup and keep session in background
 - `q`: terminate session
 - `r`: restart session
-- `i`: return to input mode
 
 ## Notes
 

@@ -1734,7 +1734,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- o: open/reopen normal terminal popup for selected node"),
             Line::from("- O: open agent picker for selected or conflicted parent"),
             Line::from("- default agent and prompts are editable in ~/.config/openswarm"),
-            Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
+            Line::from("- terminal popup: Ctrl+G/Cmd+G toggles INPUT/CONTROL"),
             Line::from("- f: fetch + pull connected parent node"),
             Line::from("- c: selected worktree add+commit with message popup"),
             Line::from("- p: push selected worktree branch"),
@@ -2043,10 +2043,10 @@ fn terminal_popup_mode_style(mode: TerminalPopupMode) -> Style {
 fn terminal_footer_text(mode: TerminalPopupMode) -> &'static str {
     match mode {
         TerminalPopupMode::Input => {
-            "INPUT mode: typing goes to terminal. : enters CONTROL (Ctrl+G also works)."
+            "INPUT mode: typing goes to terminal. Ctrl+G/Cmd+G toggles CONTROL."
         }
         TerminalPopupMode::Control => {
-            "CONTROL mode: Esc background, q quit session, r restart, i return INPUT."
+            "CONTROL mode: Esc background, q quit session, r restart, Ctrl+G/Cmd+G returns INPUT."
         }
     }
 }

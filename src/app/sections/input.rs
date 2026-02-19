@@ -927,18 +927,7 @@ fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
         launch_shell_session(app, path.as_str())?;
     }
 
-    if key.modifiers.contains(KeyModifiers::CONTROL) && matches!(code, KeyCode::Char('g')) {
-        app.terminal_popup_mode = match app.terminal_popup_mode {
-            TerminalPopupMode::Input => TerminalPopupMode::Control,
-            TerminalPopupMode::Control => TerminalPopupMode::Input,
-        };
-        return Ok(());
-    }
-
-    if app.terminal_popup_mode == TerminalPopupMode::Input
-        && key.modifiers.is_empty()
-        && matches!(code, KeyCode::Char(':'))
-    {
+    if is_terminal_mode_toggle(key) {
         app.terminal_popup_mode = match app.terminal_popup_mode {
             TerminalPopupMode::Input => TerminalPopupMode::Control,
             TerminalPopupMode::Control => TerminalPopupMode::Input,
@@ -963,9 +952,6 @@ fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
                 app.agent_sessions.remove(path.as_str());
                 launch_shell_session(app, path.as_str())?;
                 app.status_line = "Terminal restarted".to_string();
-            }
-            KeyCode::Char('i') => {
-                app.terminal_popup_mode = TerminalPopupMode::Input;
             }
             _ => {}
         }
@@ -1024,6 +1010,13 @@ fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
     }
 
     Ok(())
+}
+
+fn is_terminal_mode_toggle(key: KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char('g') | KeyCode::Char('G'))
+        && key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER)
 }
 
 fn open_notes_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
