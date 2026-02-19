@@ -1596,7 +1596,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("f", Style::default().fg(Color::Cyan)),
-            Span::raw(" fetch parent"),
+            Span::raw(" fetch + pull parent"),
         ]),
         Line::from(vec![
             Span::styled("c", Style::default().fg(Color::Magenta)),
@@ -1736,7 +1736,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- O: open agent picker for selected or conflicted parent"),
             Line::from("- default agent and prompts are editable in ~/.config/openswarm"),
             Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
-            Line::from("- f: fetch connected parent node"),
+            Line::from("- f: fetch + pull connected parent node"),
             Line::from("- c: selected worktree add+commit with message popup"),
             Line::from("- p: push selected worktree branch"),
             Line::from("- n: open notes popup (notes.md)"),
