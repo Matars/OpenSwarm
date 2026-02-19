@@ -1846,7 +1846,6 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
         ],
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
-<<<<<<< HEAD
             Line::from("- a: create worktree from branch name"),
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- O: open agent picker for selected/conflicted parent"),
@@ -1855,16 +1854,6 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- f: fetch + pull connected parent node"),
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- d: delete selected worktree (asks force-delete if dirty)"),
-=======
-            Line::from("- a: create worktree from a branch name"),
-            Line::from("- o: open/reopen terminal for selected node"),
-            Line::from("- O: open agent picker for selected/conflicted parent"),
-            Line::from("- c: stage all + commit in selected worktree"),
-            Line::from("- p: push selected branch (sets upstream if needed)"),
-            Line::from("- f: fetch + pull connected parent"),
-            Line::from("- m: merge selected branch into connected parent"),
-            Line::from("- d: remove selected worktree (prompts if dirty)"),
->>>>>>> 5b19feaf80d68f3f35c1a875daf9743ebf589163
             Line::from("- x: prune stale worktrees"),
             Line::from("- n: open notes popup (notes.md), L: git command history"),
             Line::from("- Terminal popup: ':' control mode, Ctrl+G toggles input/control"),
