@@ -48,16 +48,23 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
             open_notes_popup(app)?;
         }
         KeyCode::Char('p') => {
-            let output = push_with_upstream()?;
+            let output = if let Some(path) = app.changes_worktree_path.as_deref() {
+                push_with_upstream_at(path)?
+            } else {
+                push_with_upstream()?
+            };
             app.status_line = output;
             refresh_status(app);
         }
         KeyCode::Char('s') => {
-            app.status_line = run_git(&["stash", "push", "--include-untracked"])?;
+            app.status_line = run_git_in(
+                app.changes_worktree_path.as_deref(),
+                &["stash", "push", "--include-untracked"],
+            )?;
             refresh_status(app);
         }
         KeyCode::Char('S') => {
-            app.status_line = run_git(&["stash", "pop"])?;
+            app.status_line = run_git_in(app.changes_worktree_path.as_deref(), &["stash", "pop"])?;
             refresh_status(app);
         }
         _ => {}
@@ -70,9 +77,17 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
     match code {
         KeyCode::Char('q') => return Ok(request_quit(app)),
         KeyCode::Char('w') => {
+            app.changes_worktree_path = app
+                .selected_worktree()
+                .map(|worktree| worktree.path.clone());
             app.view_mode = ViewMode::Changes;
             app.show_panel_help = false;
-            app.status_line = "Switched to changed files view".to_string();
+            if let Some(path) = app.changes_worktree_path.as_deref() {
+                app.status_line = format!("Switched to changed files view for {}", path);
+            } else {
+                app.status_line = "Switched to changed files view".to_string();
+            }
+            refresh_status(app);
         }
         KeyCode::Tab => {
             app.next_worktree_pane();
@@ -329,6 +344,54 @@ fn launch_agent_in_terminal(
     }
 
     app.status_line = format!("Launched {} in terminal", agent.display_name());
+    Ok(())
+}
+
+fn shell_ansi_c_quote(text: &str) -> String {
+    let mut out = String::from("$'");
+    for ch in text.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '\'' => out.push_str("\\'"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => {
+                out.push_str(format!("\\x{:02x}", c as u32).as_str());
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('\'');
+    out
+}
+
+fn launch_opencode_conflict_resolution(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let Some(context) = app.pending_conflict_context.clone() else {
+        app.mode = Mode::Normal;
+        app.confirm_conflict_resolve_yes = false;
+        app.status_line = "No pending merge-conflict context found".to_string();
+        return Ok(());
+    };
+
+    if !command_exists_on_path("opencode") {
+        open_terminal_popup_for_path(app, context.parent_path.as_str())?;
+        app.status_line =
+            "OpenCode CLI not found on PATH; opened shell in conflicted parent worktree"
+                .to_string();
+        return Ok(());
+    }
+
+    open_terminal_popup_for_path(app, context.parent_path.as_str())?;
+    let prompt = build_conflict_resolve_prompt(app, &context);
+    let cmd = format!(
+        "opencode --prompt {}\r",
+        shell_ansi_c_quote(prompt.as_str())
+    );
+    write_to_agent(app, context.parent_path.as_str(), cmd.as_str())?;
+    app.pending_conflict_context = None;
+    app.confirm_conflict_resolve_yes = false;
+    app.status_line = "Launched OpenCode with configured conflict prompt".to_string();
     Ok(())
 }
 
@@ -661,6 +724,39 @@ fn handle_branch_conflict_confirm_mode_key(
             app.confirm_delete_branch_yes = false;
             app.pending_create_branch.clear();
             app.new_worktree_branch.clear();
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn handle_conflict_resolve_confirm_mode_key(
+    app: &mut App,
+    code: KeyCode,
+) -> Result<(), Box<dyn Error>> {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.confirm_conflict_resolve_yes = false;
+            app.status_line =
+                "Agent conflict resolution cancelled (you can still resolve manually)".to_string();
+        }
+        KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
+            app.confirm_conflict_resolve_yes = !app.confirm_conflict_resolve_yes;
+        }
+        KeyCode::Char('y') => app.confirm_conflict_resolve_yes = true,
+        KeyCode::Char('n') => app.confirm_conflict_resolve_yes = false,
+        KeyCode::Enter => {
+            if app.confirm_conflict_resolve_yes {
+                launch_opencode_conflict_resolution(app)?;
+            } else {
+                app.mode = Mode::Normal;
+                app.confirm_conflict_resolve_yes = false;
+                app.status_line =
+                    "Agent conflict resolution skipped (resolve manually or press Shift+O)"
+                        .to_string();
+            }
         }
         _ => {}
     }
@@ -1374,7 +1470,10 @@ fn handle_commit_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Er
             if message.is_empty() {
                 app.status_line = "Commit message is empty".to_string();
             } else {
-                let output = run_git(&["commit", "-m", message])?;
+                let output = run_git_in(
+                    app.changes_worktree_path.as_deref(),
+                    &["commit", "-m", message],
+                )?;
                 app.status_line = output;
                 refresh_status(app);
             }

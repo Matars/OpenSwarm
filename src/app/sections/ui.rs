@@ -69,6 +69,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         draw_branch_conflict_confirm_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::WorktreeConflictResolveConfirm) {
+        draw_conflict_resolve_confirm_modal(frame, app);
+    }
+
     if matches!(app.mode, Mode::WorktreeRemoveDirtyConfirm) {
         draw_worktree_remove_dirty_confirm_modal(frame, app);
     }
@@ -1425,6 +1429,15 @@ fn worktree_parent_label(app: &App, parents: &[Option<usize>]) -> String {
 }
 
 fn current_session_branch(app: &App) -> String {
+    if let Some(current) = app.worktrees.iter().find(|entry| entry.is_current) {
+        if !current.detached && !current.branch.is_empty() {
+            return current.branch.clone();
+        }
+        if !current.head.is_empty() {
+            return current.head.clone();
+        }
+    }
+
     let raw = app.branch.trim();
     let name = raw
         .strip_prefix("HEAD (detached at ")
@@ -2338,6 +2351,104 @@ fn draw_branch_conflict_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App)
     );
 }
 
+fn draw_conflict_resolve_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(78, 36, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Resolve With Agent")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightBlue));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(3),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let parent_path = app
+        .pending_conflict_context
+        .as_ref()
+        .map(|ctx| ctx.parent_path.as_str())
+        .unwrap_or("(unknown)");
+    let files = app
+        .pending_conflict_context
+        .as_ref()
+        .map(|ctx| {
+            if ctx.conflicted_files.is_empty() {
+                "(none reported)".to_string()
+            } else {
+                truncate_text(ctx.conflicted_files.join(", ").as_str(), 120)
+            }
+        })
+        .unwrap_or_else(|| "(none reported)".to_string());
+
+    frame.render_widget(
+        Paragraph::new("Merge conflicts were detected. Launch OpenCode now?")
+            .style(Style::default().fg(Color::White)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("parent: ", Style::default().fg(Color::Gray)),
+            Span::styled(parent_path, Style::default().fg(Color::White)),
+        ])),
+        layout[1],
+    );
+
+    frame.render_widget(
+        Paragraph::new("conflicted files:").style(Style::default().fg(Color::Gray)),
+        layout[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new(files)
+            .block(Block::default().borders(Borders::ALL))
+            .style(Style::default().fg(Color::White)),
+        layout[3],
+    );
+
+    let yes_style = if app.confirm_conflict_resolve_yes {
+        Style::default().fg(Color::Black).bg(Color::LightBlue)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let no_style = if app.confirm_conflict_resolve_yes {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::Black).bg(Color::LightGreen)
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("[ Yes: launch OpenCode ]", yes_style),
+            Span::raw("   "),
+            Span::styled("[ No: resolve manually ]", no_style),
+        ]))
+        .alignment(Alignment::Center),
+        layout[4],
+    );
+
+    frame.render_widget(
+        Paragraph::new(
+            "No is selected by default | <-/-> toggle, y/n set, Enter confirm, Esc cancel",
+        )
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::Gray)),
+        layout[5],
+    );
+}
+
 fn draw_legacy_workspace_migrate_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     let popup = centered_rect(82, 36, frame.area());
     frame.render_widget(Clear, popup);
@@ -2522,10 +2633,10 @@ fn worktree_flags(entry: &WorktreeEntry) -> String {
     }
 }
 
-fn build_tree_items(files: &[FileEntry]) -> Vec<TreeItem> {
+fn build_tree_items(files: &[FileEntry], repo_path: Option<&str>) -> Vec<TreeItem> {
     let mut file_status: BTreeMap<String, PathStatus> = BTreeMap::new();
     let mut folder_status: BTreeMap<String, PathStatus> = BTreeMap::new();
-    let mut file_delta = collect_file_deltas(files);
+    let mut file_delta = collect_file_deltas(files, repo_path);
     let mut folder_delta: BTreeMap<String, PathDelta> = BTreeMap::new();
 
     for file in files {
@@ -2537,7 +2648,10 @@ fn build_tree_items(files: &[FileEntry]) -> Vec<TreeItem> {
         file_status.insert(file.path.clone(), status);
 
         if file.untracked {
-            let added = fs::read_to_string(&file.path)
+            let file_path = repo_path
+                .map(|base| Path::new(base).join(file.path.as_str()))
+                .unwrap_or_else(|| PathBuf::from(file.path.as_str()));
+            let added = fs::read_to_string(file_path)
                 .map(|text| text.lines().count())
                 .unwrap_or(0);
             file_delta
@@ -2585,10 +2699,13 @@ fn build_tree_items(files: &[FileEntry]) -> Vec<TreeItem> {
     items
 }
 
-fn collect_file_deltas(files: &[FileEntry]) -> BTreeMap<String, PathDelta> {
+fn collect_file_deltas(
+    files: &[FileEntry],
+    repo_path: Option<&str>,
+) -> BTreeMap<String, PathDelta> {
     let mut deltas: BTreeMap<String, PathDelta> = BTreeMap::new();
 
-    if let Some(numstat) = git_output(&["diff", "--numstat", "HEAD"]) {
+    if let Some(numstat) = git_output_in(repo_path, &["diff", "--numstat", "HEAD"]) {
         for line in numstat.lines() {
             let mut parts = line.split('\t');
             let added_raw = parts.next().unwrap_or_default();
