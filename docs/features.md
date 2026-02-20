@@ -7,7 +7,7 @@ nav_order: 2
 
 ## Worktree graph visualization
 
-Worktrees are displayed as an interactive graph with parent-child relationships. Navigate with arrow keys or `h`/`j`/`k`/`l`. Zoom and pan the canvas. Each node shows branch name, dirty state, ahead/behind counts, and live agent activity. Edges are drawn with Unicode box-drawing characters and color-coded by branch.
+Worktrees are displayed as an interactive graph with parent-child relationships. Navigate with arrow keys or `h`/`j`/`k`/`l`. Zoom and pan the canvas. Each node shows branch name, status badges (`dirty`, `committed`, `local only`, `pushed`, `merged with parent`), ahead/behind counts, and live agent activity. Edges are drawn with Unicode box-drawing characters and color-coded by branch.
 
 ## Embedded PTY terminals
 

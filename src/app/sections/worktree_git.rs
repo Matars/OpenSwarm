@@ -381,14 +381,15 @@ fn hydrate_worktree_runtime_state(
         entry.branch = "detached".to_string();
     }
 
-    let (dirty, ahead, behind) = worktree_branch_state(entry.path.as_str());
+    let (dirty, ahead, behind, has_upstream) = worktree_branch_state(entry.path.as_str());
     entry.dirty = dirty;
     entry.ahead = ahead;
     entry.behind = behind;
+    entry.has_upstream = has_upstream;
     entry.parent_hint = parent_hints.get(entry.branch.as_str()).cloned();
 }
 
-fn worktree_branch_state(path: &str) -> (bool, usize, usize) {
+fn worktree_branch_state(path: &str) -> (bool, usize, usize, bool) {
     let output = match Command::new("git")
         .args(["-C", path, "status", "--porcelain=1", "-b", "-uall"])
         .output()
@@ -396,19 +397,21 @@ fn worktree_branch_state(path: &str) -> (bool, usize, usize) {
         Ok(out) if out.status.success() => {
             sanitize_for_tui(String::from_utf8_lossy(&out.stdout).as_ref())
         }
-        _ => return (false, 0, 0),
+        _ => return (false, 0, 0, false),
     };
 
     let mut lines = output.lines();
     let mut ahead = 0usize;
     let mut behind = 0usize;
+    let mut has_upstream = false;
     if let Some(head) = lines.next() {
-        let (_, parsed_ahead, parsed_behind) = parse_branch_snapshot(head);
+        let (_, parsed_ahead, parsed_behind, parsed_has_upstream) = parse_branch_snapshot(head);
         ahead = parsed_ahead;
         behind = parsed_behind;
+        has_upstream = parsed_has_upstream;
     }
     let dirty = lines.any(|line| status_line_counts_as_dirty(line));
-    (dirty, ahead, behind)
+    (dirty, ahead, behind, has_upstream)
 }
 
 fn status_line_counts_as_dirty(line: &str) -> bool {
@@ -428,12 +431,14 @@ fn status_line_counts_as_dirty(line: &str) -> bool {
     true
 }
 
-fn parse_branch_snapshot(line: &str) -> (String, usize, usize) {
+fn parse_branch_snapshot(line: &str) -> (String, usize, usize, bool) {
     let mut ahead = 0usize;
     let mut behind = 0usize;
 
     let stripped = line.strip_prefix("## ").unwrap_or(line);
+    let mut has_upstream = false;
     let branch = if let Some((name, rest)) = stripped.split_once("...") {
+        has_upstream = true;
         if let Some(start) = rest.find('[') {
             if let Some(end) = rest[start + 1..].find(']') {
                 let info = &rest[start + 1..start + 1 + end];
@@ -452,7 +457,7 @@ fn parse_branch_snapshot(line: &str) -> (String, usize, usize) {
         stripped.trim().to_string()
     };
 
-    (branch, ahead, behind)
+    (branch, ahead, behind, has_upstream)
 }
 
 fn normalize_path(path: &str) -> String {
@@ -1298,7 +1303,7 @@ fn run_git_with_input(args: &[&str], input: &[u8]) -> Result<CommandResult, Box<
 }
 
 fn parse_branch_line(app: &mut App, line: &str) {
-    let (branch, ahead, behind) = parse_branch_snapshot(line);
+    let (branch, ahead, behind, _) = parse_branch_snapshot(line);
     app.branch = branch;
     app.ahead = ahead;
     app.behind = behind;
