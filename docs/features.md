@@ -34,6 +34,7 @@ When a merge produces conflicts, OpenSwarm shows the conflicted files and a cust
 ## Agent activity monitoring
 
 Each graph node shows live status: a spinning indicator when the agent is actively writing, idle duration when quiet, and a done/failed badge when the process exits. You can see at a glance which of your 5-10 agents are still working.
+In the details panel, token telemetry is estimated from terminal text content (shown as `tokens~`) to avoid counting ANSI redraw/control bytes as model tokens.
 
 ## Built-in notes editor
 

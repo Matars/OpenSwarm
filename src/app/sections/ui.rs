@@ -1514,12 +1514,45 @@ fn estimate_tokens(bytes: u64) -> u64 {
     bytes.saturating_add(3) / 4
 }
 
+fn agent_session_output_text_bytes(session: &AgentSession) -> u64 {
+    let screen = session.parser.screen();
+    let (rows, cols) = screen.size();
+    let mut bytes = 0u64;
+
+    for row in 0..rows {
+        let mut line = String::new();
+        for col in 0..cols {
+            let Some(cell) = screen.cell(row, col) else {
+                continue;
+            };
+            if cell.is_wide_continuation() {
+                continue;
+            }
+            let mut text = cell.contents();
+            if text.is_empty() {
+                text.push(' ');
+            }
+            line.push_str(text.as_str());
+        }
+
+        let trimmed = line.trim_end_matches(' ');
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        bytes = bytes.saturating_add(trimmed.len() as u64);
+        bytes = bytes.saturating_add(1);
+    }
+
+    bytes
+}
+
 fn agent_session_context_tokens(session: &AgentSession) -> u64 {
     estimate_tokens(session.bytes_to_agent)
 }
 
 fn agent_session_output_tokens(session: &AgentSession) -> u64 {
-    estimate_tokens(session.bytes_from_agent)
+    estimate_tokens(agent_session_output_text_bytes(session))
 }
 
 fn agent_session_total_tokens(session: &AgentSession) -> u64 {
@@ -1927,7 +1960,7 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             let context_rate = agent_session_context_tokens_per_second(session, now);
             let output_rate = agent_session_output_tokens_per_second(session, now);
             lines.push(Line::from(vec![
-                Span::styled("tokens: ", Style::default().fg(Color::Gray)),
+                Span::styled("tokens~:", Style::default().fg(Color::Gray)),
                 Span::styled(
                     format!(
                         "in {} ({}/s)",
@@ -1953,7 +1986,7 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             ]));
         } else {
             lines.push(Line::from(vec![
-                Span::styled("tokens: ", Style::default().fg(Color::Gray)),
+                Span::styled("tokens~:", Style::default().fg(Color::Gray)),
                 Span::styled("no pty session", Style::default().fg(Color::DarkGray)),
             ]));
         }
@@ -2206,7 +2239,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Shows branch/path/HEAD and worktree flags"),
             Line::from("- Shows ahead/behind and dirty/locked state"),
             Line::from("- Includes total PTY counts (live/active/idle)"),
-            Line::from("- Shows selected PTY token in/out totals with per-second rates"),
+            Line::from("- Shows selected PTY text-based token estimates with per-second rates"),
             Line::from("- Status section reports the latest command outcome"),
             Line::from("- Use this panel to validate readiness before push/merge"),
             Line::from("- Tab: move focus to next panel"),
