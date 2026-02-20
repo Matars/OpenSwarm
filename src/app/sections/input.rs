@@ -1,6 +1,7 @@
-fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn Error>> {
+fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn Error>> {
+    let code = key.code;
     if app.view_mode == ViewMode::Worktrees {
-        return handle_worktree_mode_key(app, code);
+        return handle_worktree_mode_key(app, key);
     }
 
     match code {
@@ -84,7 +85,14 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
     Ok(false)
 }
 
-fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn Error>> {
+fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn Error>> {
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('k') {
+        app.cycle_worktree_graph_builder();
+        app.status_line = format!("Graph builder: {}", app.worktree_graph_builder.label());
+        return Ok(false);
+    }
+
+    let code = key.code;
     match code {
         KeyCode::Char('q') => return Ok(request_quit(app)),
         KeyCode::Char('w') => {

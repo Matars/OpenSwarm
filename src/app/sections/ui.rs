@@ -553,9 +553,13 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
         || app.worktree_canvas_pan_x != 0.0
         || app.worktree_canvas_pan_y != 0.0
     {
-        format!("worktree graph [?]  z:{:.1}x", app.worktree_canvas_zoom)
+        format!(
+            "worktree graph [?]  {}  z:{:.1}x",
+            app.worktree_graph_builder.label(),
+            app.worktree_canvas_zoom
+        )
     } else {
-        "worktree graph [?]".to_string()
+        format!("worktree graph [?]  {}", app.worktree_graph_builder.label())
     };
     let block = Block::default()
         .title(title)
@@ -583,7 +587,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
 
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
     let collapsed_root_idx = None;
-    let logical = graph_layout(&parents);
+    let logical = graph_layout(&parents, app.worktree_graph_builder);
     let node_points: Vec<(f64, f64)> = logical
         .iter()
         .map(|point| logical_to_canvas_point(*point))
@@ -1640,7 +1644,14 @@ fn animated_agent_spinner(session: &AgentSession, now: Instant) -> char {
     FRAMES[(tick % FRAMES.len() as u128) as usize]
 }
 
-fn graph_layout(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
+fn graph_layout(parents: &[Option<usize>], builder: WorktreeGraphBuilder) -> Vec<(f32, f32)> {
+    match builder {
+        WorktreeGraphBuilder::TopDownBalanced => graph_layout_top_down_balanced(parents),
+        WorktreeGraphBuilder::Radial => graph_layout_radial(parents),
+    }
+}
+
+fn graph_layout_top_down_balanced(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
     let count = parents.len();
     if count == 0 {
         return Vec::new();
@@ -1704,6 +1715,70 @@ fn graph_layout(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
         for idx in 0..count {
             positions[idx].0 = (positions[idx].0 + forces[idx].0).clamp(0.06, 0.94);
             positions[idx].1 = (positions[idx].1 + forces[idx].1).clamp(0.12, 0.95);
+        }
+    }
+
+    positions
+}
+
+fn graph_layout_radial(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
+    let count = parents.len();
+    if count == 0 {
+        return Vec::new();
+    }
+
+    let depths = graph_depths(parents);
+    let mut child_counts = vec![0usize; count];
+    for parent_idx in parents.iter().flatten() {
+        if *parent_idx < count {
+            child_counts[*parent_idx] = child_counts[*parent_idx].saturating_add(1);
+        }
+    }
+
+    let center_idx = (0..count)
+        .filter(|idx| parents[*idx].is_none())
+        .max_by(|a, b| {
+            child_counts[*a]
+                .cmp(&child_counts[*b])
+                .then_with(|| b.cmp(a))
+        })
+        .unwrap_or(0);
+
+    let max_depth = depths
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, depth)| (idx != center_idx).then_some((*depth).max(1)))
+        .max()
+        .unwrap_or(1);
+
+    let mut positions = vec![(0.5f32, 0.5f32); count];
+    positions[center_idx] = (0.5, 0.5);
+    let mut angles = vec![0.0f32; count];
+    angles[center_idx] = -std::f32::consts::FRAC_PI_2;
+
+    for ring in 1..=max_depth {
+        let mut nodes: Vec<usize> = (0..count)
+            .filter(|idx| *idx != center_idx && depths[*idx].max(1) == ring)
+            .collect();
+        if nodes.is_empty() {
+            continue;
+        }
+
+        nodes.sort_by(|a, b| {
+            let pa = parents[*a].unwrap_or(center_idx);
+            let pb = parents[*b].unwrap_or(center_idx);
+            angles[pa].total_cmp(&angles[pb]).then_with(|| a.cmp(b))
+        });
+
+        let radius = (0.16 + (ring as f32 / max_depth as f32) * 0.34).min(0.44);
+        let full_turn = std::f32::consts::TAU;
+        for (slot, idx) in nodes.iter().enumerate() {
+            let angle =
+                -std::f32::consts::FRAC_PI_2 + (slot as f32 / nodes.len() as f32) * full_turn;
+            angles[*idx] = angle;
+            let x = 0.5 + radius * angle.cos();
+            let y = 0.5 + radius * angle.sin();
+            positions[*idx] = (x.clamp(0.06, 0.94), y.clamp(0.08, 0.94));
         }
     }
 
@@ -2252,6 +2327,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::styled("j/k", Style::default().fg(Color::LightBlue)),
             Span::raw(" child/parent level"),
         ]),
+        Line::from(vec![
+            Span::styled("Ctrl+K", Style::default().fg(Color::LightBlue)),
+            Span::raw(" next graph builder"),
+        ]),
     ]);
 
     let title = if app.git_task.is_some() {
@@ -2315,6 +2394,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("  arrows  - move by graph direction"),
             Line::from("  h/l     - move between siblings"),
             Line::from("  j/k     - move child/parent levels"),
+            Line::from("  Ctrl+K  - cycle graph builder (top-down/radial)"),
             Line::from("  Tab     - cycle graph/details/actions panels"),
             Line::from("  L       - open git command history popup"),
             Line::from(""),

@@ -45,6 +45,7 @@ Then:
 |-----|--------|
 | `w` | Toggle Changes / Worktrees views |
 | Arrow keys / `h` `j` `k` `l` | Move selection |
+| `Ctrl+K` | Cycle graph builder (top-down / radial) |
 | `Tab` | Cycle panes |
 | `+` / `-` / `0` | Zoom in / out / reset |
 | `W` `A` `S` `D` | Pan canvas |
