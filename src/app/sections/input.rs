@@ -336,6 +336,8 @@ fn launch_agent_in_terminal(
     path: &str,
     agent: ExternalAgent,
 ) -> Result<(), Box<dyn Error>> {
+    wait_for_terminal_ready(app, path);
+
     if let Some(context) = app.pending_conflict_context.as_ref() {
         if context.parent_path == path {
             let prompt = build_conflict_resolve_prompt(app, context);
@@ -344,7 +346,7 @@ fn launch_agent_in_terminal(
                 let launch_cmd = format!(
                     "{} --prompt {}\r",
                     agent.command_name(),
-                    shell_single_quote(prompt.as_str())
+                    shell_ansi_c_quote(prompt.as_str())
                 );
                 write_to_agent(app, path, launch_cmd.as_str())?;
                 app.pending_conflict_context = None;
@@ -401,8 +403,34 @@ fn normalize_terminal_newlines(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\n', "\r")
 }
 
-fn shell_single_quote(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "'\\''"))
+fn wait_for_terminal_ready(app: &mut App, path: &str) {
+    let needs_bootstrap_delay = app
+        .agent_sessions
+        .get(path)
+        .map(|session| session.state == AgentState::Launching && session.bytes_from_agent == 0)
+        .unwrap_or(false);
+
+    if needs_bootstrap_delay {
+        thread::sleep(Duration::from_millis(120));
+        drain_agent_events(app);
+    }
+}
+
+fn shell_ansi_c_quote(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    out.push_str("$'");
+    for ch in text.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '\'' => out.push_str("\\'"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out.push('\'');
+    out
 }
 
 fn refresh_runtime_settings(app: &mut App) {
