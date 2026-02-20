@@ -41,11 +41,7 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         let right = Layout::default()
             .direction(Direction::Vertical)
             .spacing(1)
-            .constraints([
-                Constraint::Percentage(24),
-                Constraint::Percentage(40),
-                Constraint::Percentage(36),
-            ])
+            .constraints(worktree_right_panel_constraints(app, columns[1]))
             .split(columns[1]);
 
         draw_worktree_canvas_panel(frame, app, columns[0]);
@@ -2055,13 +2051,60 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     frame.render_widget(panel, area);
 }
 
+fn worktree_right_panel_constraints(app: &App, area: Rect) -> [Constraint; 3] {
+    let desired_art_lines = trimmed_art_line_count(app);
+    let desired_art_height = desired_art_lines.saturating_add(2) as u16;
+
+    let total_height = area.height;
+    let spacing = 2u16;
+    let available = total_height.saturating_sub(spacing);
+    let min_details = 8u16;
+    let min_actions = 8u16;
+    let max_art = available.saturating_sub(min_details.saturating_add(min_actions));
+    let art_height = desired_art_height.clamp(3, max_art.max(3));
+
+    [
+        Constraint::Length(art_height),
+        Constraint::Min(min_details),
+        Constraint::Min(min_actions),
+    ]
+}
+
+fn trimmed_art_line_count(app: &App) -> usize {
+    let mut start = 0usize;
+    let mut end = app.config.worktree_graph_art.len();
+
+    while start < end && app.config.worktree_graph_art[start].trim().is_empty() {
+        start += 1;
+    }
+    while end > start && app.config.worktree_graph_art[end - 1].trim().is_empty() {
+        end -= 1;
+    }
+
+    end.saturating_sub(start)
+}
+
+fn trimmed_art_lines<'a>(app: &'a App) -> &'a [String] {
+    let mut start = 0usize;
+    let mut end = app.config.worktree_graph_art.len();
+
+    while start < end && app.config.worktree_graph_art[start].trim().is_empty() {
+        start += 1;
+    }
+    while end > start && app.config.worktree_graph_art[end - 1].trim().is_empty() {
+        end -= 1;
+    }
+
+    &app.config.worktree_graph_art[start..end]
+}
+
 fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
     let max_width = area.width.saturating_sub(2) as usize;
     let max_lines = area.height.saturating_sub(2) as usize;
     let mut lines: Vec<Line<'_>> = Vec::new();
 
     if max_width > 0 && max_lines > 0 {
-        for raw in app.config.worktree_graph_art.iter().take(max_lines) {
+        for raw in trimmed_art_lines(app).iter().take(max_lines) {
             let clean = sanitize_for_tui(raw.as_str());
             lines.push(Line::from(truncate_text(clean.as_str(), max_width)));
         }
@@ -2081,7 +2124,6 @@ fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect
     let panel = Paragraph::new(lines)
         .block(
             Block::default()
-                .title("art")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Gray))
                 .style(Style::default().bg(Color::Black)),

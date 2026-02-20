@@ -126,8 +126,9 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
         KeyCode::Char('j') => move_worktree_level_vertical(app, false),
         KeyCode::Char('k') => move_worktree_level_vertical(app, true),
         KeyCode::Char('r') => {
+            refresh_runtime_settings(app);
             refresh_worktrees(app);
-            app.status_line = "Refreshed worktree list".to_string();
+            app.status_line = "Refreshed worktree list + config".to_string();
         }
         KeyCode::Char('a') => {
             app.mode = Mode::WorktreeCreateInput;
