@@ -18,7 +18,7 @@ Created automatically on first run.
 ```toml
 # ~/.config/openswarm/config.toml
 
-# Agent to auto-launch with Shift+O. Leave empty to show the picker.
+# Agent to auto-launch with `O`. Leave empty to show the picker.
 # Supported: "opencode", "claude"
 default_agent = ""
 

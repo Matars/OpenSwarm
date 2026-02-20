@@ -172,3 +172,5 @@ All confirmation dialogs (delete dirty worktree, quit with sessions, branch conf
 | `Esc` | Cancel |
 
 The conflict resolution dialog also supports `e` to edit the prompt template inline.
+
+When you confirm conflict resolution with Enter, OpenSwarm launches OpenCode by default for that flow.
