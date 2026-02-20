@@ -1297,10 +1297,6 @@ fn build_node_delete_effect() -> tachyonfx::Effect {
     fx::fade_to_fg(Color::Rgb(36, 42, 64), (520, Interpolation::SineInOut))
 }
 
-fn tracking_fully_merged(entry: &WorktreeEntry) -> bool {
-    !entry.detached && !entry.dirty && entry.ahead == 0 && entry.behind == 0
-}
-
 fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
     let warm = Style::default().fg(Color::Rgb(245, 163, 72));
     if entry.detached {
@@ -1309,8 +1305,8 @@ fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
         ("dirty", Style::default().fg(Color::Red))
     } else if entry.ahead > 0 {
         ("committed", warm)
-    } else if tracking_fully_merged(entry) {
-        ("merged", Style::default().fg(Color::Green))
+    } else if entry.merged_with_parent {
+        ("merged with parent", Style::default().fg(Color::Green))
     } else {
         ("pushed", warm)
     }

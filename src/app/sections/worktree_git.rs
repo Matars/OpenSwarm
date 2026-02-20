@@ -159,6 +159,8 @@ fn refresh_worktrees(app: &mut App) {
     app.sync_worktree_animations(&new_paths);
 
     app.worktrees = entries;
+    let root_branch = current_session_branch(app);
+    update_worktree_merged_with_parent(&mut app.worktrees, root_branch.as_str());
     if let Some(target_path) = app.changes_worktree_path.as_deref() {
         let exists = app.worktrees.iter().any(|entry| entry.path == target_path);
         if !exists {
@@ -172,6 +174,55 @@ fn refresh_worktrees(app: &mut App) {
     }
 
     maybe_prompt_legacy_workspace_migration(app, root.as_str());
+}
+
+fn update_worktree_merged_with_parent(entries: &mut [WorktreeEntry], root_branch: &str) {
+    if entries.is_empty() {
+        return;
+    }
+
+    let parents = worktree_parent_map(entries, root_branch);
+    for idx in 0..entries.len() {
+        entries[idx].merged_with_parent = false;
+        let Some(parent_idx) = parents.get(idx).and_then(|value| *value) else {
+            continue;
+        };
+        if idx == parent_idx {
+            continue;
+        }
+
+        let child = &entries[idx];
+        let parent = &entries[parent_idx];
+        if child.detached || child.branch.is_empty() {
+            continue;
+        }
+
+        let parent_ref = if !parent.detached && !parent.branch.is_empty() {
+            parent.branch.as_str()
+        } else if !parent.head.is_empty() {
+            parent.head.as_str()
+        } else {
+            continue;
+        };
+
+        entries[idx].merged_with_parent =
+            git_is_ancestor(parent.path.as_str(), child.branch.as_str(), parent_ref);
+    }
+}
+
+fn git_is_ancestor(repo_path: &str, ancestor_ref: &str, descendant_ref: &str) -> bool {
+    Command::new("git")
+        .args([
+            "-C",
+            repo_path,
+            "merge-base",
+            "--is-ancestor",
+            ancestor_ref,
+            descendant_ref,
+        ])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 fn maybe_prompt_legacy_workspace_migration(app: &mut App, root: &str) {

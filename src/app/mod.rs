@@ -248,6 +248,7 @@ struct WorktreeEntry {
     dirty: bool,
     ahead: usize,
     behind: usize,
+    merged_with_parent: bool,
     parent_hint: Option<String>,
 }
 
