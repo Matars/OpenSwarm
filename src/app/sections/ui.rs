@@ -1467,7 +1467,7 @@ fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
     } else if entry.dirty {
         ("dirty", Style::default().fg(Color::Red))
     } else if entry.behind_parent {
-        ("needs pull", Style::default().fg(Color::Yellow))
+        ("behind parent", Style::default().fg(Color::Yellow))
     } else if entry.ahead > 0 {
         ("committed", warm)
     } else if entry.merged_with_parent {
@@ -2169,7 +2169,7 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::styled("parent: ", Style::default().fg(Color::Gray)),
             Span::styled(
                 if selected.behind_parent {
-                    "needs pull"
+                    "behind parent"
                 } else {
                     "in sync"
                 },
@@ -2556,7 +2556,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Blue node = current branch worktree"),
             Line::from("- Cyan ring = selected worktree (drives details + actions)"),
             Line::from("- Red nodes = dirty (uncommitted changes)"),
-            Line::from("- Yellow nodes = behind parent (pull needed)"),
+            Line::from("- Yellow nodes = behind parent"),
             Line::from("- Spinner suffix means active session; done/fail marks completion"),
             Line::from(""),
             Line::from("Navigation:"),

@@ -7,7 +7,7 @@ nav_order: 2
 
 ## Worktree graph visualization
 
-Worktrees are displayed as an interactive graph with parent-child relationships. Navigate with arrow keys or `h`/`j`/`k`/`l`. Press `Ctrl+K` to switch between graph builders (top-down balanced and radial). Zoom and pan the canvas. Each node shows branch name, status badges (`dirty`, `needs pull`, `committed`, `local only`, `pushed`, `merged with parent`), ahead/behind counts, and live agent activity. Edges are drawn with Unicode box-drawing characters and color-coded by branch.
+Worktrees are displayed as an interactive graph with parent-child relationships. Navigate with arrow keys or `h`/`j`/`k`/`l`. Press `Ctrl+K` to switch between graph builders (top-down balanced and radial). Zoom and pan the canvas. Each node shows branch name, status badges (`dirty`, `behind parent`, `committed`, `local only`, `pushed`, `merged with parent`), ahead/behind counts, and live agent activity. Edges are drawn with Unicode box-drawing characters and color-coded by branch.
 
 ## Embedded PTY terminals
 

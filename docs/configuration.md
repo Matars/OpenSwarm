@@ -63,6 +63,8 @@ A default template is created at `~/.config/openswarm/prompts/conflict-resolve-p
 
 Multiline string rendered in a dedicated `art` panel above `details` in worktree view.
 
+If this key is missing from an existing `config.toml`, OpenSwarm appends the default ASCII block automatically on startup.
+
 - Supports ASCII and Unicode glyphs.
 - Keep line width short for narrow terminals (the panel truncates overflow).
 - You can also set it as a single-line string and use `\n` escapes.
