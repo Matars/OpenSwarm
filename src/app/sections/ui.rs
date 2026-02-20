@@ -327,24 +327,71 @@ fn draw_selected_overview_panel(frame: &mut ratatui::Frame<'_>, app: &App, area:
                 }
             }
         } else {
-            push_method_section(
-                &mut lines,
-                "methods added",
-                Color::LightGreen,
-                &info.methods_added,
-            );
-            push_method_section(
-                &mut lines,
-                "methods modified",
-                Color::Yellow,
-                &info.methods_modified,
-            );
-            push_method_section(
-                &mut lines,
-                "methods deleted",
-                Color::LightRed,
-                &info.methods_deleted,
-            );
+            lines.push(Line::from(vec![
+                Span::styled(
+                    "methods",
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    " (Shift+J/K select, Enter expand)",
+                    Style::default().fg(Color::Gray),
+                ),
+            ]));
+
+            if info.method_changes.is_empty() {
+                lines.push(Line::from("No method-level entries found"));
+                lines.push(Line::from(""));
+            } else {
+                for (idx, method) in info.method_changes.iter().enumerate() {
+                    let selected = idx == app.overview_method_index;
+                    let marker = if selected { "> " } else { "  " };
+                    let expanded = selected && app.overview_method_expanded;
+                    let fold = if expanded { "[-]" } else { "[+]" };
+                    let (kind_label, kind_color) = match method.kind {
+                        MethodChangeKind::Added => ("A", Color::LightGreen),
+                        MethodChangeKind::Modified => ("M", Color::Yellow),
+                        MethodChangeKind::Deleted => ("D", Color::LightRed),
+                    };
+                    let name_color = if selected { Color::Cyan } else { Color::White };
+
+                    lines.push(Line::from(vec![
+                        Span::styled(marker, Style::default().fg(Color::Gray)),
+                        Span::styled(fold, Style::default().fg(Color::Gray)),
+                        Span::raw(" "),
+                        Span::styled(kind_label, Style::default().fg(kind_color)),
+                        Span::raw(" "),
+                        Span::styled(
+                            truncate_text(method.name.as_str(), 54),
+                            Style::default().fg(name_color),
+                        ),
+                    ]));
+
+                    if expanded {
+                        if method.diff_lines.is_empty() {
+                            lines.push(Line::from(Span::styled(
+                                "    no hunk preview available",
+                                Style::default().fg(Color::DarkGray),
+                            )));
+                        } else {
+                            for row in method.diff_lines.iter().take(40) {
+                                let color = match row.kind {
+                                    DiffPreviewKind::Added => Color::Green,
+                                    DiffPreviewKind::Removed => Color::Red,
+                                    DiffPreviewKind::Meta => Color::Blue,
+                                    DiffPreviewKind::Context => Color::Gray,
+                                };
+                                lines.push(Line::from(vec![
+                                    Span::raw("    "),
+                                    Span::styled(row.text.as_str(), Style::default().fg(color)),
+                                ]));
+                            }
+                        }
+                        lines.push(Line::from(""));
+                    }
+                }
+            }
         }
     } else {
         lines.push(Line::from("No changed file selected"));
@@ -369,24 +416,6 @@ fn draw_selected_overview_panel(frame: &mut ratatui::Frame<'_>, app: &App, area:
         .alignment(Alignment::Left);
 
     frame.render_widget(panel, area);
-}
-
-fn push_method_section(lines: &mut Vec<Line<'_>>, title: &str, color: Color, names: &[String]) {
-    lines.push(Line::from(vec![Span::styled(
-        title.to_string(),
-        Style::default().fg(color),
-    )]));
-    if names.is_empty() {
-        lines.push(Line::from("- none"));
-    } else {
-        for name in names.iter().take(8) {
-            lines.push(Line::from(vec![
-                Span::raw("- "),
-                Span::styled(truncate_text(name, 56), Style::default().fg(Color::White)),
-            ]));
-        }
-    }
-    lines.push(Line::from(""));
 }
 
 fn draw_pulse_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
@@ -488,8 +517,16 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
             Span::raw(" move selection/scroll"),
         ]),
         Line::from(vec![
-            Span::styled("space|enter|a", Style::default().fg(Color::LightGreen)),
+            Span::styled("J/K", Style::default().fg(Color::LightBlue)),
+            Span::raw(" select method in overview"),
+        ]),
+        Line::from(vec![
+            Span::styled("space|a", Style::default().fg(Color::LightGreen)),
             Span::raw(" smart stage / unstage"),
+        ]),
+        Line::from(vec![
+            Span::styled("enter (overview)", Style::default().fg(Color::LightGreen)),
+            Span::raw(" expand selected method"),
         ]),
         Line::from(vec![
             Span::styled("u", Style::default().fg(Color::LightGreen)),
@@ -3726,13 +3763,13 @@ fn merge_delta(store: &mut BTreeMap<String, PathDelta>, key: String, delta: Path
 }
 
 fn max_overview_scroll(app: &App) -> u16 {
-    let lines = overview_line_count(app.selected_overview.as_ref());
+    let lines = overview_line_count(app);
     let visible = 22usize;
     lines.saturating_sub(visible) as u16
 }
 
-fn overview_line_count(info: Option<&FileOverview>) -> usize {
-    let Some(info) = info else {
+fn overview_line_count(app: &App) -> usize {
+    let Some(info) = app.selected_overview.as_ref() else {
         return 1;
     };
 
@@ -3740,9 +3777,16 @@ fn overview_line_count(info: Option<&FileOverview>) -> usize {
     if info.use_traditional_overview {
         count += 2 + info.traditional_diff.len().min(24);
     } else {
-        count += 1 + info.methods_added.len().min(8);
-        count += 1 + info.methods_modified.len().min(8);
-        count += 1 + info.methods_deleted.len().min(8);
+        count += 2 + info.method_changes.len();
+        if app.overview_method_expanded {
+            if let Some(method) = info.method_changes.get(app.overview_method_index) {
+                count += if method.diff_lines.is_empty() {
+                    2
+                } else {
+                    method.diff_lines.len().min(40) + 1
+                };
+            }
+        }
     }
     count
 }

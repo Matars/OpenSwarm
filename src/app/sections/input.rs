@@ -35,8 +35,20 @@ fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn 
                 app.overview_scroll = app.overview_scroll.saturating_sub(1);
             }
         },
+        KeyCode::Char('J') => {
+            move_overview_method(app, true);
+        }
+        KeyCode::Char('K') => {
+            move_overview_method(app, false);
+        }
         KeyCode::Char('r') => refresh_status(app),
-        KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('a') => {
+        KeyCode::Enter => {
+            if !toggle_overview_method_expanded(app) {
+                toggle_stage(app)?;
+                refresh_status(app);
+            }
+        }
+        KeyCode::Char(' ') | KeyCode::Char('a') => {
             toggle_stage(app)?;
             refresh_status(app);
         }
@@ -85,6 +97,54 @@ fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn 
     Ok(false)
 }
 
+fn move_overview_method(app: &mut App, forward: bool) {
+    if app.active_pane != ActivePane::Overview {
+        return;
+    }
+
+    let count = app
+        .selected_overview
+        .as_ref()
+        .map(|overview| overview.method_changes.len())
+        .unwrap_or(0);
+    if count == 0 {
+        return;
+    }
+
+    app.overview_method_expanded = false;
+    if forward {
+        app.overview_method_index = (app.overview_method_index + 1) % count;
+    } else if app.overview_method_index == 0 {
+        app.overview_method_index = count - 1;
+    } else {
+        app.overview_method_index -= 1;
+    }
+
+    let max_scroll = max_overview_scroll(app);
+    if app.overview_scroll > max_scroll {
+        app.overview_scroll = max_scroll;
+    }
+}
+
+fn toggle_overview_method_expanded(app: &mut App) -> bool {
+    if app.active_pane != ActivePane::Overview {
+        return false;
+    }
+
+    let count = app
+        .selected_overview
+        .as_ref()
+        .map(|overview| overview.method_changes.len())
+        .unwrap_or(0);
+    if count == 0 {
+        return false;
+    }
+
+    app.overview_method_expanded = !app.overview_method_expanded;
+    app.overview_scroll = 0;
+    true
+}
+
 fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn Error>> {
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('k') {
         app.cycle_worktree_graph_builder();
@@ -93,6 +153,7 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
     }
 
     let code = key.code;
+
     match code {
         KeyCode::Char('q') => return Ok(request_quit(app)),
         KeyCode::Char('w') => {
