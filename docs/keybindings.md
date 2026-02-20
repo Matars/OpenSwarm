@@ -70,7 +70,9 @@ nav_order: 3
 
 | Key | Action |
 |-----|--------|
-| `Space` / `Enter` / `a` | Smart stage/unstage selected file (stages unstaged changes first) |
+| `Space` / `a` | Smart stage/unstage selected file (stages unstaged changes first) |
+| `Shift+J` / `Shift+K` | Select next/previous method in overview panel |
+| `Enter` (overview panel) | Expand/collapse selected method hunk preview |
 | `u` | Unstage selected file |
 | `A` / `U` | Stage all / unstage all |
 | `c` | Commit staged changes |
