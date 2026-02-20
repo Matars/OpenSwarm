@@ -35,7 +35,7 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
             }
         },
         KeyCode::Char('r') => refresh_status(app),
-        KeyCode::Enter | KeyCode::Char(' ') => {
+        KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('a') => {
             toggle_stage(app)?;
             refresh_status(app);
         }

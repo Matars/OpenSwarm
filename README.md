@@ -66,7 +66,7 @@ Then:
 
 | Key | Action |
 |-----|--------|
-| `Space` / `Enter` | Stage / unstage file |
+| `Space` / `Enter` / `a` | Stage / unstage file |
 | `c` | Commit staged |
 | `p` | Push |
 | `s` / `S` | Stash push / pop |

@@ -487,7 +487,7 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
             Span::raw(" move selection/scroll"),
         ]),
         Line::from(vec![
-            Span::styled("space|enter", Style::default().fg(Color::LightGreen)),
+            Span::styled("space|enter|a", Style::default().fg(Color::LightGreen)),
             Span::raw(" stage or unstage"),
         ]),
         Line::from(vec![
