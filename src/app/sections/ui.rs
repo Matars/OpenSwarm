@@ -636,7 +636,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
                 .fg(Color::LightBlue)
                 .add_modifier(Modifier::BOLD)
         } else if entry.dirty {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(Color::Red)
         } else {
             Style::default().fg(Color::White)
         };
@@ -872,7 +872,7 @@ fn draw_unicode_worktree_graph(
         } else if entry.is_current {
             Color::LightBlue
         } else if entry.dirty {
-            Color::Yellow
+            Color::Red
         } else {
             graph_palette_color(idx)
         };
@@ -1302,14 +1302,17 @@ fn tracking_fully_merged(entry: &WorktreeEntry) -> bool {
 }
 
 fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
-    if tracking_fully_merged(entry) {
-        ("\u{2713} up to date", Style::default().fg(Color::Green))
-    } else if entry.detached {
-        ("\u{2717} detached", Style::default().fg(Color::Red))
+    let warm = Style::default().fg(Color::Rgb(245, 163, 72));
+    if entry.detached {
+        ("detached", Style::default().fg(Color::Red))
     } else if entry.dirty {
-        ("\u{2717} uncommitted", Style::default().fg(Color::Red))
+        ("dirty", Style::default().fg(Color::Red))
+    } else if entry.ahead > 0 {
+        ("committed", warm)
+    } else if tracking_fully_merged(entry) {
+        ("merged", Style::default().fg(Color::Green))
     } else {
-        ("\u{2717} out of sync", Style::default().fg(Color::Red))
+        ("pushed", warm)
     }
 }
 
@@ -2086,7 +2089,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Live PTY write throughput is shown per node as tx:<bytes>/s"),
             Line::from("- Blue node = current branch worktree"),
             Line::from("- Cyan ring = selected worktree (drives details + actions)"),
-            Line::from("- Yellow nodes = dirty (uncommitted changes)"),
+            Line::from("- Red nodes = dirty (uncommitted changes)"),
             Line::from("- Spinner suffix means active session; done/fail marks completion"),
             Line::from(""),
             Line::from("Navigation:"),
