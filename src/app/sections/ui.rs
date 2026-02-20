@@ -540,13 +540,25 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
     } else {
         Color::Gray
     };
+    let totals_badge = graph_token_totals_badge(app, Instant::now());
     let title = if app.worktree_canvas_zoom != 1.0
         || app.worktree_canvas_pan_x != 0.0
         || app.worktree_canvas_pan_y != 0.0
     {
-        format!("worktree graph [?]  z:{:.1}x", app.worktree_canvas_zoom)
+        if totals_badge.is_empty() {
+            format!("worktree graph [?]  z:{:.1}x", app.worktree_canvas_zoom)
+        } else {
+            format!(
+                "worktree graph [?]  {}  z:{:.1}x",
+                totals_badge, app.worktree_canvas_zoom
+            )
+        }
     } else {
-        "worktree graph [?]".to_string()
+        if totals_badge.is_empty() {
+            "worktree graph [?]".to_string()
+        } else {
+            format!("worktree graph [?]  {}", totals_badge)
+        }
     };
     let block = Block::default()
         .title(title)
@@ -1338,7 +1350,7 @@ fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String
     }
 
     let agent = agent_badge_for_node(app, entry.path.as_str());
-    let write_rate = pty_write_badge_for_node(app, entry.path.as_str());
+    let write_rate = pty_token_rate_badge_for_node(app, entry.path.as_str());
 
     if selected {
         let state = if entry.dirty { "*" } else { "" };
@@ -1352,7 +1364,7 @@ fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String
     }
 }
 
-fn pty_write_badge_for_node(app: &App, path: &str) -> String {
+fn pty_token_rate_badge_for_node(app: &App, path: &str) -> String {
     let Some(session) = app.agent_sessions.get(path) else {
         return String::new();
     };
@@ -1360,8 +1372,8 @@ fn pty_write_badge_for_node(app: &App, path: &str) -> String {
         return String::new();
     }
 
-    let write_bps = agent_session_write_bps(session, Instant::now());
-    format!(" tx:{}B/s", write_bps)
+    let token_rate = agent_session_total_tokens_per_second(session, Instant::now());
+    format!(" tok:{}/s", format_compact_metric(token_rate))
 }
 
 #[derive(Clone, Copy)]
@@ -1521,12 +1533,79 @@ fn agent_badge_for_node(app: &App, path: &str) -> String {
     }
 }
 
-fn agent_session_write_bps(session: &AgentSession, now: Instant) -> u64 {
+fn estimate_tokens(bytes: u64) -> u64 {
+    if bytes == 0 {
+        return 0;
+    }
+    bytes.saturating_add(3) / 4
+}
+
+fn agent_session_context_tokens(session: &AgentSession) -> u64 {
+    estimate_tokens(session.bytes_to_agent)
+}
+
+fn agent_session_output_tokens(session: &AgentSession) -> u64 {
+    estimate_tokens(session.bytes_from_agent)
+}
+
+fn agent_session_total_tokens(session: &AgentSession) -> u64 {
+    agent_session_context_tokens(session).saturating_add(agent_session_output_tokens(session))
+}
+
+fn agent_session_total_tokens_per_second(session: &AgentSession, now: Instant) -> u64 {
     let seconds = now
         .saturating_duration_since(session.launched_at)
         .as_secs()
         .max(1);
-    session.bytes_to_agent / seconds
+    agent_session_total_tokens(session) / seconds
+}
+
+fn format_compact_metric(value: u64) -> String {
+    const UNITS: [&str; 4] = ["", "k", "m", "b"];
+    let mut scaled = value as f64;
+    let mut unit_idx = 0usize;
+    while scaled >= 1000.0 && unit_idx + 1 < UNITS.len() {
+        scaled /= 1000.0;
+        unit_idx += 1;
+    }
+
+    if unit_idx == 0 {
+        value.to_string()
+    } else if scaled >= 100.0 {
+        format!("{:.0}{}", scaled, UNITS[unit_idx])
+    } else if scaled >= 10.0 {
+        format!("{:.1}{}", scaled, UNITS[unit_idx])
+    } else {
+        format!("{:.2}{}", scaled, UNITS[unit_idx])
+    }
+}
+
+fn graph_token_totals_badge(app: &App, now: Instant) -> String {
+    let mut total_context_tokens = 0u64;
+    let mut total_output_tokens = 0u64;
+    let mut total_rate = 0u64;
+
+    for session in app.agent_sessions.values() {
+        total_context_tokens =
+            total_context_tokens.saturating_add(agent_session_context_tokens(session));
+        total_output_tokens =
+            total_output_tokens.saturating_add(agent_session_output_tokens(session));
+        if agent_session_is_live(session) {
+            total_rate =
+                total_rate.saturating_add(agent_session_total_tokens_per_second(session, now));
+        }
+    }
+
+    if total_context_tokens == 0 && total_output_tokens == 0 && total_rate == 0 {
+        return String::new();
+    }
+
+    format!(
+        "ctx:{} out:{} tok/s:{}",
+        format_compact_metric(total_context_tokens),
+        format_compact_metric(total_output_tokens),
+        format_compact_metric(total_rate)
+    )
 }
 
 fn animated_agent_spinner(session: &AgentSession, now: Instant) -> char {
@@ -1862,6 +1941,41 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
                 Style::default().fg(Color::Yellow),
             ),
         ]));
+        if let Some(session) = app.agent_sessions.get(selected.path.as_str()) {
+            let context_tokens = agent_session_context_tokens(session);
+            let output_tokens = agent_session_output_tokens(session);
+            let total_tokens = context_tokens.saturating_add(output_tokens);
+            let token_rate = agent_session_total_tokens_per_second(session, now);
+            lines.push(Line::from(vec![
+                Span::styled("tokens: ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    format!("ctx {}", format_compact_metric(context_tokens)),
+                    Style::default().fg(Color::LightBlue),
+                ),
+                Span::raw("  "),
+                Span::styled(
+                    format!("out {}", format_compact_metric(output_tokens)),
+                    Style::default().fg(Color::LightGreen),
+                ),
+                Span::raw("  "),
+                Span::styled(
+                    format!("total {}", format_compact_metric(total_tokens)),
+                    Style::default().fg(Color::LightCyan),
+                ),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("rate:   ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    format!("{} tok/s", format_compact_metric(token_rate)),
+                    Style::default().fg(Color::Yellow),
+                ),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::styled("tokens: ", Style::default().fg(Color::Gray)),
+                Span::styled("no pty session", Style::default().fg(Color::DarkGray)),
+            ]));
+        }
         lines.push(Line::from(""));
         let status_max = area.width.saturating_sub(4) as usize;
         let mut status_text = sanitize_for_tui(app.status_line.as_str());
@@ -2083,7 +2197,8 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from(""),
             Line::from("- Each node is an isolated git worktree for parallel agent runs"),
             Line::from("- Edges show parent/child branch lineage for safe merges"),
-            Line::from("- Live PTY write throughput is shown per node as tx:<bytes>/s"),
+            Line::from("- Live PTY throughput is shown per node as tok:<tokens>/s"),
+            Line::from("- Graph header totals show ctx/out token estimates across all PTYs"),
             Line::from("- Blue node = current branch worktree"),
             Line::from("- Cyan ring = selected worktree (drives details + actions)"),
             Line::from("- Yellow nodes = dirty (uncommitted changes)"),
@@ -2111,6 +2226,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Shows branch/path/HEAD and worktree flags"),
             Line::from("- Shows ahead/behind and dirty/locked state"),
             Line::from("- Includes total PTY counts (live/active/idle)"),
+            Line::from("- Shows per-PTY estimated ctx/out tokens and tok/s for selected node"),
             Line::from("- Status section reports the latest command outcome"),
             Line::from("- Use this panel to validate readiness before push/merge"),
             Line::from("- Tab: move focus to next panel"),
