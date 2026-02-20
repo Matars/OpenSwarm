@@ -130,6 +130,31 @@ impl WorktreeGraphBuilder {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CanvasBackgroundMode {
+    GlitterStars,
+    NebulaMist,
+    Crosshatch,
+}
+
+impl CanvasBackgroundMode {
+    fn next(self) -> Self {
+        match self {
+            CanvasBackgroundMode::GlitterStars => CanvasBackgroundMode::NebulaMist,
+            CanvasBackgroundMode::NebulaMist => CanvasBackgroundMode::Crosshatch,
+            CanvasBackgroundMode::Crosshatch => CanvasBackgroundMode::GlitterStars,
+        }
+    }
+
+    fn short_label(self) -> &'static str {
+        match self {
+            CanvasBackgroundMode::GlitterStars => "stars",
+            CanvasBackgroundMode::NebulaMist => "nebula",
+            CanvasBackgroundMode::Crosshatch => "crosshatch",
+        }
+    }
+}
+
 struct App {
     branch: String,
     ahead: usize,
@@ -152,6 +177,7 @@ struct App {
     worktree_canvas_pan_x: f64,
     worktree_canvas_pan_y: f64,
     worktree_graph_builder: WorktreeGraphBuilder,
+    worktree_canvas_bg_mode: CanvasBackgroundMode,
     canvas_bg_effects: EffectManager<&'static str>,
     canvas_bg_last_tick: Instant,
     canvas_selected_border_effects: EffectManager<&'static str>,
@@ -400,6 +426,8 @@ impl App {
             worktree_canvas_pan_x: 0.0,
             worktree_canvas_pan_y: 0.0,
             worktree_graph_builder: WorktreeGraphBuilder::TopDownBalanced,
+            worktree_canvas_bg_mode: CanvasBackgroundMode::GlitterStars,
+            worktree_graph_builder: WorktreeGraphBuilder::TopDownBalanced,
             canvas_bg_effects,
             canvas_bg_last_tick: Instant::now(),
             canvas_selected_border_effects,
@@ -630,6 +658,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         && key.code == KeyCode::Char('c')
                     {
                         should_quit = true;
+                        continue;
+                    }
+
+                    if matches!(app.mode, Mode::Normal)
+                        && app.view_mode == ViewMode::Worktrees
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                        && key.code == KeyCode::Char('b')
+                    {
+                        cycle_worktree_canvas_background(&mut app);
                         continue;
                     }
                     match app.mode {

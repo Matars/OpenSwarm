@@ -49,6 +49,7 @@ Then:
 | `Tab` | Cycle panes |
 | `+` / `-` / `0` | Zoom in / out / reset |
 | `W` `A` `S` `D` | Pan canvas |
+| `Ctrl+B` | Cycle canvas background effect |
 
 ### Worktree actions
 
