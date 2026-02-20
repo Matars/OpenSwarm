@@ -1504,6 +1504,7 @@ fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>>
         last_io_at: now,
         bytes_from_agent: 0,
         bytes_to_agent: 0,
+        io_samples: VecDeque::new(),
     };
 
     app.agent_sessions.insert(path.to_string(), session);
@@ -1561,8 +1562,11 @@ fn write_to_agent(app: &mut App, path: &str, text: &str) -> Result<(), Box<dyn E
         if let Some(writer) = session.writer.as_mut() {
             writer.write_all(text.as_bytes())?;
             writer.flush()?;
-            session.bytes_to_agent = session.bytes_to_agent.saturating_add(text.len() as u64);
-            session.last_io_at = Instant::now();
+            let now = Instant::now();
+            let bytes = text.len() as u64;
+            session.bytes_to_agent = session.bytes_to_agent.saturating_add(bytes);
+            session.last_io_at = now;
+            record_agent_io_sample(session, now, 0, bytes);
             if session.state == AgentState::Launching {
                 session.state = AgentState::Running;
             }
@@ -1576,14 +1580,43 @@ fn drain_agent_events(app: &mut App) {
         match event {
             AgentEvent::Output { path, bytes } => {
                 if let Some(session) = app.agent_sessions.get_mut(path.as_str()) {
+                    let now = Instant::now();
+                    let byte_count = bytes.len() as u64;
                     session.state = AgentState::Running;
-                    session.bytes_from_agent =
-                        session.bytes_from_agent.saturating_add(bytes.len() as u64);
-                    session.last_io_at = Instant::now();
+                    session.bytes_from_agent = session.bytes_from_agent.saturating_add(byte_count);
+                    session.last_io_at = now;
+                    record_agent_io_sample(session, now, byte_count, 0);
                     session.parser.process(bytes.as_slice());
                 }
             }
         }
+    }
+}
+
+const TOKEN_RATE_WINDOW: Duration = Duration::from_secs(4);
+const MAX_IO_SAMPLES: usize = 1024;
+
+fn record_agent_io_sample(
+    session: &mut AgentSession,
+    now: Instant,
+    bytes_from_agent: u64,
+    bytes_to_agent: u64,
+) {
+    session.io_samples.push_back(IoSample {
+        at: now,
+        bytes_from_agent,
+        bytes_to_agent,
+    });
+
+    while session.io_samples.len() > MAX_IO_SAMPLES {
+        session.io_samples.pop_front();
+    }
+
+    while let Some(sample) = session.io_samples.front() {
+        if now.saturating_duration_since(sample.at) <= TOKEN_RATE_WINDOW {
+            break;
+        }
+        session.io_samples.pop_front();
     }
 }
 
