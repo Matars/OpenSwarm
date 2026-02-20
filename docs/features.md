@@ -15,7 +15,7 @@ Press `o` to open a shell or `O` to launch an AI agent directly inside OpenSwarm
 
 ## Inline staging and diffs
 
-Press `w` to switch to the changes view. See all staged and unstaged files in a tree layout. Stage/unstage with `Space`. The overview panel shows per-file diffs with smart method-level analysis -- it detects added, modified, and deleted functions for Python, Rust, JavaScript, TypeScript, and Go.
+Press `w` to switch to the changes view. See all staged and unstaged files in a tree layout. `Space`/`Enter`/`a` use lazygit-style smart staging (if a file still has unstaged changes, stage them first), and `u` explicitly unstages. `A`/`U` stage or unstage everything quickly. The overview panel shows per-file diffs with smart method-level analysis -- it detects added, modified, and deleted functions for Python, Rust, JavaScript, TypeScript, and Go.
 
 ## One-key git operations
 

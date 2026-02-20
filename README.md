@@ -66,7 +66,9 @@ Then:
 
 | Key | Action |
 |-----|--------|
-| `Space` / `Enter` / `a` | Stage / unstage file |
+| `Space` / `Enter` / `a` | Smart stage/unstage (stages unstaged changes first) |
+| `u` | Unstage selected file |
+| `A` / `U` | Stage all / unstage all |
 | `c` | Commit staged |
 | `p` | Push |
 | `s` / `S` | Stash push / pop |

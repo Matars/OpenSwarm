@@ -129,7 +129,7 @@ fn draw_files_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
         .tree_items
         .iter()
         .enumerate()
-        .filter(|(_, item)| item.staged)
+        .filter(|(_, item)| item.staged && !item.unstaged && !item.untracked)
         .map(|(idx, _)| idx)
         .collect();
 
@@ -488,7 +488,15 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
         ]),
         Line::from(vec![
             Span::styled("space|enter|a", Style::default().fg(Color::LightGreen)),
-            Span::raw(" stage or unstage"),
+            Span::raw(" smart stage / unstage"),
+        ]),
+        Line::from(vec![
+            Span::styled("u", Style::default().fg(Color::LightGreen)),
+            Span::raw(" unstage selected"),
+        ]),
+        Line::from(vec![
+            Span::styled("A / U", Style::default().fg(Color::LightGreen)),
+            Span::raw(" stage all / unstage all"),
         ]),
         Line::from(vec![
             Span::styled("c", Style::default().fg(Color::Yellow)),

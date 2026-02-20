@@ -39,6 +39,18 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
             toggle_stage(app)?;
             refresh_status(app);
         }
+        KeyCode::Char('u') => {
+            unstage_selected(app)?;
+            refresh_status(app);
+        }
+        KeyCode::Char('A') => {
+            stage_all_changes(app)?;
+            refresh_status(app);
+        }
+        KeyCode::Char('U') => {
+            unstage_all_changes(app)?;
+            refresh_status(app);
+        }
         KeyCode::Char('c') => {
             app.mode = Mode::CommitInput;
             app.commit_input.clear();
@@ -59,14 +71,11 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
             }
         }
         KeyCode::Char('s') => {
-            app.status_line = run_git_in(
-                app.changes_worktree_path.as_deref(),
-                &["stash", "push", "--include-untracked"],
-            )?;
+            stash_push_changes(app)?;
             refresh_status(app);
         }
         KeyCode::Char('S') => {
-            app.status_line = run_git_in(app.changes_worktree_path.as_deref(), &["stash", "pop"])?;
+            stash_pop_changes(app)?;
             refresh_status(app);
         }
         _ => {}
