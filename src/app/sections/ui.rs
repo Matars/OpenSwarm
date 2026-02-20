@@ -1307,6 +1307,8 @@ fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
         ("committed", warm)
     } else if entry.merged_with_parent {
         ("merged with parent", Style::default().fg(Color::Green))
+    } else if !entry.has_upstream {
+        ("local only", warm)
     } else {
         ("pushed", warm)
     }
