@@ -11,7 +11,7 @@ Worktrees are displayed as an interactive graph with parent-child relationships.
 
 ## Embedded PTY terminals
 
-Press `o` to open a shell or `O` to launch an AI agent directly inside OpenSwarm. Sessions run in a real PTY with full ANSI color support. Close the popup and the session keeps running in the background -- reopen it anytime. If your configured default agent is OpenCode, `O` also attempts to resume the most recent OpenCode session whose directory matches that worktree (including after restarting OpenSwarm). Toggle between input mode (keys go to the terminal) and control mode (`Ctrl+G`) to manage sessions.
+Press `o` to open a shell or `O` to launch an AI agent directly inside OpenSwarm. Sessions run in a real PTY with full ANSI color support. Close the popup and the session keeps running in the background -- reopen it anytime. If your configured default agent is OpenCode, `O` attempts to reconnect to the most recent OpenCode session whose directory matches that worktree node (including after restarting OpenSwarm). Toggle between input mode (keys go to the terminal) and control mode (`Ctrl+G`) to manage sessions.
 
 ## Inline staging and diffs
 
@@ -29,7 +29,7 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 
 ## Agent-assisted conflict resolution
 
-When a merge produces conflicts, OpenSwarm shows the conflicted files and a customizable prompt template. Confirming launches OpenCode in the parent worktree with context about what needs resolving (or opens a shell there if OpenCode is unavailable). You can still launch another agent manually with `O`. Edit the prompt template inline with `e`.
+When a merge produces conflicts, OpenSwarm shows the conflicted files and a customizable prompt template. Confirming launches OpenCode in the parent worktree with a prefilled resolution prompt (or opens a shell there if OpenCode is unavailable). This keeps conflict solving inside the worktree graph workflow instead of dropping to manual multi-terminal merge handling. You can still launch another agent manually with `O`. Edit the prompt template inline with `e`.
 
 ## Agent activity monitoring
 

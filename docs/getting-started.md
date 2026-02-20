@@ -34,9 +34,11 @@ make dev
 
 5. **Commit and push** -- select a worktree, press `c` to commit, `p` to push.
 
-6. **Merge back** -- select a child worktree, press `m` to merge into its parent. If there are conflicts, OpenSwarm offers to launch OpenCode with a conflict prompt (or you can launch another agent via `O`).
+6. **Merge back** -- select a child worktree, press `m` to merge into its parent. If there are conflicts, OpenSwarm offers to launch OpenCode with a prefilled conflict-resolution prompt (or you can launch another agent via `O`).
 
 7. **Clean up** -- press `d` to delete a worktree, `x` to prune stale entries.
+
+8. **Reconnect context later** -- if you close and reopen OpenSwarm, pressing `O` on the same worktree can reconnect the recent OpenCode session for that node (when OpenCode is your default agent).
 
 ## Requirements
 

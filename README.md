@@ -13,10 +13,10 @@ AI agents like Claude Code and OpenCode can handle longer tasks without supervis
 OpenSwarm gives you one screen:
 
 - **Worktree graph** -- see all worktrees as an interactive graph with parent-child relationships, dirty/committed/local-only/pushed/merged-with-parent badges, ahead/behind counts, live agent activity, and text-based estimated PTY token telemetry (ctx/out + tok/s)
-- **Embedded terminals** -- launch shells and agents in PTY sessions directly inside the TUI, with sessions persisting in the background and default OpenCode launches resuming the last worktree-matched session after restarting OpenSwarm
+- **Embedded terminals + per-node session memory** -- launch shells and agents in PTY sessions directly inside the TUI; sessions persist in the background, and default OpenCode launches can reconnect to the most recent session for that same worktree node after restarting OpenSwarm
 - **Inline diffs** -- switch to changes view for file staging with method-level diff analysis (Python, Rust, JS/TS, Go)
 - **One-key git operations** -- create worktrees (`a`), commit (`c`), push (`p`), merge (`m`), delete (`d`) without leaving the TUI
-- **Agent-assisted conflict resolution** -- when merges conflict, launch OpenCode with a templated prompt (or open a shell fallback) and optionally run another agent via `O`
+- **Agent-powered merge conflict solver** -- when merges conflict, OpenSwarm can launch OpenCode with a prefilled conflict-resolution prompt in the parent worktree, so the agent resolves/stages while you keep orchestration in one place
 
 ## Quick start
 
@@ -35,7 +35,9 @@ Then:
 1. Press `a` to create a worktree
 2. Press `O` to launch an agent in it
 3. Repeat for parallel streams
-4. Press `c` to commit, `p` to push, `m` to merge back
+4. Press `c` to commit, `p` to push, `m` to merge back (with agent conflict solver if needed)
+
+If you close OpenSwarm and reopen it later, default OpenCode launches can reconnect to that worktree's recent session context.
 
 ## Core keybindings
 

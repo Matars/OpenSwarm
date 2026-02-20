@@ -40,6 +40,7 @@ OpenSwarm replaces the terminal juggling with a single integrated TUI:
 | Stage + commit | `cd` to worktree, `git add`, `git commit` | Press `c`, type message |
 | Push branch | `cd` to worktree, `git push -u origin HEAD` | Press `p` |
 | Merge to parent | `cd` to parent, `git merge`, resolve conflicts manually | Press `m`, agent-assisted conflict resolution |
+| Resume node context after restart | Reopen terminals and reconstruct context manually | Press `O` on the same node; default OpenCode can reconnect to that worktree's recent session |
 | Monitor agents | Switch between terminal windows | See spinners and activity badges on every node |
 | Review diffs | `git diff` per worktree | Press `w` for inline diff with method-level analysis |
 
