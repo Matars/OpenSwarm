@@ -43,7 +43,7 @@ nav_order: 3
 |-----|--------|
 | `a` | Create worktree |
 | `o` | Open shell in worktree |
-| `O` | Open agent picker (or launch default agent) |
+| `O` | Open agent picker (or launch default agent; default OpenCode attempts session resume) |
 | `c` | Commit (`git add . && git commit`) for selected worktree |
 | `p` | Push selected worktree branch |
 | `f` | Fetch and pull parent branch |

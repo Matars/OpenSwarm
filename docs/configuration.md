@@ -35,9 +35,11 @@ Controls what happens when you press `O` on a worktree node:
 |-------|----------|
 | `""` (empty) | Shows a picker if multiple agents are detected |
 | `"claude"` | Launches Claude directly |
-| `"opencode"` | Launches OpenCode directly |
+| `"opencode"` | Launches OpenCode directly and tries to resume the latest matching OpenCode session for that worktree |
 
 OpenSwarm auto-detects available agents by scanning your PATH for `claude` and `opencode`. If the configured default isn't found, it falls back to the picker.
+
+OpenCode session resume only applies to this default-launch path (`default_agent = "opencode"`). Manually choosing OpenCode from the picker starts a normal OpenCode launch.
 
 ### `conflict_resolve_prompt`
 

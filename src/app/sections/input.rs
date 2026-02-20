@@ -274,7 +274,12 @@ fn open_agent_selector_for_selected_worktree(
         if let Some(default_agent) = app.config.default_agent {
             if app.detected_agents.contains(&default_agent) {
                 open_terminal_popup_for_path(app, path.as_str())?;
-                launch_agent_in_terminal(app, path.as_str(), default_agent)?;
+                launch_agent_in_terminal(
+                    app,
+                    path.as_str(),
+                    default_agent,
+                    default_agent == ExternalAgent::Opencode,
+                )?;
                 return Ok(());
             }
             app.status_line = format!(
@@ -331,7 +336,7 @@ fn handle_agent_select_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<
             };
 
             open_terminal_popup_for_path(app, path.as_str())?;
-            launch_agent_in_terminal(app, path.as_str(), agent)?;
+            launch_agent_in_terminal(app, path.as_str(), agent, false)?;
             app.agent_select_path = None;
         }
         _ => {}
@@ -344,6 +349,7 @@ fn launch_agent_in_terminal(
     app: &mut App,
     path: &str,
     agent: ExternalAgent,
+    allow_opencode_session_resume: bool,
 ) -> Result<(), Box<dyn Error>> {
     wait_for_terminal_ready(app, path);
 
@@ -352,15 +358,19 @@ fn launch_agent_in_terminal(
             let prompt = build_conflict_resolve_prompt(app, context);
 
             if agent == ExternalAgent::Opencode {
-                let launch_cmd = format!(
-                    "{} --prompt {}\r",
-                    agent.command_name(),
-                    shell_ansi_c_quote(prompt.as_str())
+                let (launch_cmd, resumed_session) = build_opencode_launch_command(
+                    path,
+                    Some(prompt.as_str()),
+                    allow_opencode_session_resume,
                 );
                 write_to_agent(app, path, launch_cmd.as_str())?;
                 app.pending_conflict_context = None;
-                app.status_line =
-                    "Launched OpenCode with conflict-resolution prompt (--prompt)".to_string();
+                app.status_line = if resumed_session {
+                    "Reconnected OpenCode session with conflict-resolution prompt (--prompt)"
+                        .to_string()
+                } else {
+                    "Launched OpenCode with conflict-resolution prompt (--prompt)".to_string()
+                };
                 return Ok(());
             }
 
@@ -377,10 +387,18 @@ fn launch_agent_in_terminal(
         }
     }
 
-    let launch_cmd = format!("{}\r", agent.command_name());
+    let (launch_cmd, resumed_session) = if agent == ExternalAgent::Opencode {
+        build_opencode_launch_command(path, None, allow_opencode_session_resume)
+    } else {
+        (format!("{}\r", agent.command_name()), false)
+    };
     write_to_agent(app, path, launch_cmd.as_str())?;
 
-    app.status_line = format!("Launched {} in terminal", agent.display_name());
+    app.status_line = if resumed_session {
+        "Reconnected OpenCode session in terminal".to_string()
+    } else {
+        format!("Launched {} in terminal", agent.display_name())
+    };
     Ok(())
 }
 
@@ -403,9 +421,219 @@ fn launch_opencode_conflict_resolution(app: &mut App) -> Result<(), Box<dyn Erro
     }
 
     open_terminal_popup_for_path(app, context.parent_path.as_str())?;
-    launch_agent_in_terminal(app, context.parent_path.as_str(), ExternalAgent::Opencode)?;
+    launch_agent_in_terminal(
+        app,
+        context.parent_path.as_str(),
+        ExternalAgent::Opencode,
+        false,
+    )?;
     app.confirm_conflict_resolve_yes = false;
     Ok(())
+}
+
+fn build_opencode_launch_command(
+    worktree_path: &str,
+    prompt: Option<&str>,
+    allow_resume: bool,
+) -> (String, bool) {
+    let resumed_session = if allow_resume {
+        resolve_recent_opencode_session_id_for_worktree(worktree_path)
+    } else {
+        None
+    };
+
+    let mut cmd = String::from("opencode");
+    let resumed = if let Some(session_id) = resumed_session {
+        cmd.push_str(" --session ");
+        cmd.push_str(shell_ansi_c_quote(session_id.as_str()).as_str());
+        true
+    } else {
+        false
+    };
+
+    if let Some(text) = prompt {
+        cmd.push_str(" --prompt ");
+        cmd.push_str(shell_ansi_c_quote(text).as_str());
+    }
+    cmd.push('\r');
+    (cmd, resumed)
+}
+
+fn resolve_recent_opencode_session_id_for_worktree(worktree_path: &str) -> Option<String> {
+    let output = Command::new("opencode")
+        .args(["session", "list", "--format", "json", "-n", "120"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let json = String::from_utf8_lossy(&output.stdout);
+    let sessions = parse_opencode_session_rows(json.as_ref());
+    if sessions.is_empty() {
+        return None;
+    }
+
+    let target = normalize_path_for_session_match(worktree_path);
+    sessions
+        .into_iter()
+        .find(|(_, directory)| normalize_path_for_session_match(directory.as_str()) == target)
+        .map(|(id, _)| id)
+}
+
+fn normalize_path_for_session_match(path: &str) -> String {
+    let candidate = PathBuf::from(path);
+    let absolute = if candidate.is_absolute() {
+        candidate
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(candidate.as_path()))
+            .unwrap_or(candidate)
+    };
+    fs::canonicalize(absolute.as_path())
+        .unwrap_or(absolute)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn parse_opencode_session_rows(json: &str) -> Vec<(String, String)> {
+    parse_top_level_json_objects(json)
+        .into_iter()
+        .filter_map(|object| {
+            let id = parse_json_string_field(object.as_str(), "id")?;
+            let directory = parse_json_string_field(object.as_str(), "directory")?;
+            Some((id, directory))
+        })
+        .collect()
+}
+
+fn parse_top_level_json_objects(json: &str) -> Vec<String> {
+    let bytes = json.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    let mut in_string = false;
+    let mut escaping = false;
+    let mut depth = 0usize;
+    let mut start = None;
+
+    while i < bytes.len() {
+        let c = bytes[i];
+        if in_string {
+            if escaping {
+                escaping = false;
+            } else if c == b'\\' {
+                escaping = true;
+            } else if c == b'"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        match c {
+            b'"' => in_string = true,
+            b'{' => {
+                if depth == 0 {
+                    start = Some(i);
+                }
+                depth = depth.saturating_add(1);
+            }
+            b'}' => {
+                if depth > 0 {
+                    depth -= 1;
+                    if depth == 0 {
+                        if let Some(begin) = start.take() {
+                            out.push(json[begin..=i].to_string());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+
+    out
+}
+
+fn parse_json_string_field(object: &str, field_name: &str) -> Option<String> {
+    let key = format!("\"{}\"", field_name);
+    let mut cursor = 0usize;
+    while let Some(found) = object[cursor..].find(key.as_str()) {
+        let idx = cursor + found;
+        let mut i = idx + key.len();
+        skip_json_ws(object, &mut i);
+        if object.as_bytes().get(i).copied() != Some(b':') {
+            cursor = i;
+            continue;
+        }
+        i += 1;
+        skip_json_ws(object, &mut i);
+        if object.as_bytes().get(i).copied() != Some(b'"') {
+            cursor = i;
+            continue;
+        }
+        let (value, _) = parse_json_string_literal(object, i)?;
+        return Some(value);
+    }
+    None
+}
+
+fn skip_json_ws(text: &str, idx: &mut usize) {
+    while let Some(ch) = text.as_bytes().get(*idx) {
+        if !matches!(*ch, b' ' | b'\n' | b'\r' | b'\t') {
+            break;
+        }
+        *idx += 1;
+    }
+}
+
+fn parse_json_string_literal(text: &str, quote_idx: usize) -> Option<(String, usize)> {
+    let bytes = text.as_bytes();
+    if bytes.get(quote_idx).copied() != Some(b'"') {
+        return None;
+    }
+
+    let mut i = quote_idx + 1;
+    let mut out = String::new();
+    while i < bytes.len() {
+        let ch = bytes[i];
+        if ch == b'"' {
+            return Some((out, i + 1));
+        }
+        if ch != b'\\' {
+            out.push(ch as char);
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+        let esc = *bytes.get(i)?;
+        match esc {
+            b'"' => out.push('"'),
+            b'\\' => out.push('\\'),
+            b'/' => out.push('/'),
+            b'b' => out.push('\u{0008}'),
+            b'f' => out.push('\u{000C}'),
+            b'n' => out.push('\n'),
+            b'r' => out.push('\r'),
+            b't' => out.push('\t'),
+            b'u' => {
+                let end = i + 5;
+                let hex = text.get(i + 1..end)?;
+                if let Ok(value) = u16::from_str_radix(hex, 16) {
+                    if let Some(decoded) = char::from_u32(value as u32) {
+                        out.push(decoded);
+                    }
+                }
+                i = end - 1;
+            }
+            _ => return None,
+        }
+        i += 1;
+    }
+
+    None
 }
 
 fn normalize_terminal_newlines(text: &str) -> String {
