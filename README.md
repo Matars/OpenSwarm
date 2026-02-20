@@ -61,6 +61,7 @@ Then:
 | `c` | Commit |
 | `p` | Push |
 | `f` | Fetch/pull parent |
+| `F` | Rebase selected onto parent |
 | `m` | Merge into parent |
 | `d` | Delete worktree |
 

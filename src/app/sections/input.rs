@@ -240,6 +240,27 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
                     "No connected parent node found for selected worktree".to_string();
             }
         }
+        KeyCode::Char('F') => {
+            let selected = app.selected_worktree().cloned();
+            let parent = connected_parent_worktree(app);
+            if let (Some(selected), Some(parent)) = (selected, parent) {
+                let child_path = selected.path;
+                let child_branch = selected.branch;
+                let parent_path = parent.path;
+                let parent_branch = parent.branch;
+                start_git_task(app, "Rebase selected onto parent", false, true, move || {
+                    git_result_text(rebase_onto_parent_at(
+                        child_path.as_str(),
+                        child_branch.as_str(),
+                        parent_path.as_str(),
+                        parent_branch.as_str(),
+                    ))
+                });
+            } else {
+                app.status_line =
+                    "No connected parent node found for selected worktree".to_string();
+            }
+        }
         KeyCode::Char('x') => {
             start_git_task(app, "Prune stale worktrees", true, false, || {
                 git_result_text(run_git(&["worktree", "prune"]))

@@ -49,6 +49,7 @@ nav_order: 3
 | `c` | Commit (`git add . && git commit`) for selected worktree |
 | `p` | Push selected worktree branch |
 | `f` | Fetch and pull parent branch |
+| `F` | Rebase selected branch onto parent branch |
 | `m` | Merge selected worktree into parent |
 | `d` | Delete selected worktree |
 | `x` | Prune stale worktrees |
