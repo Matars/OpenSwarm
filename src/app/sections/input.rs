@@ -745,27 +745,33 @@ fn load_openswarm_config() -> OpenSwarmConfig {
 
     let mut default_agent: Option<ExternalAgent> = None;
     let mut conflict_prompt_path = prompts_dir.join("conflict-resolve-prompt.md");
+    let mut worktree_graph_art = default_worktree_graph_art_lines();
 
     if let Ok(raw) = fs::read_to_string(config_path.as_path()) {
-        for line in raw.lines() {
+        let lines: Vec<&str> = raw.lines().collect();
+        let mut idx = 0usize;
+        while idx < lines.len() {
+            let line = lines[idx];
             let trimmed = line.trim();
             if trimmed.is_empty() || trimmed.starts_with('#') {
+                idx += 1;
                 continue;
             }
-            let Some((key, value)) = trimmed.split_once('=') else {
+            let Some((key, value)) = line.split_once('=') else {
+                idx += 1;
                 continue;
             };
             let key = key.trim();
-            let value = parse_config_string(value.trim());
+            let value = value.trim();
             match key {
                 "default_agent" => {
-                    default_agent = value
+                    default_agent = parse_config_string(value)
                         .as_deref()
                         .and_then(parse_external_agent)
                         .or(default_agent);
                 }
                 "conflict_resolve_prompt" => {
-                    if let Some(v) = value {
+                    if let Some(v) = parse_config_string(value) {
                         let candidate = PathBuf::from(v.as_str());
                         conflict_prompt_path = if candidate.is_absolute() {
                             candidate
@@ -774,8 +780,26 @@ fn load_openswarm_config() -> OpenSwarmConfig {
                         };
                     }
                 }
+                "worktree_graph_art" => {
+                    if value.starts_with("\"\"\"") {
+                        if let Some((parsed, consumed)) =
+                            parse_config_multiline_string(lines.as_slice(), idx, value)
+                        {
+                            worktree_graph_art =
+                                parsed.lines().map(|line| line.to_string()).collect();
+                            idx += consumed;
+                            continue;
+                        }
+                    } else if let Some(v) = parse_config_string(value) {
+                        let expanded = v.replace("\\n", "\n");
+                        worktree_graph_art =
+                            expanded.lines().map(|line| line.to_string()).collect();
+                    }
+                }
                 _ => {}
             }
+
+            idx += 1;
         }
     }
 
@@ -793,6 +817,7 @@ fn load_openswarm_config() -> OpenSwarmConfig {
         config_path: config_path.to_string_lossy().to_string(),
         default_agent,
         conflict_resolve_prompt_path: conflict_prompt_path.to_string_lossy().to_string(),
+        worktree_graph_art,
     }
 }
 
@@ -805,8 +830,47 @@ fn openswarm_config_dir() -> PathBuf {
 }
 
 fn default_openswarm_config_text() -> String {
-    "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from ~/.config/openswarm\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n"
+    "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from ~/.config/openswarm\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n\n# optional art shown above details in worktree view\n# supports ASCII or Unicode. Keep it compact for narrow terminals.\nworktree_graph_art = \"\"\"\n  .-\"\"\"\"-.   .-\"\"\"\"-.\n /  .--.  \\ /  .--.  \\\n|  /    \\_/\\_/    \\  |\n| |  o    . .    o  | |\n| |      ( ^ )      | |\n \\ \\   .`-.-`.   / /\n  `._`--(_____)--`_.`\n\"\"\"\n"
         .to_string()
+}
+
+fn default_worktree_graph_art_lines() -> Vec<String> {
+    vec![
+        "  .-\"\"\"\"-.   .-\"\"\"\"-.".to_string(),
+        " /  .--.  \\ /  .--.  \\".to_string(),
+        "|  /    \\_/\\_/    \\  |".to_string(),
+        "| |  o    . .    o  | |".to_string(),
+        "| |      ( ^ )      | |".to_string(),
+        " \\ \\   .`-.-`.   / /".to_string(),
+        "  `._`--(_____)--`_.`".to_string(),
+    ]
+}
+
+fn parse_config_multiline_string(
+    lines: &[&str],
+    start_idx: usize,
+    current_value: &str,
+) -> Option<(String, usize)> {
+    let mut text = String::new();
+    let mut consumed = 1usize;
+    let mut current = current_value.strip_prefix("\"\"\"")?;
+
+    loop {
+        if let Some(end_idx) = current.find("\"\"\"") {
+            text.push_str(&current[..end_idx]);
+            return Some((text, consumed));
+        }
+
+        text.push_str(current);
+
+        if start_idx + consumed >= lines.len() {
+            return None;
+        }
+
+        text.push('\n');
+        current = lines[start_idx + consumed];
+        consumed += 1;
+    }
 }
 
 fn parse_config_string(value: &str) -> Option<String> {

@@ -25,6 +25,18 @@ default_agent = ""
 # Path to the conflict resolution prompt template.
 # Relative paths resolve from ~/.config/openswarm/
 conflict_resolve_prompt = "prompts/conflict-resolve-prompt.md"
+
+# Optional art box shown above the worktree details panel.
+# Supports ASCII or Unicode.
+worktree_graph_art = """
+  .-""""-.   .-""""-.
+ /  .--.  \ /  .--.  \
+|  /    \_/\_/    \  |
+| |  o    . .    o  | |
+| |      ( ^ )      | |
+ \ \   .`-.-`.   / /
+  `._`--(_____)--`_.`
+"""
 ```
 
 ### `default_agent`
@@ -46,6 +58,14 @@ OpenCode session resume only applies to this default-launch path (`default_agent
 Path to a Markdown template used when launching agent-assisted merge conflict resolution. Can be absolute or relative to `~/.config/openswarm/`.
 
 A default template is created at `~/.config/openswarm/prompts/conflict-resolve-prompt.md` on first run.
+
+### `worktree_graph_art`
+
+Multiline string rendered in a dedicated `art` panel above `details` in worktree view.
+
+- Supports ASCII and Unicode glyphs.
+- Keep line width short for narrow terminals (the panel truncates overflow).
+- You can also set it as a single-line string and use `\n` escapes.
 
 **Template placeholders:**
 

@@ -119,7 +119,7 @@ cargo install --path . --bin openswarm --force    # Install to PATH
 
 ## Configuration
 
-Agent defaults and prompt templates live in `~/.config/openswarm/`. See the [configuration reference](https://matars.github.io/OpenSwarm/configuration.html).
+Agent defaults, prompt templates, and optional worktree art live in `~/.config/openswarm/`. See the [configuration reference](https://matars.github.io/OpenSwarm/configuration.html).
 
 ## Notes
 

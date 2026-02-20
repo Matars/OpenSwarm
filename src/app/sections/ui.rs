@@ -41,12 +41,17 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         let right = Layout::default()
             .direction(Direction::Vertical)
             .spacing(1)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .constraints([
+                Constraint::Percentage(24),
+                Constraint::Percentage(40),
+                Constraint::Percentage(36),
+            ])
             .split(columns[1]);
 
         draw_worktree_canvas_panel(frame, app, columns[0]);
-        draw_worktree_details_panel(frame, app, right[0]);
-        draw_worktree_actions_panel(frame, app, right[1]);
+        draw_worktree_art_panel(frame, app, right[0]);
+        draw_worktree_details_panel(frame, app, right[1]);
+        draw_worktree_actions_panel(frame, app, right[2]);
     }
 
     if matches!(app.mode, Mode::CommitInput) {
@@ -2042,6 +2047,43 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
                 .title("details [?]")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(border_color))
+                .style(Style::default().bg(Color::Black)),
+        )
+        .style(Style::default().bg(Color::Black).fg(Color::White))
+        .alignment(Alignment::Left);
+
+    frame.render_widget(panel, area);
+}
+
+fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
+    let max_width = area.width.saturating_sub(2) as usize;
+    let max_lines = area.height.saturating_sub(2) as usize;
+    let mut lines: Vec<Line<'_>> = Vec::new();
+
+    if max_width > 0 && max_lines > 0 {
+        for raw in app.config.worktree_graph_art.iter().take(max_lines) {
+            let clean = sanitize_for_tui(raw.as_str());
+            lines.push(Line::from(truncate_text(clean.as_str(), max_width)));
+        }
+    }
+
+    if lines.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "No art configured",
+            Style::default().fg(Color::DarkGray),
+        )));
+        lines.push(Line::from(Span::styled(
+            "Set worktree_graph_art in config.toml",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let panel = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title("art")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Gray))
                 .style(Style::default().bg(Color::Black)),
         )
         .style(Style::default().bg(Color::Black).fg(Color::White))

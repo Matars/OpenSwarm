@@ -99,6 +99,7 @@ struct OpenSwarmConfig {
     config_path: String,
     default_agent: Option<ExternalAgent>,
     conflict_resolve_prompt_path: String,
+    worktree_graph_art: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
