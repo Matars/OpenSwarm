@@ -184,6 +184,7 @@ fn update_worktree_merged_with_parent(entries: &mut [WorktreeEntry], root_branch
     let parents = worktree_parent_map(entries, root_branch);
     for idx in 0..entries.len() {
         entries[idx].merged_with_parent = false;
+        entries[idx].behind_parent = false;
         let Some(parent_idx) = parents.get(idx).and_then(|value| *value) else {
             continue;
         };
@@ -205,8 +206,13 @@ fn update_worktree_merged_with_parent(entries: &mut [WorktreeEntry], root_branch
             continue;
         };
 
-        entries[idx].merged_with_parent =
+        let parent_contains_child =
             git_is_ancestor(parent.path.as_str(), child.branch.as_str(), parent_ref);
+        let child_contains_parent =
+            git_is_ancestor(parent.path.as_str(), parent_ref, child.branch.as_str());
+
+        entries[idx].merged_with_parent = parent_contains_child;
+        entries[idx].behind_parent = parent_contains_child && !child_contains_parent;
     }
 }
 
@@ -722,7 +728,7 @@ fn move_worktree_selection(app: &mut App, direction: NavDirection) {
     let root_branch = current_session_branch(app);
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
     let depths = graph_depths(&parents);
-    let points = graph_layout(&parents);
+    let points = graph_layout(&parents, app.worktree_graph_builder);
     let (cx, cy) = points[app.selected_worktree];
     let mut best_idx: Option<usize> = None;
     let mut best_score = f32::MAX;
@@ -855,7 +861,7 @@ fn move_worktree_level_siblings(app: &mut App, move_right: bool) {
     let root_branch = current_session_branch(app);
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
     let depths = graph_depths(&parents);
-    let points = graph_layout(&parents);
+    let points = graph_layout(&parents, app.worktree_graph_builder);
     let current = app.selected_worktree;
     let current_depth = depths[current];
     let (cx, cy) = points[current];
@@ -893,7 +899,7 @@ fn move_worktree_level_vertical(app: &mut App, move_up: bool) {
     let root_branch = current_session_branch(app);
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
     let depths = graph_depths(&parents);
-    let points = graph_layout(&parents);
+    let points = graph_layout(&parents, app.worktree_graph_builder);
     let current = app.selected_worktree;
     let current_depth = depths[current];
     let (cx, cy) = points[current];

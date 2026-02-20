@@ -12,8 +12,8 @@ AI agents like Claude Code and OpenCode can handle longer tasks without supervis
 
 OpenSwarm gives you one screen:
 
-- **Worktree graph** -- see all worktrees as an interactive graph with parent-child relationships, dirty/committed/local-only/pushed/merged-with-parent badges, ahead/behind counts, live agent activity, and text-based estimated PTY token telemetry (ctx/out + tok/s)
-- **Embedded terminals + per-node session memory** -- launch shells and agents in PTY sessions directly inside the TUI; sessions persist in the background, and default OpenCode launches can reconnect to the most recent session for that same worktree node after restarting OpenSwarm
+- **Worktree graph** -- see all worktrees as an interactive graph with parent-child relationships, dirty/needs-pull/committed/local-only/pushed/merged-with-parent badges, ahead/behind counts, live agent activity, and text-based estimated PTY token telemetry (ctx/out + tok/s)
+- **Embedded terminals + per-node session memory** -- launch shells and agents in PTY sessions directly inside the TUI; sessions persist in the background, and default OpenCode launches reconnect to the most recent session for that same worktree node after restarting OpenSwarm
 - **Inline diffs** -- switch to changes view for file staging with method-level diff analysis (Python, Rust, JS/TS, Go)
 - **One-key git operations** -- create worktrees (`a`), commit (`c`), push (`p`), merge (`m`), delete (`d`) without leaving the TUI
 - **Agent-powered merge conflict solver** -- when merges conflict, OpenSwarm can launch OpenCode with a prefilled conflict-resolution prompt in the parent worktree, so the agent resolves/stages while you keep orchestration in one place
@@ -47,9 +47,11 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 |-----|--------|
 | `w` | Toggle Changes / Worktrees views |
 | Arrow keys / `h` `j` `k` `l` | Move selection |
+| `Ctrl+K` | Cycle graph builder (top-down / radial) |
 | `Tab` | Cycle panes |
 | `+` / `-` / `0` | Zoom in / out / reset |
 | `W` `A` `S` `D` | Pan canvas |
+| `Ctrl+B` | Cycle canvas background effect |
 
 ### Worktree actions
 

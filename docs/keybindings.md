@@ -25,6 +25,7 @@ nav_order: 3
 | Arrow keys | Directional graph navigation (nearest node in that direction) |
 | `h` / `l` | Move between siblings at the same depth |
 | `j` / `k` | Move to child / parent levels |
+| `Ctrl+K` | Cycle graph builder (top-down balanced / radial) |
 | `Tab` | Cycle focus: Canvas, Details, Actions |
 | `?` | Toggle help modal |
 
@@ -36,6 +37,7 @@ nav_order: 3
 | `-` | Zoom out |
 | `0` | Reset zoom and pan |
 | `W` `A` `S` `D` | Pan up / left / down / right |
+| `Ctrl+B` | Cycle canvas background mode (stars / nebula / crosshatch) |
 
 ### Actions
 

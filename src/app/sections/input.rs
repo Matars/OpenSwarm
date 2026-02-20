@@ -1,6 +1,7 @@
-fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn Error>> {
+fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn Error>> {
+    let code = key.code;
     if app.view_mode == ViewMode::Worktrees {
-        return handle_worktree_mode_key(app, code);
+        return handle_worktree_mode_key(app, key);
     }
 
     match code {
@@ -84,7 +85,14 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
     Ok(false)
 }
 
-fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn Error>> {
+fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn Error>> {
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('k') {
+        app.cycle_worktree_graph_builder();
+        app.status_line = format!("Graph builder: {}", app.worktree_graph_builder.label());
+        return Ok(false);
+    }
+
+    let code = key.code;
     match code {
         KeyCode::Char('q') => return Ok(request_quit(app)),
         KeyCode::Char('w') => {
@@ -222,6 +230,14 @@ fn reset_worktree_canvas_view(app: &mut App) {
     app.worktree_canvas_pan_x = 0.0;
     app.worktree_canvas_pan_y = 0.0;
     app.status_line = "Canvas view reset".to_string();
+}
+
+fn cycle_worktree_canvas_background(app: &mut App) {
+    app.worktree_canvas_bg_mode = app.worktree_canvas_bg_mode.next();
+    app.status_line = format!(
+        "Canvas background: {} (Ctrl+B to cycle)",
+        app.worktree_canvas_bg_mode.short_label()
+    );
 }
 
 fn open_terminal_popup_for_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>> {

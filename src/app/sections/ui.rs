@@ -553,9 +553,18 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
         || app.worktree_canvas_pan_x != 0.0
         || app.worktree_canvas_pan_y != 0.0
     {
-        format!("worktree graph [?]  z:{:.1}x", app.worktree_canvas_zoom)
+        format!(
+            "worktree graph [?]  {}  z:{:.1}x  bg:{}",
+            app.worktree_graph_builder.label(),
+            app.worktree_canvas_zoom,
+            app.worktree_canvas_bg_mode.short_label()
+        )
     } else {
-        "worktree graph [?]".to_string()
+        format!(
+            "worktree graph [?]  {}  bg:{}",
+            app.worktree_graph_builder.label(),
+            app.worktree_canvas_bg_mode.short_label()
+        )
     };
     let block = Block::default()
         .title(title)
@@ -583,7 +592,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
 
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
     let collapsed_root_idx = None;
-    let logical = graph_layout(&parents);
+    let logical = graph_layout(&parents, app.worktree_graph_builder);
     let node_points: Vec<(f64, f64)> = logical
         .iter()
         .map(|point| logical_to_canvas_point(*point))
@@ -640,12 +649,14 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
             Style::default()
                 .fg(Color::LightCyan)
                 .add_modifier(Modifier::BOLD)
+        } else if entry.dirty {
+            Style::default().fg(Color::Red)
+        } else if entry.behind_parent {
+            Style::default().fg(Color::Yellow)
         } else if entry.is_current {
             Style::default()
                 .fg(Color::LightBlue)
                 .add_modifier(Modifier::BOLD)
-        } else if entry.dirty {
-            Style::default().fg(Color::Red)
         } else {
             Style::default().fg(Color::White)
         };
@@ -878,10 +889,12 @@ fn draw_unicode_worktree_graph(
         let selected = idx == selected_idx;
         let node_color = if selected {
             Color::LightCyan
-        } else if entry.is_current {
-            Color::LightBlue
         } else if entry.dirty {
             Color::Red
+        } else if entry.behind_parent {
+            Color::Yellow
+        } else if entry.is_current {
+            Color::LightBlue
         } else {
             graph_palette_color(idx)
         };
@@ -1115,6 +1128,32 @@ fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &mut App) 
     let time_seconds = now_millis as f64 / 1000.0;
     let pan_x = (app.worktree_canvas_pan_x * 200.0).round() as i64;
     let pan_y = (app.worktree_canvas_pan_y * 140.0).round() as i64;
+
+    match app.worktree_canvas_bg_mode {
+        CanvasBackgroundMode::GlitterStars => {
+            draw_canvas_bg_glitter_stars(buf, area, pan_x, pan_y, time_seconds)
+        }
+        CanvasBackgroundMode::NebulaMist => {
+            draw_canvas_bg_nebula_mist(buf, area, pan_x, pan_y, time_seconds)
+        }
+        CanvasBackgroundMode::Crosshatch => {
+            draw_canvas_bg_crosshatch(buf, area, pan_x, pan_y, time_seconds)
+        }
+    }
+
+    let elapsed = app.canvas_bg_last_tick.elapsed();
+    app.canvas_bg_last_tick = Instant::now();
+    app.canvas_bg_effects
+        .process_effects(elapsed.into(), buf, area);
+}
+
+fn draw_canvas_bg_glitter_stars(
+    buf: &mut Buffer,
+    area: Rect,
+    pan_x: i64,
+    pan_y: i64,
+    time_seconds: f64,
+) {
     let tau = std::f64::consts::TAU;
 
     for y in 0..area.height {
@@ -1177,11 +1216,126 @@ fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &mut App) 
             paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
         }
     }
+}
 
-    let elapsed = app.canvas_bg_last_tick.elapsed();
-    app.canvas_bg_last_tick = Instant::now();
-    app.canvas_bg_effects
-        .process_effects(elapsed.into(), buf, area);
+fn draw_canvas_bg_nebula_mist(
+    buf: &mut Buffer,
+    area: Rect,
+    pan_x: i64,
+    pan_y: i64,
+    time_seconds: f64,
+) {
+    for y in 0..area.height {
+        for x in 0..area.width {
+            let wx = x as i64 + pan_x;
+            let wy = y as i64 + pan_y;
+            let seed = star_seed(wx, wy);
+
+            let fx = (wx as f64 * 0.054) + time_seconds * 0.11;
+            let fy = (wy as f64 * 0.067) - time_seconds * 0.08;
+            let wave = (fx.sin() * 0.55 + fy.cos() * 0.45 + (fx * 0.43 + fy * 0.31).sin() * 0.35)
+                .clamp(-1.0, 1.0);
+            let density = ((wave + 1.0) * 0.5) as f32;
+
+            let dust_roll = seed & 0x1FF;
+            if dust_roll < 36 {
+                paint_graph_char(
+                    buf,
+                    area,
+                    x,
+                    y,
+                    '·',
+                    Style::default().fg(Color::Rgb(30, 35, 54)),
+                );
+            }
+
+            if density > 0.82 && dust_roll % 3 == 0 {
+                let glow =
+                    ((time_seconds * 0.45 + star_seed_unit(seed, 24) * 9.0).sin() + 1.0) * 0.5;
+                let base = color_mix(
+                    Color::Rgb(22, 27, 43),
+                    Color::Rgb(50, 86, 122),
+                    (density - 0.7).clamp(0.0, 0.3),
+                );
+                let color = color_mix(base, Color::Rgb(102, 156, 214), (glow as f32) * 0.32);
+                let glyph = if density > 0.92 { '▒' } else { '░' };
+                paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
+            }
+
+            let star_gate = (seed >> 10) % 2000;
+            if star_gate < 4 {
+                let twinkle = ((time_seconds * (0.35 + star_seed_unit(seed, 32) * 0.7)
+                    + star_seed_unit(seed, 40) * std::f64::consts::TAU)
+                    .sin()
+                    + 1.0)
+                    * 0.5;
+                if twinkle > 0.35 {
+                    let glyph = if twinkle > 0.78 { '✧' } else { '•' };
+                    let color = color_mix(
+                        Color::Rgb(80, 106, 146),
+                        Color::Rgb(236, 245, 255),
+                        twinkle as f32,
+                    );
+                    paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
+                }
+            }
+        }
+    }
+}
+
+fn draw_canvas_bg_crosshatch(
+    buf: &mut Buffer,
+    area: Rect,
+    pan_x: i64,
+    pan_y: i64,
+    time_seconds: f64,
+) {
+    for y in 0..area.height {
+        for x in 0..area.width {
+            let wx = x as i64 + pan_x;
+            let wy = y as i64 + pan_y;
+            let seed = star_seed(wx, wy);
+            let sum = (wx + wy).rem_euclid(18);
+            let diff = (wx - wy).rem_euclid(18);
+
+            if sum == 0 || diff == 0 {
+                let shimmer =
+                    ((time_seconds * 0.65 + star_seed_unit(seed, 16) * 6.0).sin() + 1.0) * 0.5;
+                let base = if sum == 0 {
+                    Color::Rgb(35, 46, 64)
+                } else {
+                    Color::Rgb(30, 40, 58)
+                };
+                let color = color_mix(base, Color::Rgb(95, 127, 172), (shimmer as f32) * 0.25);
+                let glyph = if sum == 0 { '╱' } else { '╲' };
+                paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
+                continue;
+            }
+
+            if (seed & 0x3FF) < 40 {
+                paint_graph_char(
+                    buf,
+                    area,
+                    x,
+                    y,
+                    '·',
+                    Style::default().fg(Color::Rgb(31, 36, 53)),
+                );
+            }
+
+            if sum == 9 && diff == 9 {
+                let twinkle =
+                    ((time_seconds * 0.9 + star_seed_unit(seed, 38) * 7.0).sin() + 1.0) * 0.5;
+                let glyph = if twinkle > 0.82 { '✦' } else { '•' };
+                let color = color_mix(
+                    Color::Rgb(86, 113, 154),
+                    Color::Rgb(244, 248, 255),
+                    twinkle as f32,
+                );
+                paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
+            }
+        }
+    }
 }
 
 fn build_canvas_bg_effect() -> tachyonfx::Effect {
@@ -1312,6 +1466,8 @@ fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
         ("detached", Style::default().fg(Color::Red))
     } else if entry.dirty {
         ("dirty", Style::default().fg(Color::Red))
+    } else if entry.behind_parent {
+        ("needs pull", Style::default().fg(Color::Yellow))
     } else if entry.ahead > 0 {
         ("committed", warm)
     } else if entry.merged_with_parent {
@@ -1640,7 +1796,14 @@ fn animated_agent_spinner(session: &AgentSession, now: Instant) -> char {
     FRAMES[(tick % FRAMES.len() as u128) as usize]
 }
 
-fn graph_layout(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
+fn graph_layout(parents: &[Option<usize>], builder: WorktreeGraphBuilder) -> Vec<(f32, f32)> {
+    match builder {
+        WorktreeGraphBuilder::TopDownBalanced => graph_layout_top_down_balanced(parents),
+        WorktreeGraphBuilder::Radial => graph_layout_radial(parents),
+    }
+}
+
+fn graph_layout_top_down_balanced(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
     let count = parents.len();
     if count == 0 {
         return Vec::new();
@@ -1704,6 +1867,70 @@ fn graph_layout(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
         for idx in 0..count {
             positions[idx].0 = (positions[idx].0 + forces[idx].0).clamp(0.06, 0.94);
             positions[idx].1 = (positions[idx].1 + forces[idx].1).clamp(0.12, 0.95);
+        }
+    }
+
+    positions
+}
+
+fn graph_layout_radial(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
+    let count = parents.len();
+    if count == 0 {
+        return Vec::new();
+    }
+
+    let depths = graph_depths(parents);
+    let mut child_counts = vec![0usize; count];
+    for parent_idx in parents.iter().flatten() {
+        if *parent_idx < count {
+            child_counts[*parent_idx] = child_counts[*parent_idx].saturating_add(1);
+        }
+    }
+
+    let center_idx = (0..count)
+        .filter(|idx| parents[*idx].is_none())
+        .max_by(|a, b| {
+            child_counts[*a]
+                .cmp(&child_counts[*b])
+                .then_with(|| b.cmp(a))
+        })
+        .unwrap_or(0);
+
+    let max_depth = depths
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, depth)| (idx != center_idx).then_some((*depth).max(1)))
+        .max()
+        .unwrap_or(1);
+
+    let mut positions = vec![(0.5f32, 0.5f32); count];
+    positions[center_idx] = (0.5, 0.5);
+    let mut angles = vec![0.0f32; count];
+    angles[center_idx] = -std::f32::consts::FRAC_PI_2;
+
+    for ring in 1..=max_depth {
+        let mut nodes: Vec<usize> = (0..count)
+            .filter(|idx| *idx != center_idx && depths[*idx].max(1) == ring)
+            .collect();
+        if nodes.is_empty() {
+            continue;
+        }
+
+        nodes.sort_by(|a, b| {
+            let pa = parents[*a].unwrap_or(center_idx);
+            let pb = parents[*b].unwrap_or(center_idx);
+            angles[pa].total_cmp(&angles[pb]).then_with(|| a.cmp(b))
+        });
+
+        let radius = (0.16 + (ring as f32 / max_depth as f32) * 0.34).min(0.44);
+        let full_turn = std::f32::consts::TAU;
+        for (slot, idx) in nodes.iter().enumerate() {
+            let angle =
+                -std::f32::consts::FRAC_PI_2 + (slot as f32 / nodes.len() as f32) * full_turn;
+            angles[*idx] = angle;
+            let x = 0.5 + radius * angle.cos();
+            let y = 0.5 + radius * angle.sin();
+            positions[*idx] = (x.clamp(0.06, 0.94), y.clamp(0.08, 0.94));
         }
     }
 
@@ -1935,6 +2162,22 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::styled(
                 selected.behind.to_string(),
                 Style::default().fg(Color::Yellow),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("parent: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                if selected.behind_parent {
+                    "needs pull"
+                } else {
+                    "in sync"
+                },
+                Style::default().fg(if selected.behind_parent {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                }),
             ),
         ]));
 
@@ -2252,6 +2495,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::styled("j/k", Style::default().fg(Color::LightBlue)),
             Span::raw(" child/parent level"),
         ]),
+        Line::from(vec![
+            Span::styled("Ctrl+K", Style::default().fg(Color::LightBlue)),
+            Span::raw(" next graph builder"),
+        ]),
     ]);
 
     let title = if app.git_task.is_some() {
@@ -2309,12 +2556,14 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Blue node = current branch worktree"),
             Line::from("- Cyan ring = selected worktree (drives details + actions)"),
             Line::from("- Red nodes = dirty (uncommitted changes)"),
+            Line::from("- Yellow nodes = behind parent (pull needed)"),
             Line::from("- Spinner suffix means active session; done/fail marks completion"),
             Line::from(""),
             Line::from("Navigation:"),
             Line::from("  arrows  - move by graph direction"),
             Line::from("  h/l     - move between siblings"),
             Line::from("  j/k     - move child/parent levels"),
+            Line::from("  Ctrl+K  - cycle graph builder (top-down/radial)"),
             Line::from("  Tab     - cycle graph/details/actions panels"),
             Line::from("  L       - open git command history popup"),
             Line::from(""),
@@ -2322,6 +2571,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("  +/-     - zoom in/out"),
             Line::from("  0       - reset view"),
             Line::from("  Shift+WASD - pan"),
+            Line::from("  Ctrl+B  - cycle canvas background"),
             Line::from(""),
             Line::from("Flow: o/O launch shells or agents, c/p/m/d run git lifecycle"),
             Line::from(""),

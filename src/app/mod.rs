@@ -108,6 +108,53 @@ enum ViewMode {
     Worktrees,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WorktreeGraphBuilder {
+    TopDownBalanced,
+    Radial,
+}
+
+impl WorktreeGraphBuilder {
+    fn label(self) -> &'static str {
+        match self {
+            WorktreeGraphBuilder::TopDownBalanced => "top-down",
+            WorktreeGraphBuilder::Radial => "radial",
+        }
+    }
+
+    fn next(self) -> Self {
+        match self {
+            WorktreeGraphBuilder::TopDownBalanced => WorktreeGraphBuilder::Radial,
+            WorktreeGraphBuilder::Radial => WorktreeGraphBuilder::TopDownBalanced,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CanvasBackgroundMode {
+    GlitterStars,
+    NebulaMist,
+    Crosshatch,
+}
+
+impl CanvasBackgroundMode {
+    fn next(self) -> Self {
+        match self {
+            CanvasBackgroundMode::GlitterStars => CanvasBackgroundMode::NebulaMist,
+            CanvasBackgroundMode::NebulaMist => CanvasBackgroundMode::Crosshatch,
+            CanvasBackgroundMode::Crosshatch => CanvasBackgroundMode::GlitterStars,
+        }
+    }
+
+    fn short_label(self) -> &'static str {
+        match self {
+            CanvasBackgroundMode::GlitterStars => "stars",
+            CanvasBackgroundMode::NebulaMist => "nebula",
+            CanvasBackgroundMode::Crosshatch => "crosshatch",
+        }
+    }
+}
+
 struct App {
     branch: String,
     ahead: usize,
@@ -129,6 +176,8 @@ struct App {
     worktree_canvas_zoom: f64,
     worktree_canvas_pan_x: f64,
     worktree_canvas_pan_y: f64,
+    worktree_graph_builder: WorktreeGraphBuilder,
+    worktree_canvas_bg_mode: CanvasBackgroundMode,
     canvas_bg_effects: EffectManager<&'static str>,
     canvas_bg_last_tick: Instant,
     canvas_selected_border_effects: EffectManager<&'static str>,
@@ -258,6 +307,7 @@ struct WorktreeEntry {
     behind: usize,
     has_upstream: bool,
     merged_with_parent: bool,
+    behind_parent: bool,
     parent_hint: Option<String>,
 }
 
@@ -375,6 +425,9 @@ impl App {
             worktree_canvas_zoom: 1.0,
             worktree_canvas_pan_x: 0.0,
             worktree_canvas_pan_y: 0.0,
+            worktree_graph_builder: WorktreeGraphBuilder::TopDownBalanced,
+            worktree_canvas_bg_mode: CanvasBackgroundMode::GlitterStars,
+            worktree_graph_builder: WorktreeGraphBuilder::TopDownBalanced,
             canvas_bg_effects,
             canvas_bg_last_tick: Instant::now(),
             canvas_selected_border_effects,
@@ -466,6 +519,10 @@ impl App {
             WorktreePane::Details => WorktreePane::Actions,
             WorktreePane::Actions => WorktreePane::Canvas,
         };
+    }
+
+    fn cycle_worktree_graph_builder(&mut self) {
+        self.worktree_graph_builder = self.worktree_graph_builder.next();
     }
 
     fn cycle_worktree_base_left(&mut self) {
@@ -603,9 +660,18 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         should_quit = true;
                         continue;
                     }
+
+                    if matches!(app.mode, Mode::Normal)
+                        && app.view_mode == ViewMode::Worktrees
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                        && key.code == KeyCode::Char('b')
+                    {
+                        cycle_worktree_canvas_background(&mut app);
+                        continue;
+                    }
                     match app.mode {
                         Mode::Normal => {
-                            should_quit = handle_normal_mode_key(&mut app, key.code)?;
+                            should_quit = handle_normal_mode_key(&mut app, key)?;
                         }
                         Mode::CommitInput => {
                             handle_commit_mode_key(&mut app, key.code)?;
