@@ -52,7 +52,6 @@ fn refresh_status(app: &mut App) {
     }
 
     refresh_selected_overview(app);
-    refresh_worktrees(app);
 }
 
 fn refresh_worktrees(app: &mut App) {

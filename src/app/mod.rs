@@ -425,7 +425,6 @@ impl App {
             worktree_canvas_zoom: 1.0,
             worktree_canvas_pan_x: 0.0,
             worktree_canvas_pan_y: 0.0,
-            worktree_graph_builder: WorktreeGraphBuilder::TopDownBalanced,
             worktree_canvas_bg_mode: CanvasBackgroundMode::GlitterStars,
             worktree_graph_builder: WorktreeGraphBuilder::TopDownBalanced,
             canvas_bg_effects,
@@ -613,12 +612,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     let mut app = App::new();
     refresh_status(&mut app);
+    refresh_worktrees(&mut app);
 
     let ui_tick_rate_fast = Duration::from_millis(16);
     let ui_tick_rate_normal = Duration::from_millis(33);
     let status_tick_rate = Duration::from_millis(1200);
+    let worktree_tick_rate = Duration::from_millis(5000);
     let mut last_ui_tick = Instant::now();
     let mut last_status_tick = Instant::now();
+    let mut last_worktree_tick = Instant::now();
     let mut should_quit = false;
 
     while !should_quit {
@@ -645,11 +647,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         };
         let ui_timeout = ui_tick_rate.saturating_sub(last_ui_tick.elapsed());
         let status_timeout = status_tick_rate.saturating_sub(last_status_tick.elapsed());
-        let timeout = if ui_timeout < status_timeout {
-            ui_timeout
-        } else {
-            status_timeout
-        };
+        let worktree_timeout = worktree_tick_rate.saturating_sub(last_worktree_tick.elapsed());
+        let timeout = ui_timeout.min(status_timeout).min(worktree_timeout);
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
@@ -726,6 +725,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         if refresh_git && last_status_tick.elapsed() >= status_tick_rate {
             refresh_status(&mut app);
             last_status_tick = Instant::now();
+        }
+
+        let refresh_worktree_state =
+            refresh_git && matches!(app.mode, Mode::Normal) && app.view_mode == ViewMode::Worktrees;
+        if refresh_worktree_state && last_worktree_tick.elapsed() >= worktree_tick_rate {
+            refresh_worktrees(&mut app);
+            last_worktree_tick = Instant::now();
         }
     }
 
