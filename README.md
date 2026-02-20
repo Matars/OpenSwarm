@@ -16,7 +16,7 @@ OpenSwarm gives you one screen:
 - **Embedded terminals** -- launch shells and agents in PTY sessions directly inside the TUI, with sessions persisting in the background
 - **Inline diffs** -- switch to changes view for file staging with method-level diff analysis (Python, Rust, JS/TS, Go)
 - **One-key git operations** -- create worktrees (`a`), commit (`c`), push (`p`), merge (`m`), delete (`d`) without leaving the TUI
-- **Agent-assisted conflict resolution** -- when merges conflict, launch an agent with a templated prompt to help resolve them
+- **Agent-assisted conflict resolution** -- when merges conflict, launch OpenCode with a templated prompt (or open a shell fallback) and optionally run another agent via `O`
 
 ## Quick start
 
@@ -76,14 +76,23 @@ Then:
 | Key | Action |
 |-----|--------|
 | `Ctrl+G` | Toggle input / control mode |
-| `Esc` | Close popup (session stays alive) |
-| `q` | Terminate session |
+| `Esc` | Close popup in CONTROL mode (session stays alive) |
+| `q` | Terminate session in CONTROL mode |
 
-See the [full keybindings reference](https://matars.github.io/OpenSwarm/keybindings.html) for all shortcuts including the notes editor, modals, and git reflog viewer.
+This is the compact set for daily flow. See the [full keybindings reference](https://matars.github.io/OpenSwarm/keybindings.html) for advanced shortcuts (help modal, prune, reflog popup, notes editor, and confirmations).
 
 ## Documentation
 
 Docs are at [matars.github.io/OpenSwarm](https://matars.github.io/OpenSwarm/) and live under `docs/`.
+
+The docs follow a practical Divio-style mix (not rigidly split):
+
+- **Tutorial-ish**: [Getting Started](https://matars.github.io/OpenSwarm/getting-started.html)
+- **How-to + workflows**: [Features](https://matars.github.io/OpenSwarm/features.html)
+- **Reference**: [Keybindings](https://matars.github.io/OpenSwarm/keybindings.html), [Configuration](https://matars.github.io/OpenSwarm/configuration.html)
+- **Explanation**: [Comparisons](https://matars.github.io/OpenSwarm/comparisons.html), [FAQ](https://matars.github.io/OpenSwarm/faq.html)
+
+Video demo: the GIF above is the quick preview; a longer walkthrough video can be linked from the docs home when added.
 
 To run docs locally:
 

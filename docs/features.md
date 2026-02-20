@@ -29,7 +29,7 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 
 ## Agent-assisted conflict resolution
 
-When a merge produces conflicts, OpenSwarm shows the conflicted files and a customizable prompt template. Confirm and it launches your agent in the parent worktree with context about what needs resolving. Edit the prompt template inline with `e`.
+When a merge produces conflicts, OpenSwarm shows the conflicted files and a customizable prompt template. Confirming launches OpenCode in the parent worktree with context about what needs resolving (or opens a shell there if OpenCode is unavailable). You can still launch another agent manually with `O`. Edit the prompt template inline with `e`.
 
 ## Agent activity monitoring
 

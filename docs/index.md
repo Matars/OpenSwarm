@@ -45,6 +45,17 @@ OpenSwarm replaces the terminal juggling with a single integrated TUI:
 
 Everything stays in one screen. No `cd`. No window switching. No lost context.
 
+## Documentation map
+
+OpenSwarm docs follow a practical Divio-style structure without forcing strict boundaries:
+
+- **Getting started (tutorial-ish):** [Getting Started](getting-started)
+- **Workflows (how-to):** [Features](features)
+- **Reference:** [Keybindings](keybindings), [Configuration](configuration)
+- **Background and rationale:** [Comparisons](comparisons), [FAQ](faq)
+
+The homepage GIF is the quick preview. Add a longer demo video link here when published.
+
 ---
 
 [Get Started](getting-started){: .btn .btn-primary .mr-2 }
