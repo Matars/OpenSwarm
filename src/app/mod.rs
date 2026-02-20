@@ -165,6 +165,8 @@ struct App {
     selected_overview: Option<FileOverview>,
     active_pane: ActivePane,
     overview_scroll: u16,
+    overview_method_index: usize,
+    overview_method_expanded: bool,
     status_line: String,
     mode: Mode,
     view_mode: ViewMode,
@@ -357,8 +359,23 @@ struct FileOverview {
     methods_added: Vec<String>,
     methods_modified: Vec<String>,
     methods_deleted: Vec<String>,
+    method_changes: Vec<MethodChange>,
     traditional_diff: Vec<DiffPreviewLine>,
     use_traditional_overview: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum MethodChangeKind {
+    Added,
+    Modified,
+    Deleted,
+}
+
+#[derive(Clone, Debug)]
+struct MethodChange {
+    kind: MethodChangeKind,
+    name: String,
+    diff_lines: Vec<DiffPreviewLine>,
 }
 
 #[derive(Clone, Debug)]
@@ -414,6 +431,8 @@ impl App {
             selected_overview: None,
             active_pane: ActivePane::Files,
             overview_scroll: 0,
+            overview_method_index: 0,
+            overview_method_expanded: false,
             status_line: "Ready".to_string(),
             mode: Mode::Normal,
             view_mode: ViewMode::Worktrees,

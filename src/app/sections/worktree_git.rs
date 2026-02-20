@@ -1409,6 +1409,8 @@ fn refresh_selected_overview(app: &mut App) {
         None => {
             app.selected_overview = None;
             app.overview_scroll = 0;
+            app.overview_method_index = 0;
+            app.overview_method_expanded = false;
             return;
         }
     };
@@ -1429,6 +1431,8 @@ fn refresh_selected_overview(app: &mut App) {
             app.changes_worktree_path.as_deref(),
         )),
     };
+
+    sync_overview_method_state(app);
 
     let max_scroll = max_overview_scroll(app);
     if app.overview_scroll > max_scroll {
@@ -1494,6 +1498,7 @@ fn build_folder_overview(
         methods_added,
         methods_modified,
         methods_deleted,
+        method_changes: Vec::new(),
         traditional_diff,
         use_traditional_overview,
     }
@@ -1506,6 +1511,7 @@ fn build_file_overview(file: &FileEntry, repo_path: Option<&str>) -> FileOvervie
     let mut methods_added: Vec<String> = Vec::new();
     let mut methods_modified: Vec<String> = Vec::new();
     let mut methods_deleted: Vec<String> = Vec::new();
+    let mut method_changes: Vec<MethodChange> = Vec::new();
     let mut traditional_diff: Vec<DiffPreviewLine> = Vec::new();
 
     if file.untracked {
@@ -1533,6 +1539,7 @@ fn build_file_overview(file: &FileEntry, repo_path: Option<&str>) -> FileOvervie
         methods_added = summary.methods_added;
         methods_modified = summary.methods_modified;
         methods_deleted = summary.methods_deleted;
+        method_changes = summary.method_changes;
         traditional_diff = summary.diff_preview;
     }
 
@@ -1547,6 +1554,7 @@ fn build_file_overview(file: &FileEntry, repo_path: Option<&str>) -> FileOvervie
         methods_added,
         methods_modified,
         methods_deleted,
+        method_changes,
         traditional_diff,
         use_traditional_overview,
     }
@@ -1577,6 +1585,7 @@ struct DiffSummary {
     methods_added: Vec<String>,
     methods_modified: Vec<String>,
     methods_deleted: Vec<String>,
+    method_changes: Vec<MethodChange>,
     diff_preview: Vec<DiffPreviewLine>,
 }
 
@@ -1585,14 +1594,25 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
     let mut removed_methods: HashSet<String> = HashSet::new();
     let mut modified_hunks: HashSet<String> = HashSet::new();
     let mut diff_preview: Vec<DiffPreviewLine> = Vec::new();
+    let mut method_hunks: BTreeMap<String, Vec<DiffPreviewLine>> = BTreeMap::new();
+    let mut current_hunk_lines: Vec<DiffPreviewLine> = Vec::new();
     let mut current_hunk_method: Option<String> = None;
     let mut added_lines = 0usize;
     let mut removed_lines = 0usize;
 
     for line in diff.lines() {
         if line.starts_with("@@") {
+            flush_method_hunk(
+                &mut method_hunks,
+                current_hunk_method.as_deref(),
+                &mut current_hunk_lines,
+            );
             current_hunk_method = parse_hunk_header(line)
                 .and_then(|header| extract_method_name(header.as_str(), file_path));
+            current_hunk_lines.push(DiffPreviewLine {
+                kind: DiffPreviewKind::Meta,
+                text: truncate_text(line, 96),
+            });
             push_preview_line(&mut diff_preview, DiffPreviewKind::Meta, line);
             continue;
         }
@@ -1615,6 +1635,12 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
             if let Some(name) = extract_method_name(rest, file_path) {
                 added_methods.insert(name);
             }
+            if current_hunk_method.is_some() {
+                current_hunk_lines.push(DiffPreviewLine {
+                    kind: DiffPreviewKind::Added,
+                    text: truncate_text(line, 96),
+                });
+            }
             push_preview_line(&mut diff_preview, DiffPreviewKind::Added, line);
             continue;
         }
@@ -1627,12 +1653,30 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
             if let Some(name) = extract_method_name(rest, file_path) {
                 removed_methods.insert(name);
             }
+            if current_hunk_method.is_some() {
+                current_hunk_lines.push(DiffPreviewLine {
+                    kind: DiffPreviewKind::Removed,
+                    text: truncate_text(line, 96),
+                });
+            }
             push_preview_line(&mut diff_preview, DiffPreviewKind::Removed, line);
             continue;
         }
 
+        if current_hunk_method.is_some() {
+            current_hunk_lines.push(DiffPreviewLine {
+                kind: DiffPreviewKind::Context,
+                text: truncate_text(line, 96),
+            });
+        }
         push_preview_line(&mut diff_preview, DiffPreviewKind::Context, line);
     }
+
+    flush_method_hunk(
+        &mut method_hunks,
+        current_hunk_method.as_deref(),
+        &mut current_hunk_lines,
+    );
 
     let methods_added_set: HashSet<String> = added_methods
         .difference(&removed_methods)
@@ -1652,13 +1696,85 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
         .filter(|name| !methods_added_set.contains(name) && !methods_deleted_set.contains(name))
         .collect();
 
+    let methods_added = sorted_from_set(methods_added_set);
+    let methods_modified = sorted_from_set(methods_modified_set);
+    let methods_deleted = sorted_from_set(methods_deleted_set);
+    let method_changes = build_method_changes(
+        &methods_added,
+        &methods_modified,
+        &methods_deleted,
+        &method_hunks,
+    );
+
     DiffSummary {
         added_lines,
         removed_lines,
-        methods_added: sorted_from_set(methods_added_set),
-        methods_modified: sorted_from_set(methods_modified_set),
-        methods_deleted: sorted_from_set(methods_deleted_set),
+        methods_added,
+        methods_modified,
+        methods_deleted,
+        method_changes,
         diff_preview,
+    }
+}
+
+fn flush_method_hunk(
+    store: &mut BTreeMap<String, Vec<DiffPreviewLine>>,
+    method: Option<&str>,
+    hunk_lines: &mut Vec<DiffPreviewLine>,
+) {
+    let Some(name) = method else {
+        hunk_lines.clear();
+        return;
+    };
+    if hunk_lines.is_empty() {
+        return;
+    }
+    let entry = store.entry(name.to_string()).or_default();
+    entry.extend(hunk_lines.iter().cloned());
+    hunk_lines.clear();
+}
+
+fn build_method_changes(
+    added: &[String],
+    modified: &[String],
+    deleted: &[String],
+    hunk_map: &BTreeMap<String, Vec<DiffPreviewLine>>,
+) -> Vec<MethodChange> {
+    let mut out = Vec::new();
+    append_method_changes(&mut out, MethodChangeKind::Added, added, hunk_map);
+    append_method_changes(&mut out, MethodChangeKind::Modified, modified, hunk_map);
+    append_method_changes(&mut out, MethodChangeKind::Deleted, deleted, hunk_map);
+    out
+}
+
+fn append_method_changes(
+    out: &mut Vec<MethodChange>,
+    kind: MethodChangeKind,
+    names: &[String],
+    hunk_map: &BTreeMap<String, Vec<DiffPreviewLine>>,
+) {
+    for name in names {
+        out.push(MethodChange {
+            kind: kind.clone(),
+            name: name.clone(),
+            diff_lines: hunk_map.get(name).cloned().unwrap_or_default(),
+        });
+    }
+}
+
+fn sync_overview_method_state(app: &mut App) {
+    let method_count = app
+        .selected_overview
+        .as_ref()
+        .map(|overview| overview.method_changes.len())
+        .unwrap_or(0);
+    if method_count == 0 {
+        app.overview_method_index = 0;
+        app.overview_method_expanded = false;
+        return;
+    }
+    if app.overview_method_index >= method_count {
+        app.overview_method_index = method_count - 1;
     }
 }
 
