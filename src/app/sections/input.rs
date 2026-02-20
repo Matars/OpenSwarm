@@ -763,8 +763,9 @@ fn load_openswarm_config() -> OpenSwarmConfig {
     let mut default_agent: Option<ExternalAgent> = None;
     let mut conflict_prompt_path = prompts_dir.join("conflict-resolve-prompt.md");
     let mut worktree_graph_art = default_worktree_graph_art_lines();
+    let mut has_worktree_graph_art = false;
 
-    if let Ok(raw) = fs::read_to_string(config_path.as_path()) {
+    if let Ok(mut raw) = fs::read_to_string(config_path.as_path()) {
         let lines: Vec<&str> = raw.lines().collect();
         let mut idx = 0usize;
         while idx < lines.len() {
@@ -798,6 +799,7 @@ fn load_openswarm_config() -> OpenSwarmConfig {
                     }
                 }
                 "worktree_graph_art" => {
+                    has_worktree_graph_art = true;
                     if value.starts_with("\"\"\"") {
                         if let Some((parsed, consumed)) =
                             parse_config_multiline_string(lines.as_slice(), idx, value)
@@ -817,6 +819,15 @@ fn load_openswarm_config() -> OpenSwarmConfig {
             }
 
             idx += 1;
+        }
+
+        if !has_worktree_graph_art {
+            if !raw.ends_with('\n') {
+                raw.push('\n');
+            }
+            raw.push('\n');
+            raw.push_str(default_worktree_graph_art_config_block().as_str());
+            let _ = fs::write(config_path.as_path(), raw);
         }
     }
 
@@ -847,8 +858,24 @@ fn openswarm_config_dir() -> PathBuf {
 }
 
 fn default_openswarm_config_text() -> String {
-    "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from ~/.config/openswarm\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n\n# optional art shown above details in worktree view\n# supports ASCII or Unicode. Keep it compact for narrow terminals.\nworktree_graph_art = \"\"\"\n  .-\"\"\"\"-.   .-\"\"\"\"-.\n /  .--.  \\ /  .--.  \\\n|  /    \\_/\\_/    \\  |\n| |  o    . .    o  | |\n| |      ( ^ )      | |\n \\ \\   .`-.-`.   / /\n  `._`--(_____)--`_.`\n\"\"\"\n"
-        .to_string()
+    let mut text =
+        "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from ~/.config/openswarm\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n\n"
+            .to_string();
+    text.push_str(default_worktree_graph_art_config_block().as_str());
+    text
+}
+
+fn default_worktree_graph_art_config_block() -> String {
+    let mut block = "# optional art shown above details in worktree view\n# supports ASCII or Unicode. Keep it compact for narrow terminals.\nworktree_graph_art = \"\"\"\n"
+        .to_string();
+
+    for line in default_worktree_graph_art_lines() {
+        block.push_str(line.as_str());
+        block.push('\n');
+    }
+
+    block.push_str("\"\"\"\n");
+    block
 }
 
 fn default_worktree_graph_art_lines() -> Vec<String> {
