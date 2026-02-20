@@ -281,6 +281,7 @@ struct WorktreeEntry {
     behind: usize,
     has_upstream: bool,
     merged_with_parent: bool,
+    behind_parent: bool,
     parent_hint: Option<String>,
 }
 

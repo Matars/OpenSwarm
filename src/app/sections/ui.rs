@@ -644,12 +644,14 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
             Style::default()
                 .fg(Color::LightCyan)
                 .add_modifier(Modifier::BOLD)
+        } else if entry.dirty {
+            Style::default().fg(Color::Red)
+        } else if entry.behind_parent {
+            Style::default().fg(Color::Yellow)
         } else if entry.is_current {
             Style::default()
                 .fg(Color::LightBlue)
                 .add_modifier(Modifier::BOLD)
-        } else if entry.dirty {
-            Style::default().fg(Color::Red)
         } else {
             Style::default().fg(Color::White)
         };
@@ -882,10 +884,12 @@ fn draw_unicode_worktree_graph(
         let selected = idx == selected_idx;
         let node_color = if selected {
             Color::LightCyan
-        } else if entry.is_current {
-            Color::LightBlue
         } else if entry.dirty {
             Color::Red
+        } else if entry.behind_parent {
+            Color::Yellow
+        } else if entry.is_current {
+            Color::LightBlue
         } else {
             graph_palette_color(idx)
         };
@@ -1316,6 +1320,8 @@ fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
         ("detached", Style::default().fg(Color::Red))
     } else if entry.dirty {
         ("dirty", Style::default().fg(Color::Red))
+    } else if entry.behind_parent {
+        ("needs pull", Style::default().fg(Color::Yellow))
     } else if entry.ahead > 0 {
         ("committed", warm)
     } else if entry.merged_with_parent {
@@ -2014,6 +2020,22 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]));
 
         lines.push(Line::from(vec![
+            Span::styled("parent: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                if selected.behind_parent {
+                    "needs pull"
+                } else {
+                    "in sync"
+                },
+                Style::default().fg(if selected.behind_parent {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                }),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
             Span::styled("flags:  ", Style::default().fg(Color::Gray)),
             Span::styled(
                 worktree_flags(selected),
@@ -2388,6 +2410,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Blue node = current branch worktree"),
             Line::from("- Cyan ring = selected worktree (drives details + actions)"),
             Line::from("- Red nodes = dirty (uncommitted changes)"),
+            Line::from("- Yellow nodes = behind parent (pull needed)"),
             Line::from("- Spinner suffix means active session; done/fail marks completion"),
             Line::from(""),
             Line::from("Navigation:"),
