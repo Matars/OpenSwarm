@@ -224,6 +224,14 @@ fn reset_worktree_canvas_view(app: &mut App) {
     app.status_line = "Canvas view reset".to_string();
 }
 
+fn cycle_worktree_canvas_background(app: &mut App) {
+    app.worktree_canvas_bg_mode = app.worktree_canvas_bg_mode.next();
+    app.status_line = format!(
+        "Canvas background: {} (Ctrl+B to cycle)",
+        app.worktree_canvas_bg_mode.short_label()
+    );
+}
+
 fn open_terminal_popup_for_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>> {
     let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) else {
         app.status_line = "No worktree selected".to_string();

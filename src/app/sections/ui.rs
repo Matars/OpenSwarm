@@ -553,9 +553,16 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
         || app.worktree_canvas_pan_x != 0.0
         || app.worktree_canvas_pan_y != 0.0
     {
-        format!("worktree graph [?]  z:{:.1}x", app.worktree_canvas_zoom)
+        format!(
+            "worktree graph [?]  z:{:.1}x  bg:{}",
+            app.worktree_canvas_zoom,
+            app.worktree_canvas_bg_mode.short_label()
+        )
     } else {
-        "worktree graph [?]".to_string()
+        format!(
+            "worktree graph [?]  bg:{}",
+            app.worktree_canvas_bg_mode.short_label()
+        )
     };
     let block = Block::default()
         .title(title)
@@ -1115,6 +1122,32 @@ fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &mut App) 
     let time_seconds = now_millis as f64 / 1000.0;
     let pan_x = (app.worktree_canvas_pan_x * 200.0).round() as i64;
     let pan_y = (app.worktree_canvas_pan_y * 140.0).round() as i64;
+
+    match app.worktree_canvas_bg_mode {
+        CanvasBackgroundMode::GlitterStars => {
+            draw_canvas_bg_glitter_stars(buf, area, pan_x, pan_y, time_seconds)
+        }
+        CanvasBackgroundMode::NebulaMist => {
+            draw_canvas_bg_nebula_mist(buf, area, pan_x, pan_y, time_seconds)
+        }
+        CanvasBackgroundMode::Crosshatch => {
+            draw_canvas_bg_crosshatch(buf, area, pan_x, pan_y, time_seconds)
+        }
+    }
+
+    let elapsed = app.canvas_bg_last_tick.elapsed();
+    app.canvas_bg_last_tick = Instant::now();
+    app.canvas_bg_effects
+        .process_effects(elapsed.into(), buf, area);
+}
+
+fn draw_canvas_bg_glitter_stars(
+    buf: &mut Buffer,
+    area: Rect,
+    pan_x: i64,
+    pan_y: i64,
+    time_seconds: f64,
+) {
     let tau = std::f64::consts::TAU;
 
     for y in 0..area.height {
@@ -1177,11 +1210,126 @@ fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &mut App) 
             paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
         }
     }
+}
 
-    let elapsed = app.canvas_bg_last_tick.elapsed();
-    app.canvas_bg_last_tick = Instant::now();
-    app.canvas_bg_effects
-        .process_effects(elapsed.into(), buf, area);
+fn draw_canvas_bg_nebula_mist(
+    buf: &mut Buffer,
+    area: Rect,
+    pan_x: i64,
+    pan_y: i64,
+    time_seconds: f64,
+) {
+    for y in 0..area.height {
+        for x in 0..area.width {
+            let wx = x as i64 + pan_x;
+            let wy = y as i64 + pan_y;
+            let seed = star_seed(wx, wy);
+
+            let fx = (wx as f64 * 0.054) + time_seconds * 0.11;
+            let fy = (wy as f64 * 0.067) - time_seconds * 0.08;
+            let wave = (fx.sin() * 0.55 + fy.cos() * 0.45 + (fx * 0.43 + fy * 0.31).sin() * 0.35)
+                .clamp(-1.0, 1.0);
+            let density = ((wave + 1.0) * 0.5) as f32;
+
+            let dust_roll = seed & 0x1FF;
+            if dust_roll < 36 {
+                paint_graph_char(
+                    buf,
+                    area,
+                    x,
+                    y,
+                    '·',
+                    Style::default().fg(Color::Rgb(30, 35, 54)),
+                );
+            }
+
+            if density > 0.82 && dust_roll % 3 == 0 {
+                let glow =
+                    ((time_seconds * 0.45 + star_seed_unit(seed, 24) * 9.0).sin() + 1.0) * 0.5;
+                let base = color_mix(
+                    Color::Rgb(22, 27, 43),
+                    Color::Rgb(50, 86, 122),
+                    (density - 0.7).clamp(0.0, 0.3),
+                );
+                let color = color_mix(base, Color::Rgb(102, 156, 214), (glow as f32) * 0.32);
+                let glyph = if density > 0.92 { '▒' } else { '░' };
+                paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
+            }
+
+            let star_gate = (seed >> 10) % 2000;
+            if star_gate < 4 {
+                let twinkle = ((time_seconds * (0.35 + star_seed_unit(seed, 32) * 0.7)
+                    + star_seed_unit(seed, 40) * std::f64::consts::TAU)
+                    .sin()
+                    + 1.0)
+                    * 0.5;
+                if twinkle > 0.35 {
+                    let glyph = if twinkle > 0.78 { '✧' } else { '•' };
+                    let color = color_mix(
+                        Color::Rgb(80, 106, 146),
+                        Color::Rgb(236, 245, 255),
+                        twinkle as f32,
+                    );
+                    paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
+                }
+            }
+        }
+    }
+}
+
+fn draw_canvas_bg_crosshatch(
+    buf: &mut Buffer,
+    area: Rect,
+    pan_x: i64,
+    pan_y: i64,
+    time_seconds: f64,
+) {
+    for y in 0..area.height {
+        for x in 0..area.width {
+            let wx = x as i64 + pan_x;
+            let wy = y as i64 + pan_y;
+            let seed = star_seed(wx, wy);
+            let sum = (wx + wy).rem_euclid(18);
+            let diff = (wx - wy).rem_euclid(18);
+
+            if sum == 0 || diff == 0 {
+                let shimmer =
+                    ((time_seconds * 0.65 + star_seed_unit(seed, 16) * 6.0).sin() + 1.0) * 0.5;
+                let base = if sum == 0 {
+                    Color::Rgb(35, 46, 64)
+                } else {
+                    Color::Rgb(30, 40, 58)
+                };
+                let color = color_mix(base, Color::Rgb(95, 127, 172), (shimmer as f32) * 0.25);
+                let glyph = if sum == 0 { '╱' } else { '╲' };
+                paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
+                continue;
+            }
+
+            if (seed & 0x3FF) < 40 {
+                paint_graph_char(
+                    buf,
+                    area,
+                    x,
+                    y,
+                    '·',
+                    Style::default().fg(Color::Rgb(31, 36, 53)),
+                );
+            }
+
+            if sum == 9 && diff == 9 {
+                let twinkle =
+                    ((time_seconds * 0.9 + star_seed_unit(seed, 38) * 7.0).sin() + 1.0) * 0.5;
+                let glyph = if twinkle > 0.82 { '✦' } else { '•' };
+                let color = color_mix(
+                    Color::Rgb(86, 113, 154),
+                    Color::Rgb(244, 248, 255),
+                    twinkle as f32,
+                );
+                paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
+            }
+        }
+    }
 }
 
 fn build_canvas_bg_effect() -> tachyonfx::Effect {
@@ -2322,6 +2470,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("  +/-     - zoom in/out"),
             Line::from("  0       - reset view"),
             Line::from("  Shift+WASD - pan"),
+            Line::from("  Ctrl+B  - cycle canvas background"),
             Line::from(""),
             Line::from("Flow: o/O launch shells or agents, c/p/m/d run git lifecycle"),
             Line::from(""),
