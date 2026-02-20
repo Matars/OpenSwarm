@@ -23,6 +23,7 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 - `c` -- commit (stages all changes in worktree view, or staged changes in changes view)
 - `p` -- push (auto-sets upstream for new branches)
 - `f` -- fetch and pull parent branch
+- `F` -- rebase selected worktree branch onto parent branch
 - `m` -- merge worktree into parent
 - `d` -- delete worktree (with safety confirmations)
 - `s` / `S` -- stash push / stash pop

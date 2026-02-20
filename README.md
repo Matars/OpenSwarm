@@ -63,6 +63,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | `c` | Commit |
 | `p` | Push |
 | `f` | Fetch/pull parent |
+| `F` | Rebase selected onto parent |
 | `m` | Merge into parent |
 | `d` | Delete worktree |
 

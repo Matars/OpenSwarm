@@ -688,6 +688,45 @@ fn update_parent_at(path: &str, branch: &str) -> Result<String, Box<dyn Error>> 
     ))
 }
 
+fn rebase_onto_parent_at(
+    child_path: &str,
+    child_branch: &str,
+    parent_path: &str,
+    parent_branch: &str,
+) -> Result<String, Box<dyn Error>> {
+    if child_branch.is_empty() || child_branch == "detached" {
+        return Ok("Selected node is detached; cannot rebase onto parent".to_string());
+    }
+    if parent_branch.is_empty() || parent_branch == "detached" {
+        return Ok("Parent node is detached; cannot rebase selected node".to_string());
+    }
+    if child_branch == parent_branch {
+        return Ok("Selected and parent are the same branch; nothing to rebase".to_string());
+    }
+
+    let rebase = run_git(&["-C", child_path, "rebase", parent_branch])?;
+    let lowered = rebase.to_ascii_lowercase();
+    let has_conflicts = lowered.contains("conflict") || lowered.contains("resolve all conflicts");
+
+    if has_conflicts {
+        Ok(format!(
+            "Rebase '{}' onto parent '{}' needs conflict resolution in {} - {}",
+            child_branch,
+            parent_branch,
+            child_path,
+            single_line(rebase.as_str())
+        ))
+    } else {
+        Ok(format!(
+            "Rebased '{}' onto parent '{}' (source: {}) - {}",
+            child_branch,
+            parent_branch,
+            parent_path,
+            single_line(rebase.as_str())
+        ))
+    }
+}
+
 fn connected_parent_index(app: &App) -> Option<usize> {
     if app.selected_worktree >= app.worktrees.len() {
         return None;

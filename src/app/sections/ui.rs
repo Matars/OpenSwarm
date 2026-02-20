@@ -2472,6 +2472,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" fetch + pull parent"),
         ]),
         Line::from(vec![
+            Span::styled("F", Style::default().fg(Color::Cyan)),
+            Span::raw(" rebase selected onto parent"),
+        ]),
+        Line::from(vec![
             Span::styled("c", Style::default().fg(Color::Magenta)),
             Span::raw(" add+commit"),
         ]),
@@ -2634,6 +2638,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- c: selected worktree add+commit with message popup"),
             Line::from("- p: push selected worktree branch (sets upstream if needed)"),
             Line::from("- f: fetch + pull connected parent node"),
+            Line::from("- F: rebase selected branch onto connected parent node"),
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- d: delete selected worktree (asks force-delete if dirty)"),
             Line::from("- x: prune stale worktrees"),
