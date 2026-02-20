@@ -1313,18 +1313,82 @@ fn toggle_stage(app: &mut App) -> Result<(), Box<dyn Error>> {
         }
     };
 
+    if item.unstaged || item.untracked {
+        app.status_line = run_git_in(
+            app.changes_worktree_path.as_deref(),
+            &["add", "--", &item.path],
+        )?;
+    } else if item.staged {
+        app.status_line = run_git_in(
+            app.changes_worktree_path.as_deref(),
+            &["restore", "--staged", "--", &item.path],
+        )?;
+    } else {
+        app.status_line = "Selected item is already clean".to_string();
+    }
+
+    Ok(())
+}
+
+fn unstage_selected(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let item = match app.selected_item() {
+        Some(entry) => entry,
+        None => {
+            app.status_line = "No item selected".to_string();
+            return Ok(());
+        }
+    };
+
     if item.staged {
         app.status_line = run_git_in(
             app.changes_worktree_path.as_deref(),
             &["restore", "--staged", "--", &item.path],
         )?;
     } else {
-        app.status_line = run_git_in(
-            app.changes_worktree_path.as_deref(),
-            &["add", "--", &item.path],
-        )?;
+        app.status_line = "Selected item has no staged changes".to_string();
     }
 
+    Ok(())
+}
+
+fn stage_all_changes(app: &mut App) -> Result<(), Box<dyn Error>> {
+    app.status_line = run_git_in(
+        app.changes_worktree_path.as_deref(),
+        &["add", "--all", "--", "."],
+    )?;
+    Ok(())
+}
+
+fn unstage_all_changes(app: &mut App) -> Result<(), Box<dyn Error>> {
+    app.status_line = run_git_in(
+        app.changes_worktree_path.as_deref(),
+        &["restore", "--staged", "--", "."],
+    )?;
+    Ok(())
+}
+
+fn stash_push_changes(app: &mut App) -> Result<(), Box<dyn Error>> {
+    app.status_line = run_git_in(
+        app.changes_worktree_path.as_deref(),
+        &["stash", "push", "--include-untracked"],
+    )?;
+    Ok(())
+}
+
+fn stash_pop_changes(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let has_stash = git_output_in(
+        app.changes_worktree_path.as_deref(),
+        &["stash", "list", "--max-count=1"],
+    )
+    .map(|text| text.lines().any(|line| !line.trim().is_empty()))
+    .unwrap_or(false);
+
+    if !has_stash {
+        app.status_line = "No stash entries to pop".to_string();
+        return Ok(());
+    }
+
+    app.status_line = run_git_in(app.changes_worktree_path.as_deref(), &["stash", "pop"])?;
     Ok(())
 }
 

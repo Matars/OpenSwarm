@@ -70,7 +70,9 @@ nav_order: 3
 
 | Key | Action |
 |-----|--------|
-| `Space` / `Enter` | Stage or unstage selected file |
+| `Space` / `Enter` / `a` | Smart stage/unstage selected file (stages unstaged changes first) |
+| `u` | Unstage selected file |
+| `A` / `U` | Stage all / unstage all |
 | `c` | Commit staged changes |
 | `p` | Push current branch |
 | `s` | Stash push (includes untracked) |
