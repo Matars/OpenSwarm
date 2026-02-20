@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Documentation
 
-When changing features, always check that README.md is up to date at the end of your work. This includes keybindings, workflow descriptions, and any user-facing behavior changes.
+When changing features, always check that README.md and docs/ is up to date at the end of your work. This includes keybindings, workflow descriptions, and any user-facing behavior changes.
 
 ## Build Commands
 
