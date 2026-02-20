@@ -8,7 +8,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
     fs,
 };
 
@@ -201,6 +201,13 @@ struct AgentSession {
     last_size: (u16, u16),
     launched_at: Instant,
     last_io_at: Instant,
+    bytes_from_agent: u64,
+    bytes_to_agent: u64,
+    io_samples: VecDeque<IoSample>,
+}
+
+struct IoSample {
+    at: Instant,
     bytes_from_agent: u64,
     bytes_to_agent: u64,
 }
