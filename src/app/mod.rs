@@ -133,24 +133,30 @@ impl WorktreeGraphBuilder {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CanvasBackgroundMode {
     GlitterStars,
-    BoidsFlock,
+    AuroraFlow,
+    Constellation,
     Crosshatch,
+    Rainfall,
 }
 
 impl CanvasBackgroundMode {
     fn next(self) -> Self {
         match self {
-            CanvasBackgroundMode::GlitterStars => CanvasBackgroundMode::BoidsFlock,
-            CanvasBackgroundMode::BoidsFlock => CanvasBackgroundMode::Crosshatch,
-            CanvasBackgroundMode::Crosshatch => CanvasBackgroundMode::GlitterStars,
+            CanvasBackgroundMode::GlitterStars => CanvasBackgroundMode::AuroraFlow,
+            CanvasBackgroundMode::AuroraFlow => CanvasBackgroundMode::Constellation,
+            CanvasBackgroundMode::Constellation => CanvasBackgroundMode::Crosshatch,
+            CanvasBackgroundMode::Crosshatch => CanvasBackgroundMode::Rainfall,
+            CanvasBackgroundMode::Rainfall => CanvasBackgroundMode::GlitterStars,
         }
     }
 
     fn short_label(self) -> &'static str {
         match self {
             CanvasBackgroundMode::GlitterStars => "stars",
-            CanvasBackgroundMode::BoidsFlock => "boids",
+            CanvasBackgroundMode::AuroraFlow => "aurora",
+            CanvasBackgroundMode::Constellation => "constellation",
             CanvasBackgroundMode::Crosshatch => "crosshatch",
+            CanvasBackgroundMode::Rainfall => "rain",
         }
     }
 }

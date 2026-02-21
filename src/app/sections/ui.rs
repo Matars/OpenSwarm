@@ -1170,11 +1170,17 @@ fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &mut App) 
         CanvasBackgroundMode::GlitterStars => {
             draw_canvas_bg_glitter_stars(buf, area, pan_x, pan_y, time_seconds)
         }
-        CanvasBackgroundMode::BoidsFlock => {
-            draw_canvas_bg_boids_flock(buf, area, pan_x, pan_y, time_seconds)
+        CanvasBackgroundMode::AuroraFlow => {
+            draw_canvas_bg_aurora_flow(buf, area, pan_x, pan_y, time_seconds)
+        }
+        CanvasBackgroundMode::Constellation => {
+            draw_canvas_bg_constellation(buf, area, pan_x, pan_y, time_seconds)
         }
         CanvasBackgroundMode::Crosshatch => {
             draw_canvas_bg_crosshatch(buf, area, pan_x, pan_y, time_seconds)
+        }
+        CanvasBackgroundMode::Rainfall => {
+            draw_canvas_bg_rainfall(buf, area, pan_x, pan_y, time_seconds)
         }
     }
 
@@ -1255,199 +1261,6 @@ fn draw_canvas_bg_glitter_stars(
     }
 }
 
-fn draw_canvas_bg_boids_flock(
-    buf: &mut Buffer,
-    area: Rect,
-    pan_x: i64,
-    pan_y: i64,
-    time_seconds: f64,
-) {
-    for y in 0..area.height {
-        for x in 0..area.width {
-            let wx = x as i64 + pan_x;
-            let wy = y as i64 + pan_y;
-            let seed = star_seed(wx, wy);
-            let dust_roll = seed & 0x1FF;
-            if dust_roll < 26 {
-                paint_graph_char(
-                    buf,
-                    area,
-                    x,
-                    y,
-                    '·',
-                    Style::default().fg(Color::Rgb(28, 33, 50)),
-                );
-            }
-        }
-    }
-
-    let view_w = area.width as f64;
-    let view_h = area.height as f64;
-    let world_origin_x = pan_x as f64 - 36.0;
-    let world_origin_y = pan_y as f64 - 20.0;
-    let world_span_x = view_w + 72.0;
-    let world_span_y = view_h + 40.0;
-
-    let flock_count = 3usize;
-    let boids_per_flock = 15usize;
-
-    for flock_idx in 0..flock_count {
-        let flock_seed = star_seed(flock_idx as i64 * 173, flock_idx as i64 * 977);
-        let phase_x = star_seed_unit(flock_seed, 10) * std::f64::consts::TAU;
-        let phase_y = star_seed_unit(flock_seed, 28) * std::f64::consts::TAU;
-        let speed_x = 0.12 + star_seed_unit(flock_seed, 40) * 0.1;
-        let speed_y = 0.09 + star_seed_unit(flock_seed, 48) * 0.08;
-
-        let center_x =
-            world_origin_x + ((time_seconds * speed_x + phase_x).sin() * 0.5 + 0.5) * world_span_x;
-        let center_y =
-            world_origin_y + ((time_seconds * speed_y + phase_y).cos() * 0.5 + 0.5) * world_span_y;
-
-        let tint = match flock_idx {
-            0 => Color::Rgb(114, 176, 235),
-            1 => Color::Rgb(145, 198, 244),
-            _ => Color::Rgb(101, 162, 223),
-        };
-
-        for boid_idx in 0..boids_per_flock {
-            let boid_seed = star_seed(
-                flock_idx as i64 * 831 + boid_idx as i64 * 79,
-                flock_idx as i64 * 359 - boid_idx as i64 * 61,
-            );
-
-            let orbit_r = 1.6
-                + star_seed_unit(boid_seed, 20) * 7.4
-                + ((time_seconds * 1.4 + star_seed_unit(boid_seed, 30) * 8.0).sin() + 1.0) * 0.9;
-            let orbit_phase = star_seed_unit(boid_seed, 8) * std::f64::consts::TAU;
-            let orbit_rate = 0.55 + star_seed_unit(boid_seed, 36) * 0.95;
-            let drift = (time_seconds * orbit_rate + orbit_phase).sin();
-            let angle = time_seconds * (0.5 + star_seed_unit(boid_seed, 44) * 0.8)
-                + orbit_phase
-                + drift * 0.8;
-
-            let bx = center_x + angle.cos() * orbit_r * 1.35;
-            let by = center_y + angle.sin() * orbit_r * 0.68;
-
-            let vx = -angle.sin() * orbit_r * 0.65;
-            let vy = angle.cos() * orbit_r * 0.35;
-
-            let sx = bx - pan_x as f64;
-            let sy = by - pan_y as f64;
-            if sx < 0.0 || sy < 0.0 || sx >= view_w || sy >= view_h {
-                continue;
-            }
-
-            let glyph = if vx.abs() > vy.abs() * 1.45 {
-                if vx > 0.0 {
-                    '▸'
-                } else {
-                    '◂'
-                }
-            } else if vy > 0.0 {
-                '▾'
-            } else {
-                '▴'
-            };
-
-            let flicker = ((time_seconds * (1.1 + star_seed_unit(boid_seed, 52))
-                + star_seed_unit(boid_seed, 56) * std::f64::consts::TAU)
-                .sin()
-                + 1.0)
-                * 0.5;
-            let boid_color = color_mix(
-                Color::Rgb(44, 70, 106),
-                tint,
-                (0.45 + flicker * 0.55) as f32,
-            );
-
-            let ix = sx.round() as i64;
-            let iy = sy.round() as i64;
-            if ix >= 0 && iy >= 0 && ix < area.width as i64 && iy < area.height as i64 {
-                paint_graph_char(
-                    buf,
-                    area,
-                    ix as u16,
-                    iy as u16,
-                    glyph,
-                    Style::default().fg(boid_color),
-                );
-            }
-
-            for trail_step in 1..=2 {
-                let tx = sx - vx * (trail_step as f64) * 0.18;
-                let ty = sy - vy * (trail_step as f64) * 0.18;
-                if tx < 0.0 || ty < 0.0 || tx >= view_w || ty >= view_h {
-                    continue;
-                }
-                let trail_ix = tx.round() as i64;
-                let trail_iy = ty.round() as i64;
-                if trail_ix >= 0
-                    && trail_iy >= 0
-                    && trail_ix < area.width as i64
-                    && trail_iy < area.height as i64
-                {
-                    let trail_t = if trail_step == 1 { 0.42 } else { 0.2 };
-                    let trail_color = color_mix(Color::Rgb(25, 33, 49), tint, trail_t as f32);
-                    paint_graph_char(
-                        buf,
-                        area,
-                        trail_ix as u16,
-                        trail_iy as u16,
-                        '·',
-                        Style::default().fg(trail_color),
-                    );
-                }
-            }
-        }
-    }
-
-    for y in 0..area.height {
-        for x in 0..area.width {
-            let wx = x as i64 + pan_x;
-            let wy = y as i64 + pan_y;
-            let seed = star_seed(wx, wy);
-            let dust_roll = seed & 0x1FF;
-
-            let fx = (wx as f64 * 0.052) + time_seconds * 0.08;
-            let fy = (wy as f64 * 0.061) - time_seconds * 0.07;
-            let wave = (fx.sin() * 0.52 + fy.cos() * 0.43 + (fx * 0.41 + fy * 0.29).sin() * 0.33)
-                .clamp(-1.0, 1.0);
-            let density = ((wave + 1.0) * 0.5) as f32;
-
-            if density > 0.82 && dust_roll % 3 == 0 {
-                let glow =
-                    ((time_seconds * 0.45 + star_seed_unit(seed, 24) * 9.0).sin() + 1.0) * 0.5;
-                let base = color_mix(
-                    Color::Rgb(21, 28, 44),
-                    Color::Rgb(44, 75, 110),
-                    (density - 0.7).clamp(0.0, 0.3),
-                );
-                let color = color_mix(base, Color::Rgb(97, 147, 201), (glow as f32) * 0.3);
-                let glyph = if density > 0.92 { '▒' } else { '░' };
-                paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
-            }
-
-            let star_gate = (seed >> 10) % 2000;
-            if star_gate < 4 {
-                let twinkle = ((time_seconds * (0.35 + star_seed_unit(seed, 32) * 0.7)
-                    + star_seed_unit(seed, 40) * std::f64::consts::TAU)
-                    .sin()
-                    + 1.0)
-                    * 0.5;
-                if twinkle > 0.35 {
-                    let glyph = if twinkle > 0.78 { '✧' } else { '•' };
-                    let color = color_mix(
-                        Color::Rgb(72, 101, 141),
-                        Color::Rgb(224, 238, 255),
-                        twinkle as f32,
-                    );
-                    paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
-                }
-            }
-        }
-    }
-}
-
 fn draw_canvas_bg_crosshatch(
     buf: &mut Buffer,
     area: Rect,
@@ -1500,6 +1313,259 @@ fn draw_canvas_bg_crosshatch(
                 paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
             }
         }
+    }
+}
+
+fn draw_canvas_bg_aurora_flow(
+    buf: &mut Buffer,
+    area: Rect,
+    pan_x: i64,
+    pan_y: i64,
+    time_seconds: f64,
+) {
+    for y in 0..area.height {
+        for x in 0..area.width {
+            let wx = x as i64 + pan_x;
+            let wy = y as i64 + pan_y;
+            let seed = star_seed(wx, wy);
+
+            if (seed & 0x3FF) < 28 {
+                paint_graph_char(
+                    buf,
+                    area,
+                    x,
+                    y,
+                    '·',
+                    Style::default().fg(Color::Rgb(24, 32, 46)),
+                );
+            }
+
+            let nx = wx as f64 * 0.046;
+            let ny = wy as f64 * 0.061;
+            let wave_a = (nx + time_seconds * 0.33 + (ny * 0.57).sin() * 1.15).sin();
+            let wave_b = (ny - time_seconds * 0.27 + (nx * 0.42).cos() * 1.05).cos();
+            let density = ((wave_a * 0.62 + wave_b * 0.38 + 1.0) * 0.5) as f32;
+
+            if density < 0.66 {
+                continue;
+            }
+
+            let pulse = ((time_seconds * 0.45 + star_seed_unit(seed, 30) * std::f64::consts::TAU)
+                .sin()
+                + 1.0)
+                * 0.5;
+            let base = color_mix(
+                Color::Rgb(21, 30, 44),
+                Color::Rgb(46, 90, 120),
+                ((density - 0.55) * 1.6).clamp(0.0, 1.0),
+            );
+            let color = color_mix(base, Color::Rgb(128, 198, 218), (pulse as f32) * 0.36);
+            let glyph = if density > 0.86 {
+                '▓'
+            } else if density > 0.74 {
+                '▒'
+            } else {
+                '░'
+            };
+            paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
+        }
+    }
+}
+
+fn draw_canvas_bg_constellation(
+    buf: &mut Buffer,
+    area: Rect,
+    pan_x: i64,
+    pan_y: i64,
+    time_seconds: f64,
+) {
+    const CELL_W: i64 = 14;
+    const CELL_H: i64 = 8;
+
+    for y in 0..area.height {
+        for x in 0..area.width {
+            let seed = star_seed(x as i64 + pan_x, y as i64 + pan_y);
+            if (seed & 0x3FF) < 18 {
+                paint_graph_char(
+                    buf,
+                    area,
+                    x,
+                    y,
+                    '·',
+                    Style::default().fg(Color::Rgb(28, 33, 50)),
+                );
+            }
+        }
+    }
+
+    let min_gx = (pan_x - 6).div_euclid(CELL_W) - 1;
+    let max_gx = (pan_x + area.width as i64 + 6).div_euclid(CELL_W) + 1;
+    let min_gy = (pan_y - 4).div_euclid(CELL_H) - 1;
+    let max_gy = (pan_y + area.height as i64 + 4).div_euclid(CELL_H) + 1;
+
+    let mut nodes: BTreeMap<(i64, i64), (f64, f64, u64)> = BTreeMap::new();
+    for gy in min_gy..=max_gy {
+        for gx in min_gx..=max_gx {
+            let seed = star_seed(gx * 83, gy * 131);
+            if seed % 7 != 0 {
+                continue;
+            }
+            let ox = 2 + ((seed >> 9) % (CELL_W as u64 - 3)) as i64;
+            let oy = 1 + ((seed >> 17) % (CELL_H as u64 - 2)) as i64;
+            let sx = gx * CELL_W + ox - pan_x;
+            let sy = gy * CELL_H + oy - pan_y;
+            nodes.insert((gx, gy), (sx as f64, sy as f64, seed));
+        }
+    }
+
+    for (&(gx, gy), &(x0, y0, seed)) in &nodes {
+        if let Some(&(x1, y1, _)) = nodes.get(&(gx + 1, gy)) {
+            if (seed >> 26) & 1 == 0 {
+                draw_bg_segment(buf, area, x0, y0, x1, y1, Color::Rgb(64, 91, 131), 0.32);
+            }
+        }
+        if let Some(&(x1, y1, _)) = nodes.get(&(gx, gy + 1)) {
+            if (seed >> 27) & 1 == 1 {
+                draw_bg_segment(buf, area, x0, y0, x1, y1, Color::Rgb(54, 79, 120), 0.26);
+            }
+        }
+    }
+
+    for &(sx, sy, seed) in nodes.values() {
+        if sx < 0.0 || sy < 0.0 || sx >= area.width as f64 || sy >= area.height as f64 {
+            continue;
+        }
+        let twinkle = ((time_seconds * (0.35 + star_seed_unit(seed, 32) * 0.9)
+            + star_seed_unit(seed, 40) * std::f64::consts::TAU)
+            .sin()
+            + 1.0)
+            * 0.5;
+        let glyph = if twinkle > 0.82 {
+            '✦'
+        } else if twinkle > 0.56 {
+            '✧'
+        } else {
+            '•'
+        };
+        let color = color_mix(
+            Color::Rgb(90, 120, 161),
+            Color::Rgb(239, 247, 255),
+            twinkle as f32,
+        );
+        paint_graph_char(
+            buf,
+            area,
+            sx.round() as u16,
+            sy.round() as u16,
+            glyph,
+            Style::default().fg(color),
+        );
+    }
+}
+
+fn draw_canvas_bg_rainfall(
+    buf: &mut Buffer,
+    area: Rect,
+    pan_x: i64,
+    pan_y: i64,
+    time_seconds: f64,
+) {
+    for y in 0..area.height {
+        for x in 0..area.width {
+            let seed = star_seed(x as i64 + pan_x, y as i64 + pan_y);
+            if (seed & 0x3FF) < 14 {
+                paint_graph_char(
+                    buf,
+                    area,
+                    x,
+                    y,
+                    '·',
+                    Style::default().fg(Color::Rgb(24, 31, 47)),
+                );
+            }
+        }
+    }
+
+    for x in 0..area.width {
+        let col_seed = star_seed(x as i64 + pan_x * 3, 97);
+        if col_seed % 5 != 0 {
+            continue;
+        }
+
+        let speed = 0.9 + star_seed_unit(col_seed, 14) * 2.0;
+        let phase = star_seed_unit(col_seed, 22) * 120.0;
+        let period = 22.0 + star_seed_unit(col_seed, 30) * 30.0;
+        let trail = 2.0 + star_seed_unit(col_seed, 38) * 6.0;
+
+        for y in 0..area.height {
+            let world_y = y as i64 + pan_y;
+            let travel = world_y as f64 + time_seconds * speed * 12.0 + phase;
+            let pos = travel.rem_euclid(period);
+            if pos > trail {
+                continue;
+            }
+
+            let intensity = 1.0 - (pos / trail).clamp(0.0, 1.0);
+            let glyph = if pos < 0.8 {
+                '•'
+            } else if intensity > 0.62 {
+                '│'
+            } else {
+                '·'
+            };
+            let color = color_mix(
+                Color::Rgb(48, 69, 102),
+                Color::Rgb(182, 216, 255),
+                intensity as f32,
+            );
+            paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
+        }
+    }
+}
+
+fn draw_bg_segment(
+    buf: &mut Buffer,
+    area: Rect,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    color: Color,
+    intensity: f32,
+) {
+    let dx = x1 - x0;
+    let dy = y1 - y0;
+    let steps = dx.abs().max(dy.abs()).round() as i32;
+    if steps <= 0 {
+        return;
+    }
+
+    let line_color = color_mix(Color::Rgb(27, 34, 49), color, intensity);
+    let glyph = if dx.abs() > dy.abs() * 1.6 {
+        '─'
+    } else if dy.abs() > dx.abs() * 1.6 {
+        '│'
+    } else if (dx >= 0.0) == (dy >= 0.0) {
+        '╲'
+    } else {
+        '╱'
+    };
+
+    for i in 0..=steps {
+        let t = i as f64 / steps as f64;
+        let sx = (x0 + dx * t).round() as i64;
+        let sy = (y0 + dy * t).round() as i64;
+        if sx < 0 || sy < 0 || sx >= area.width as i64 || sy >= area.height as i64 {
+            continue;
+        }
+        paint_graph_char(
+            buf,
+            area,
+            sx as u16,
+            sy as u16,
+            glyph,
+            Style::default().fg(line_color),
+        );
     }
 }
 

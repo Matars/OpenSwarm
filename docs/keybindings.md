@@ -37,7 +37,7 @@ nav_order: 3
 | `-` | Zoom out |
 | `0` | Reset zoom and pan |
 | `W` `A` `S` `D` | Pan up / left / down / right |
-| `Ctrl+B` | Cycle canvas background mode (stars / boids / crosshatch) |
+| `Ctrl+B` | Cycle canvas background mode (stars / aurora / constellation / crosshatch / rain) |
 
 ### Actions
 
