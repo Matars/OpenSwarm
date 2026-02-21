@@ -267,6 +267,20 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
                 start_git_task(app, "Fetch + pull parent", false, true, move || {
                     git_result_text(update_parent_at(path.as_str(), branch.as_str()))
                 });
+            } else if let Some(selected) = app.selected_worktree().cloned() {
+                if worktree_is_main_behind_head(&selected) {
+                    let path = selected.path;
+                    let branch = selected.branch;
+                    start_git_task(app, "Fetch + pull selected head", false, true, move || {
+                        git_result_text(update_worktree_head_at(path.as_str(), branch.as_str()))
+                    });
+                } else if is_main_branch_name(selected.branch.as_str()) && selected.has_upstream {
+                    app.status_line =
+                        "Selected main branch is already in sync with head".to_string();
+                } else {
+                    app.status_line =
+                        "No connected parent node found for selected worktree".to_string();
+                }
             } else {
                 app.status_line =
                     "No connected parent node found for selected worktree".to_string();
@@ -1082,9 +1096,7 @@ fn openswarm_config_dir() -> PathBuf {
             .unwrap_or_else(|| PathBuf::from("."))
     };
 
-    home
-        .join(".config")
-        .join("openswarm")
+    home.join(".config").join("openswarm")
 }
 
 fn default_openswarm_config_text() -> String {

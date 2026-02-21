@@ -727,7 +727,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
                 .add_modifier(Modifier::BOLD)
         } else if entry.dirty {
             Style::default().fg(Color::Red)
-        } else if entry.behind_parent {
+        } else if entry.behind_parent || worktree_is_main_behind_head(entry) {
             Style::default().fg(Color::Yellow)
         } else if entry.is_current {
             Style::default()
@@ -1175,7 +1175,7 @@ fn draw_unicode_worktree_graph(
             Color::LightCyan
         } else if entry.dirty {
             Color::Red
-        } else if entry.behind_parent {
+        } else if entry.behind_parent || worktree_is_main_behind_head(entry) {
             Color::Yellow
         } else if entry.is_current {
             Color::LightBlue
@@ -1748,6 +1748,8 @@ fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
         ("detached", Style::default().fg(Color::Red))
     } else if entry.dirty {
         ("dirty", Style::default().fg(Color::Red))
+    } else if worktree_is_main_behind_head(entry) {
+        ("behind head", Style::default().fg(Color::Yellow))
     } else if entry.behind_parent {
         ("behind parent", Style::default().fg(Color::Yellow))
     } else if entry.ahead > 0 {
@@ -1759,6 +1761,17 @@ fn node_merge_badge(entry: &WorktreeEntry) -> (&'static str, Style) {
     } else {
         ("pushed", warm)
     }
+}
+
+fn is_main_branch_name(branch: &str) -> bool {
+    branch == "main" || branch == "master"
+}
+
+fn worktree_is_main_behind_head(entry: &WorktreeEntry) -> bool {
+    !entry.detached
+        && is_main_branch_name(entry.branch.as_str())
+        && entry.has_upstream
+        && entry.behind > 0
 }
 
 fn star_seed(x: i64, y: i64) -> u64 {
@@ -2843,6 +2856,24 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             ),
         ]));
 
+        if is_main_branch_name(selected.branch.as_str()) && selected.has_upstream {
+            lines.push(Line::from(vec![
+                Span::styled("head:   ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    if worktree_is_main_behind_head(selected) {
+                        "behind head"
+                    } else {
+                        "in sync"
+                    },
+                    Style::default().fg(if worktree_is_main_behind_head(selected) {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    }),
+                ),
+            ]));
+        }
+
         lines.push(Line::from(vec![
             Span::styled("flags:  ", Style::default().fg(Color::Gray)),
             Span::styled(
@@ -3168,7 +3199,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("f", Style::default().fg(Color::Cyan)),
-            Span::raw(" fetch + pull parent"),
+            Span::raw(" fetch + pull parent (or selected main head)"),
         ]),
         Line::from(vec![
             Span::styled("F", Style::default().fg(Color::Cyan)),
@@ -3301,7 +3332,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Blue node = current branch worktree"),
             Line::from("- Cyan ring = selected worktree (drives details + actions)"),
             Line::from("- Red nodes = dirty (uncommitted changes)"),
-            Line::from("- Yellow nodes = behind parent"),
+            Line::from("- Yellow nodes = behind parent or behind head"),
             Line::from("- Spinner suffix means active session; done/fail marks completion"),
             Line::from(""),
             Line::from("Navigation:"),
@@ -3343,7 +3374,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- O: open agent picker for selected/conflicted parent"),
             Line::from("- c: selected worktree add+commit with message popup"),
             Line::from("- p: push selected worktree branch (sets upstream if needed)"),
-            Line::from("- f: fetch + pull connected parent node"),
+            Line::from("- f: fetch + pull connected parent node (or selected main head if behind)"),
             Line::from("- F: rebase selected branch onto connected parent node"),
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- d: delete selected worktree (asks force-delete if dirty)"),

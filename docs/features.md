@@ -7,7 +7,7 @@ nav_order: 2
 
 ## Worktree graph visualization
 
-Worktrees are displayed as an interactive graph with parent-child relationships. Navigate with arrow keys or `h`/`j`/`k`/`l`. Press `Ctrl+K` to cycle graph builders: top-down balanced, layered, left-right, trunk, swimlanes, and indented. Zoom and pan the canvas. Each node shows branch name, status badges (`dirty`, `behind parent`, `committed`, `local only`, `pushed`, `merged with parent`), ahead/behind counts, and live agent activity. Edges are color-coded by branch and rendered with terminal-safe single-width glyphs for consistent alignment.
+Worktrees are displayed as an interactive graph with parent-child relationships. Navigate with arrow keys or `h`/`j`/`k`/`l`. Press `Ctrl+K` to cycle graph builders: top-down balanced, layered, left-right, trunk, swimlanes, and indented. Zoom and pan the canvas. Each node shows branch name, status badges (`dirty`, `behind parent`, `behind head`, `committed`, `local only`, `pushed`, `merged with parent`), ahead/behind counts, and live agent activity. Edges are color-coded by branch and rendered with terminal-safe single-width glyphs for consistent alignment.
 
 ## Embedded PTY terminals
 
@@ -23,7 +23,7 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 - `g` -- orchestrate a feature requirement, review/accept/refine per-leaf prompts, then execute accepted worktrees
 - `c` -- commit (stages all changes in worktree view, or staged changes in changes view)
 - `p` -- push (auto-sets upstream for new branches)
-- `f` -- fetch and pull parent branch
+- `f` -- fetch and pull parent branch (or selected main branch if behind head)
 - `F` -- rebase selected worktree branch onto parent branch
 - `m` -- merge worktree into parent
 - `d` -- delete worktree (with safety confirmations)

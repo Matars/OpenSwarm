@@ -773,6 +773,22 @@ fn update_parent_at(path: &str, branch: &str) -> Result<String, Box<dyn Error>> 
     ))
 }
 
+fn update_worktree_head_at(path: &str, branch: &str) -> Result<String, Box<dyn Error>> {
+    if branch.is_empty() || branch == "detached" {
+        return Ok("Selected node is detached; cannot pull head".to_string());
+    }
+
+    let fetch = run_git(&["-C", path, "fetch", "--all", "--prune"])?;
+    let pull = run_git(&["-C", path, "pull"])?;
+
+    Ok(format!(
+        "Fetched + pulled head '{}' - fetch: {}; pull: {}",
+        branch,
+        single_line(fetch.as_str()),
+        single_line(pull.as_str()),
+    ))
+}
+
 fn rebase_onto_parent_at(
     child_path: &str,
     child_branch: &str,
