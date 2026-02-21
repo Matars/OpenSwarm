@@ -1321,22 +1321,22 @@ fn graph_link_glyph(mask: u8) -> char {
     const LRU: u8 = DIR_LEFT | DIR_RIGHT | DIR_UP;
     const ALL: u8 = DIR_UP | DIR_RIGHT | DIR_DOWN | DIR_LEFT;
     match mask {
-        UD => '|',
-        LR => '-',
-        DR => '+',
-        DL => '+',
-        UL => '+',
-        UR => '+',
-        UDR => '+',
-        UDL => '+',
-        LRD => '+',
-        LRU => '+',
-        ALL => '+',
-        DIR_UP => '|',
-        DIR_DOWN => '|',
-        DIR_LEFT => '-',
-        DIR_RIGHT => '-',
-        _ => '.',
+        UD => '│',
+        LR => '─',
+        DR => '┌',
+        DL => '┐',
+        UL => '┘',
+        UR => '└',
+        UDR => '├',
+        UDL => '┤',
+        LRD => '┬',
+        LRU => '┴',
+        ALL => '┼',
+        DIR_UP => '│',
+        DIR_DOWN => '│',
+        DIR_LEFT => '─',
+        DIR_RIGHT => '─',
+        _ => ' ',
     }
 }
 
