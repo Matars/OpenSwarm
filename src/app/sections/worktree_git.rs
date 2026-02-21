@@ -142,12 +142,63 @@ fn apply_status_snapshot(app: &mut App, snapshot: StatusSnapshot) {
     }
 }
 
+fn run_startup_checks(app: &mut App) {
+    let git_ready = Command::new("git").arg("--version").output().is_ok();
+    if !git_ready {
+        app.status_line = "git is not available on PATH".to_string();
+        return;
+    }
+
+    let inside_worktree = Command::new("git")
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref()))
+        .map(|text| text.trim().eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    if !inside_worktree {
+        app.status_line =
+            "Not inside a Git worktree. Launch OpenSwarm from a repo root or worktree path"
+                .to_string();
+        return;
+    }
+
+    let top_level = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref()))
+        .map(|text| text.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let Some(root) = top_level else {
+        app.status_line = "Unable to resolve git top-level path".to_string();
+        return;
+    };
+
+    let git_entry = Path::new(root.as_str()).join(".git");
+    if !git_entry.exists() {
+        app.status_line = format!(
+            "Git top-level resolved to {} but .git entry is missing",
+            root
+        );
+    }
+}
+
 fn refresh_worktrees(app: &mut App) {
-    let output = match git_output(&["worktree", "list", "--porcelain"]) {
-        Some(text) => text,
-        None => {
+    let output = match git_output_with_error(&["worktree", "list", "--porcelain"]) {
+        Ok(text) => {
+            app.worktree_load_error = None;
+            text
+        }
+        Err(reason) => {
+            app.worktree_load_error = Some(reason.clone());
             app.worktrees.clear();
             app.selected_worktree = 0;
+            app.status_line = format!("Unable to load git worktrees: {}", single_line(&reason));
             return;
         }
     };
@@ -2145,6 +2196,39 @@ fn git_output_in(path: Option<&str>, args: &[&str]) -> Option<String> {
 
 fn git_output(args: &[&str]) -> Option<String> {
     git_output_in(None, args)
+}
+
+fn git_output_with_error_in(path: Option<&str>, args: &[&str]) -> Result<String, String> {
+    let mut cmd = Command::new("git");
+    if let Some(path) = path {
+        cmd.args(["-C", path]);
+    }
+
+    match cmd.args(args).output() {
+        Ok(output) if output.status.success() => Ok(sanitize_for_tui(
+            String::from_utf8_lossy(&output.stdout).as_ref(),
+        )),
+        Ok(output) => {
+            let stderr = sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+                .trim()
+                .to_string();
+            let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+                .trim()
+                .to_string();
+            if !stderr.is_empty() {
+                Err(stderr)
+            } else if !stdout.is_empty() {
+                Err(stdout)
+            } else {
+                Err(format!("git {} failed", args.join(" ")))
+            }
+        }
+        Err(err) => Err(sanitize_for_tui(err.to_string().as_str())),
+    }
+}
+
+fn git_output_with_error(args: &[&str]) -> Result<String, String> {
+    git_output_with_error_in(None, args)
 }
 
 fn push_with_upstream() -> Result<String, Box<dyn Error>> {

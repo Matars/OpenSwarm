@@ -45,3 +45,16 @@ make dev
 - Rust toolchain (stable)
 - Git on PATH
 - A Git repository
+
+## If the UI looks empty
+
+- OpenSwarm now runs startup git checks and reports failures in the status line/canvas.
+- Verify the launch directory is a valid git worktree:
+
+```bash
+git rev-parse --is-inside-work-tree
+git rev-parse --show-toplevel
+git worktree list --porcelain
+```
+
+- If any command fails, launch from the correct repo/worktree path and retry.
