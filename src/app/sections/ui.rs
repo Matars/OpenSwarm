@@ -1964,7 +1964,7 @@ fn animated_agent_spinner(session: &AgentSession, now: Instant) -> char {
 fn graph_layout(parents: &[Option<usize>], builder: WorktreeGraphBuilder) -> Vec<(f32, f32)> {
     match builder {
         WorktreeGraphBuilder::TopDownBalanced => graph_layout_top_down_balanced(parents),
-        WorktreeGraphBuilder::Radial => graph_layout_radial(parents),
+        WorktreeGraphBuilder::Layered => graph_layout_layered(parents),
     }
 }
 
@@ -2038,7 +2038,7 @@ fn graph_layout_top_down_balanced(parents: &[Option<usize>]) -> Vec<(f32, f32)> 
     positions
 }
 
-fn graph_layout_radial(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
+fn graph_layout_layered(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
     let count = parents.len();
     if count == 0 {
         return Vec::new();
@@ -2058,156 +2058,44 @@ fn graph_layout_radial(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
     }
     roots.sort_unstable();
 
-    fn subtree_weight(
+    fn assign_layered_x(
         idx: usize,
         children: &[Vec<usize>],
-        cache: &mut [Option<usize>],
-        visiting: &mut [bool],
-    ) -> usize {
-        if let Some(weight) = cache[idx] {
-            return weight;
-        }
-        if visiting[idx] {
-            return 1;
-        }
-
-        visiting[idx] = true;
-        let mut total = 1usize;
-        for child in &children[idx] {
-            total = total.saturating_add(subtree_weight(*child, children, cache, visiting));
-        }
-        visiting[idx] = false;
-        cache[idx] = Some(total);
-        total
-    }
-
-    let mut weight_cache = vec![None; count];
-    let mut visiting = vec![false; count];
-    for idx in 0..count {
-        let _ = subtree_weight(idx, &children, &mut weight_cache, &mut visiting);
-    }
-
-    let center_idx = roots
-        .iter()
-        .copied()
-        .max_by(|a, b| {
-            weight_cache[*a]
-                .unwrap_or(1)
-                .cmp(&weight_cache[*b].unwrap_or(1))
-                .then_with(|| b.cmp(a))
-        })
-        .unwrap_or(0);
-
-    let mut radial_roots = children[center_idx].clone();
-    radial_roots.extend(roots.into_iter().filter(|idx| *idx != center_idx));
-
-    let max_depth = depths
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, depth)| (idx != center_idx).then_some((*depth).max(1)))
-        .max()
-        .unwrap_or(1);
-
-    let mut positions = vec![(0.5f32, 0.5f32); count];
-    positions[center_idx] = (0.5, 0.5);
-
-    let full_turn = std::f32::consts::TAU;
-    let angle_offset = -std::f32::consts::FRAC_PI_2;
-    let radial_min = 0.16f32;
-    let radial_span = 0.30f32;
-    let ring_gap = 0.05f32;
-
-    fn place_radial_subtree(
-        node: usize,
-        start_angle: f32,
-        end_angle: f32,
-        center_x: f32,
-        center_y: f32,
-        depths: &[usize],
-        max_depth: usize,
-        children: &[Vec<usize>],
-        weight_cache: &[Option<usize>],
-        positions: &mut [(f32, f32)],
-        radial_min: f32,
-        radial_span: f32,
-        ring_gap: f32,
+        x_units: &mut [f32],
+        cursor: &mut f32,
     ) {
-        let depth = depths[node].max(1);
-        let depth_ratio = (depth as f32 / max_depth.max(1) as f32).clamp(0.0, 1.0);
-        let radius = (radial_min + radial_span * depth_ratio).min(0.46);
-        let mid = (start_angle + end_angle) * 0.5;
-
-        let x = center_x + radius * mid.cos();
-        let y = center_y + radius * mid.sin();
-        positions[node] = (x.clamp(0.06, 0.94), y.clamp(0.08, 0.94));
-
-        let kids = &children[node];
-        if kids.is_empty() {
+        if children[idx].is_empty() {
+            x_units[idx] = *cursor;
+            *cursor += 1.0;
             return;
         }
 
-        let total_weight: usize = kids
-            .iter()
-            .map(|idx| weight_cache[*idx].unwrap_or(1).max(1))
-            .sum::<usize>()
-            .max(1);
-
-        let mut cursor = start_angle;
-        for child in kids {
-            let weight = weight_cache[*child].unwrap_or(1).max(1) as f32;
-            let mut span = (end_angle - start_angle) * (weight / total_weight as f32);
-            span = (span - ring_gap).max(0.06);
-            let child_start = cursor + ring_gap * 0.5;
-            let child_end = (child_start + span).min(end_angle);
-            place_radial_subtree(
-                *child,
-                child_start,
-                child_end,
-                center_x,
-                center_y,
-                depths,
-                max_depth,
-                children,
-                weight_cache,
-                positions,
-                radial_min,
-                radial_span,
-                ring_gap,
-            );
-            cursor += (end_angle - start_angle) * (weight / total_weight as f32);
+        for child in &children[idx] {
+            assign_layered_x(*child, children, x_units, cursor);
         }
+
+        let first = children[idx][0];
+        let last = *children[idx].last().unwrap_or(&first);
+        x_units[idx] = (x_units[first] + x_units[last]) * 0.5;
     }
 
-    if radial_roots.is_empty() {
-        return positions;
+    let mut x_units = vec![0.0f32; count];
+    let mut cursor = 0.0f32;
+    for root in roots {
+        assign_layered_x(root, &children, &mut x_units, &mut cursor);
+        cursor += 0.8;
     }
 
-    let total_weight: usize = radial_roots
-        .iter()
-        .map(|idx| weight_cache[*idx].unwrap_or(1).max(1))
-        .sum::<usize>()
-        .max(1);
+    let max_depth = depths.iter().copied().max().unwrap_or(0).max(1);
+    let min_x = x_units.iter().copied().reduce(f32::min).unwrap_or(0.0);
+    let max_x = x_units.iter().copied().reduce(f32::max).unwrap_or(1.0);
+    let x_span = (max_x - min_x).max(1.0);
 
-    let mut cursor = angle_offset;
-    for node in radial_roots {
-        let node_weight = weight_cache[node].unwrap_or(1).max(1) as f32;
-        let span = full_turn * (node_weight / total_weight as f32);
-        place_radial_subtree(
-            node,
-            cursor,
-            cursor + span,
-            0.5,
-            0.5,
-            &depths,
-            max_depth,
-            &children,
-            &weight_cache,
-            &mut positions,
-            radial_min,
-            radial_span,
-            ring_gap,
-        );
-        cursor += span;
+    let mut positions = vec![(0.5f32, 0.5f32); count];
+    for idx in 0..count {
+        let x = 0.08 + ((x_units[idx] - min_x) / x_span) * 0.84;
+        let y = 0.14 + (depths[idx] as f32 / max_depth as f32) * 0.78;
+        positions[idx] = (x.clamp(0.06, 0.94), y.clamp(0.12, 0.95));
     }
 
     positions
@@ -2843,7 +2731,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("  arrows  - move by graph direction"),
             Line::from("  h/l     - move between siblings"),
             Line::from("  j/k     - move child/parent levels"),
-            Line::from("  Ctrl+K  - cycle graph builder (top-down/radial)"),
+            Line::from("  Ctrl+K  - cycle graph builder (top-down/layered)"),
             Line::from("  Tab     - cycle graph/details/actions panels"),
             Line::from("  L       - open git command history popup"),
             Line::from(""),
