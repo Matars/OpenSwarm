@@ -766,7 +766,7 @@ fn move_worktree_selection(app: &mut App, direction: NavDirection) {
     let root_branch = current_session_branch(app);
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
     let depths = graph_depths(&parents);
-    let points = graph_layout(&parents, app.worktree_graph_builder);
+    let points = graph_layout(&parents, app.worktree_graph_builder, &app.worktrees);
     let (cx, cy) = points[app.selected_worktree];
     let mut best_idx: Option<usize> = None;
     let mut best_score = f32::MAX;
@@ -899,7 +899,7 @@ fn move_worktree_level_siblings(app: &mut App, move_right: bool) {
     let root_branch = current_session_branch(app);
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
     let depths = graph_depths(&parents);
-    let points = graph_layout(&parents, app.worktree_graph_builder);
+    let points = graph_layout(&parents, app.worktree_graph_builder, &app.worktrees);
     let current = app.selected_worktree;
     let current_depth = depths[current];
     let (cx, cy) = points[current];
@@ -937,7 +937,7 @@ fn move_worktree_level_vertical(app: &mut App, move_up: bool) {
     let root_branch = current_session_branch(app);
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
     let depths = graph_depths(&parents);
-    let points = graph_layout(&parents, app.worktree_graph_builder);
+    let points = graph_layout(&parents, app.worktree_graph_builder, &app.worktrees);
     let current = app.selected_worktree;
     let current_depth = depths[current];
     let (cx, cy) = points[current];

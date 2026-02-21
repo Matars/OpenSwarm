@@ -111,21 +111,33 @@ enum ViewMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WorktreeGraphBuilder {
     TopDownBalanced,
-    Radial,
+    Layered,
+    LeftToRight,
+    Trunk,
+    Swimlanes,
+    Indented,
 }
 
 impl WorktreeGraphBuilder {
     fn label(self) -> &'static str {
         match self {
             WorktreeGraphBuilder::TopDownBalanced => "top-down",
-            WorktreeGraphBuilder::Radial => "radial",
+            WorktreeGraphBuilder::Layered => "layered",
+            WorktreeGraphBuilder::LeftToRight => "left-right",
+            WorktreeGraphBuilder::Trunk => "trunk",
+            WorktreeGraphBuilder::Swimlanes => "swimlanes",
+            WorktreeGraphBuilder::Indented => "indented",
         }
     }
 
     fn next(self) -> Self {
         match self {
-            WorktreeGraphBuilder::TopDownBalanced => WorktreeGraphBuilder::Radial,
-            WorktreeGraphBuilder::Radial => WorktreeGraphBuilder::TopDownBalanced,
+            WorktreeGraphBuilder::TopDownBalanced => WorktreeGraphBuilder::Layered,
+            WorktreeGraphBuilder::Layered => WorktreeGraphBuilder::LeftToRight,
+            WorktreeGraphBuilder::LeftToRight => WorktreeGraphBuilder::Trunk,
+            WorktreeGraphBuilder::Trunk => WorktreeGraphBuilder::Swimlanes,
+            WorktreeGraphBuilder::Swimlanes => WorktreeGraphBuilder::Indented,
+            WorktreeGraphBuilder::Indented => WorktreeGraphBuilder::TopDownBalanced,
         }
     }
 }
