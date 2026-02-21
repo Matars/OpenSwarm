@@ -623,7 +623,7 @@ fn build_opencode_launch_command(
     let mut cmd = String::from("opencode");
     let resumed = if let Some(session_id) = resumed_session.as_ref() {
         cmd.push_str(" --session ");
-        cmd.push_str(shell_ansi_c_quote(session_id.as_str()).as_str());
+        cmd.push_str(shell_quote_for_command(session_id.as_str()).as_str());
         true
     } else {
         false
@@ -631,7 +631,7 @@ fn build_opencode_launch_command(
 
     if let Some(text) = prompt {
         cmd.push_str(" --prompt ");
-        cmd.push_str(shell_ansi_c_quote(text).as_str());
+        cmd.push_str(shell_quote_for_command(text).as_str());
     }
     cmd.push('\r');
     OpenCodeLaunchCommand {
@@ -864,6 +864,46 @@ fn shell_ansi_c_quote(text: &str) -> String {
     out
 }
 
+fn shell_powershell_single_quote(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    out.push('\'');
+    for ch in text.chars() {
+        if ch == '\'' {
+            out.push_str("''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}
+
+fn shell_quote_for_command(text: &str) -> String {
+    if cfg!(windows) {
+        shell_powershell_single_quote(text)
+    } else {
+        shell_ansi_c_quote(text)
+    }
+}
+
+fn interactive_shell_command() -> (String, Vec<&'static str>) {
+    if cfg!(windows) {
+        if command_exists_on_path("pwsh") {
+            return ("pwsh".to_string(), vec!["-NoLogo", "-NoExit"]);
+        }
+        return (
+            "powershell.exe".to_string(),
+            vec!["-NoLogo", "-NoExit"],
+        );
+    }
+
+    let shell = std::env::var("SHELL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "/bin/sh".to_string());
+    (shell, vec!["-i", "-l"])
+}
+
 fn refresh_runtime_settings(app: &mut App) {
     app.config = load_openswarm_config();
     app.detected_agents = detect_available_agents();
@@ -888,10 +928,48 @@ fn command_exists_on_path(command: &str) -> bool {
         return false;
     };
 
+    #[cfg(windows)]
+    let path_exts: Vec<String> = std::env::var("PATHEXT")
+        .ok()
+        .map(|raw| {
+            raw.split(';')
+                .filter_map(|ext| {
+                    let trimmed = ext.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    }
+                })
+                .collect::<Vec<String>>()
+        })
+        .filter(|items| !items.is_empty())
+        .unwrap_or_else(|| {
+            vec![
+                ".COM".to_string(),
+                ".EXE".to_string(),
+                ".BAT".to_string(),
+                ".CMD".to_string(),
+            ]
+        });
+
+    #[cfg(windows)]
+    let has_extension = command.rsplit_once('.').is_some();
+
     for dir in std::env::split_paths(paths.as_os_str()) {
         let candidate = dir.join(command);
         if candidate.is_file() {
             return true;
+        }
+
+        #[cfg(windows)]
+        if !has_extension {
+            for ext in &path_exts {
+                let with_ext = dir.join(format!("{}{}", command, ext));
+                if with_ext.is_file() {
+                    return true;
+                }
+            }
         }
     }
 
@@ -2380,10 +2458,11 @@ fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>>
         pixel_height: 0,
     })?;
 
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "zsh".to_string());
+    let (shell, shell_args) = interactive_shell_command();
     let mut cmd = CommandBuilder::new(shell.as_str());
-    cmd.arg("-i");
-    cmd.arg("-l");
+    for arg in shell_args {
+        cmd.arg(arg);
+    }
     cmd.cwd(path);
     let child = pair.slave.spawn_command(cmd)?;
 
