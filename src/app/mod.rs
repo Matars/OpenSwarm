@@ -463,7 +463,7 @@ impl App {
             worktree_canvas_pan_x: 0.0,
             worktree_canvas_pan_y: 0.0,
             worktree_canvas_bg_mode: CanvasBackgroundMode::GlitterStars,
-            worktree_graph_builder: WorktreeGraphBuilder::TopDownBalanced,
+            worktree_graph_builder: WorktreeGraphBuilder::Layered,
             canvas_bg_effects,
             canvas_bg_last_tick: Instant::now(),
             canvas_selected_border_effects,
