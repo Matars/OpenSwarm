@@ -240,6 +240,7 @@ struct App {
     git_task: Option<GitTaskState>,
     git_task_tx: Sender<GitTaskEvent>,
     git_task_rx: Receiver<GitTaskEvent>,
+    perf_debug: PerfDebugState,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -301,6 +302,139 @@ struct GitTaskEvent {
     outcome: String,
     refresh_worktrees: bool,
     refresh_status: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct FramePhaseDurations {
+    drain_agent_events: Duration,
+    drain_git_task_events: Duration,
+    refresh_agent_sessions: Duration,
+    refresh_opencode_usage: Duration,
+    resize_popup: Duration,
+    draw: Duration,
+    event_poll: Duration,
+    event_handle: Duration,
+    refresh_status: Duration,
+    refresh_worktrees: Duration,
+    total_loop: Duration,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FrameHitch {
+    at: Instant,
+    phases: FramePhaseDurations,
+}
+
+struct PerfDebugState {
+    enabled: bool,
+    frame_intervals: VecDeque<Duration>,
+    worst_frame: Duration,
+    last_frame_at: Instant,
+    last_hitch: Option<FrameHitch>,
+    hitch_log_path: PathBuf,
+}
+
+impl PerfDebugState {
+    const FRAME_WINDOW: usize = 240;
+    const HITCH_THRESHOLD: Duration = Duration::from_millis(90);
+
+    fn new() -> Self {
+        Self {
+            enabled: false,
+            frame_intervals: VecDeque::new(),
+            worst_frame: Duration::ZERO,
+            last_frame_at: Instant::now(),
+            last_hitch: None,
+            hitch_log_path: std::env::temp_dir().join("openswarm-hitches.log"),
+        }
+    }
+
+    fn record_frame_interval(&mut self, frame_interval: Duration) {
+        self.frame_intervals.push_back(frame_interval);
+        if self.frame_intervals.len() > Self::FRAME_WINDOW {
+            self.frame_intervals.pop_front();
+        }
+        if frame_interval > self.worst_frame {
+            self.worst_frame = frame_interval;
+        }
+    }
+
+    fn avg_frame_ms(&self) -> f64 {
+        if self.frame_intervals.is_empty() {
+            return 0.0;
+        }
+        let total_secs: f64 = self.frame_intervals.iter().map(Duration::as_secs_f64).sum();
+        (total_secs * 1000.0) / (self.frame_intervals.len() as f64)
+    }
+
+    fn p95_frame_ms(&self) -> f64 {
+        if self.frame_intervals.is_empty() {
+            return 0.0;
+        }
+        let mut values: Vec<f64> = self
+            .frame_intervals
+            .iter()
+            .map(|d| d.as_secs_f64() * 1000.0)
+            .collect();
+        values.sort_by(|a, b| a.total_cmp(b));
+        let idx = ((values.len() as f64) * 0.95).floor() as usize;
+        values[idx.min(values.len().saturating_sub(1))]
+    }
+
+    fn fps(&self) -> f64 {
+        let avg_ms = self.avg_frame_ms();
+        if avg_ms <= f64::EPSILON {
+            0.0
+        } else {
+            1000.0 / avg_ms
+        }
+    }
+
+    fn worst_frame_ms(&self) -> f64 {
+        self.worst_frame.as_secs_f64() * 1000.0
+    }
+
+    fn record_loop_phases(&mut self, phases: FramePhaseDurations) {
+        if phases.total_loop < Self::HITCH_THRESHOLD {
+            return;
+        }
+
+        let hitch = FrameHitch {
+            at: Instant::now(),
+            phases,
+        };
+        self.last_hitch = Some(hitch);
+        if self.enabled {
+            self.log_hitch(hitch);
+        }
+    }
+
+    fn log_hitch(&self, hitch: FrameHitch) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        let line = format!(
+            "ts={} total={:.1}ms draw={:.1}ms drain_agent={:.1}ms refresh_status={:.1}ms refresh_worktrees={:.1}ms poll={:.1}ms handle={:.1}ms\n",
+            now,
+            hitch.phases.total_loop.as_secs_f64() * 1000.0,
+            hitch.phases.draw.as_secs_f64() * 1000.0,
+            hitch.phases.drain_agent_events.as_secs_f64() * 1000.0,
+            hitch.phases.refresh_status.as_secs_f64() * 1000.0,
+            hitch.phases.refresh_worktrees.as_secs_f64() * 1000.0,
+            hitch.phases.event_poll.as_secs_f64() * 1000.0,
+            hitch.phases.event_handle.as_secs_f64() * 1000.0,
+        );
+
+        if let Ok(mut file) = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.hitch_log_path)
+        {
+            let _ = file.write_all(line.as_bytes());
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -517,6 +651,7 @@ impl App {
             git_task: None,
             git_task_tx,
             git_task_rx,
+            perf_debug: PerfDebugState::new(),
         }
     }
 
@@ -668,25 +803,45 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let mut should_quit = false;
 
     while !should_quit {
+        let loop_started = Instant::now();
+        let frame_interval = loop_started.saturating_duration_since(app.perf_debug.last_frame_at);
+        app.perf_debug.last_frame_at = loop_started;
+        app.perf_debug.record_frame_interval(frame_interval);
+        let mut loop_phases = FramePhaseDurations::default();
+
+        let phase_started = Instant::now();
         drain_agent_events(&mut app);
+        loop_phases.drain_agent_events = phase_started.elapsed();
+
+        let phase_started = Instant::now();
         drain_git_task_events(&mut app);
+        loop_phases.drain_git_task_events = phase_started.elapsed();
+
+        let phase_started = Instant::now();
         refresh_agent_sessions(&mut app);
+        loop_phases.refresh_agent_sessions = phase_started.elapsed();
         if last_opencode_usage_tick.elapsed() >= opencode_usage_tick_rate {
+            let phase_started = Instant::now();
             refresh_opencode_usage(&mut app);
+            loop_phases.refresh_opencode_usage = phase_started.elapsed();
             last_opencode_usage_tick = Instant::now();
         }
 
         // Resize terminal session to match actual popup dimensions
         if matches!(app.mode, Mode::AgentPopup) {
             if let Some(path) = app.agent_popup_path.clone() {
+                let phase_started = Instant::now();
                 let size = terminal.size()?;
                 let frame_area = Rect::new(0, 0, size.width, size.height);
                 let (rows, cols) = calc_terminal_popup_size(frame_area);
                 resize_terminal_session(&mut app, &path, rows, cols);
+                loop_phases.resize_popup = phase_started.elapsed();
             }
         }
 
+        let phase_started = Instant::now();
         terminal.draw(|frame| draw_ui(frame, &mut app))?;
+        loop_phases.draw = phase_started.elapsed();
 
         let ui_tick_rate = if matches!(app.mode, Mode::AgentPopup) {
             ui_tick_rate_fast
@@ -697,7 +852,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         let status_timeout = status_tick_rate.saturating_sub(last_status_tick.elapsed());
         let worktree_timeout = worktree_tick_rate.saturating_sub(last_worktree_tick.elapsed());
         let timeout = ui_timeout.min(status_timeout).min(worktree_timeout);
-        if event::poll(timeout)? {
+        let poll_started = Instant::now();
+        let has_event = event::poll(timeout)?;
+        loop_phases.event_poll = poll_started.elapsed();
+        if has_event {
+            let handle_started = Instant::now();
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     if !matches!(app.mode, Mode::AgentPopup)
@@ -705,6 +864,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         && key.code == KeyCode::Char('c')
                     {
                         should_quit = true;
+                        continue;
+                    }
+
+                    if matches!(app.mode, Mode::Normal)
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                        && key.code == KeyCode::Char('l')
+                    {
+                        toggle_perf_debug(&mut app);
                         continue;
                     }
 
@@ -763,6 +930,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     }
                 }
             }
+            loop_phases.event_handle = handle_started.elapsed();
         }
 
         if last_ui_tick.elapsed() >= ui_tick_rate {
@@ -771,16 +939,23 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
         let refresh_git = !matches!(app.mode, Mode::AgentPopup) && app.git_task.is_none();
         if refresh_git && last_status_tick.elapsed() >= status_tick_rate {
+            let phase_started = Instant::now();
             refresh_status(&mut app);
+            loop_phases.refresh_status = phase_started.elapsed();
             last_status_tick = Instant::now();
         }
 
         let refresh_worktree_state =
             refresh_git && matches!(app.mode, Mode::Normal) && app.view_mode == ViewMode::Worktrees;
         if refresh_worktree_state && last_worktree_tick.elapsed() >= worktree_tick_rate {
+            let phase_started = Instant::now();
             refresh_worktrees(&mut app);
+            loop_phases.refresh_worktrees = phase_started.elapsed();
             last_worktree_tick = Instant::now();
         }
+
+        loop_phases.total_loop = loop_started.elapsed();
+        app.perf_debug.record_loop_phases(loop_phases);
     }
 
     terminal.show_cursor()?;

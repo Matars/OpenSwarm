@@ -348,6 +348,18 @@ fn cycle_worktree_canvas_background(app: &mut App) {
     );
 }
 
+fn toggle_perf_debug(app: &mut App) {
+    app.perf_debug.enabled = !app.perf_debug.enabled;
+    if app.perf_debug.enabled {
+        app.status_line = format!(
+            "Perf debug enabled (Ctrl+L to toggle). Hitch log: {}",
+            app.perf_debug.hitch_log_path.display()
+        );
+    } else {
+        app.status_line = "Perf debug disabled (Ctrl+L to toggle)".to_string();
+    }
+}
+
 fn open_terminal_popup_for_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>> {
     let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) else {
         app.status_line = "No worktree selected".to_string();

@@ -589,21 +589,28 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
     } else {
         Color::Gray
     };
+    let perf_badge = if app.perf_debug.enabled {
+        "  perf:on"
+    } else {
+        ""
+    };
     let title = if app.worktree_canvas_zoom != 1.0
         || app.worktree_canvas_pan_x != 0.0
         || app.worktree_canvas_pan_y != 0.0
     {
         format!(
-            "worktree graph [?]  {}  z:{:.1}x  bg:{}",
+            "worktree graph [?]  {}  z:{:.1}x  bg:{}{}",
             app.worktree_graph_builder.label(),
             app.worktree_canvas_zoom,
-            app.worktree_canvas_bg_mode.short_label()
+            app.worktree_canvas_bg_mode.short_label(),
+            perf_badge
         )
     } else {
         format!(
-            "worktree graph [?]  {}  bg:{}",
+            "worktree graph [?]  {}  bg:{}{}",
             app.worktree_graph_builder.label(),
-            app.worktree_canvas_bg_mode.short_label()
+            app.worktree_canvas_bg_mode.short_label(),
+            perf_badge
         )
     };
     let block = Block::default()
@@ -1428,9 +1435,9 @@ fn draw_canvas_bg_glitter_stars(
             let drift_x = ((time_seconds * drift_scale_x + phase).sin() * 2.2
                 + (time_seconds * (drift_scale_x * 0.53) + phase * 0.31).cos() * 1.4)
                 .round() as i64;
-            let fall_rate = 1.6 + star_seed_unit(phase_seed, 22) * 3.2;
+            let fall_rate = 0.35 + star_seed_unit(phase_seed, 22) * 0.75;
             let fall_offset = (time_seconds * fall_rate).floor() as i64;
-            let drift_y = ((time_seconds * (0.04 + star_seed_unit(phase_seed, 54) * 0.07)
+            let drift_y = ((time_seconds * (0.02 + star_seed_unit(phase_seed, 54) * 0.03)
                 + phase * 0.77)
                 .sin()
                 * 1.2)
@@ -1441,7 +1448,7 @@ fn draw_canvas_bg_glitter_stars(
                 continue;
             }
 
-            let twinkle_speed = 0.0042 + star_seed_unit(glitter_seed, 20) * 0.0066;
+            let twinkle_speed = 0.002 + star_seed_unit(glitter_seed, 20) * 0.0035;
             let twinkle_phase = star_seed_unit(glitter_seed, 36) * tau;
             let twinkle = ((time_seconds * twinkle_speed + twinkle_phase).sin() + 1.0) * 0.5;
             if twinkle < 0.08 {
@@ -2875,6 +2882,46 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
                 Span::styled("no pty session", Style::default().fg(Color::DarkGray)),
             ]));
         }
+
+        if app.perf_debug.enabled {
+            lines.push(Line::from(vec![
+                Span::styled("perf:   ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    format!(
+                        "fps {:.1}  avg {:.1}ms  p95 {:.1}ms  worst {:.1}ms",
+                        app.perf_debug.fps(),
+                        app.perf_debug.avg_frame_ms(),
+                        app.perf_debug.p95_frame_ms(),
+                        app.perf_debug.worst_frame_ms()
+                    ),
+                    Style::default().fg(Color::LightCyan),
+                ),
+            ]));
+            if let Some(hitch) = app.perf_debug.last_hitch {
+                lines.push(Line::from(vec![
+                    Span::styled("hitch:  ", Style::default().fg(Color::Gray)),
+                    Span::styled(
+                        format!(
+                            "{:.1}ms total  draw {:.1}ms  status {:.1}ms  trees {:.1}ms  ({:.1}s ago)",
+                            hitch.phases.total_loop.as_secs_f64() * 1000.0,
+                            hitch.phases.draw.as_secs_f64() * 1000.0,
+                            hitch.phases.refresh_status.as_secs_f64() * 1000.0,
+                            hitch.phases.refresh_worktrees.as_secs_f64() * 1000.0,
+                            now.saturating_duration_since(hitch.at).as_secs_f64(),
+                        ),
+                        Style::default().fg(Color::LightYellow),
+                    ),
+                ]));
+            }
+            lines.push(Line::from(vec![
+                Span::styled("log:    ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    app.perf_debug.hitch_log_path.display().to_string(),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+        }
+
         lines.push(Line::from(""));
         let status_max = area.width.saturating_sub(4) as usize;
         let mut status_text = sanitize_for_tui(app.status_line.as_str());
@@ -3207,6 +3254,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("  0       - reset view"),
             Line::from("  Shift+WASD - pan"),
             Line::from("  Ctrl+B  - cycle canvas background"),
+            Line::from("  Ctrl+L  - toggle perf debugging + hitch log"),
             Line::from(""),
             Line::from("Flow: o/O launch shells or agents, c/p/m/d run git lifecycle"),
             Line::from(""),

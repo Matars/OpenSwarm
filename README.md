@@ -52,6 +52,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | `+` / `-` / `0` | Zoom in / out / reset |
 | `W` `A` `S` `D` | Pan canvas |
 | `Ctrl+B` | Cycle canvas background effect |
+| `Ctrl+L` | Toggle frame-lag debug stats + hitch logging |
 
 ### Worktree actions
 
