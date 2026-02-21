@@ -258,6 +258,7 @@ enum AgentState {
 
 struct AgentSession {
     state: AgentState,
+    agent_kind: Option<ExternalAgent>,
     parser: vt100::Parser,
     master: Option<Box<dyn MasterPty + Send>>,
     writer: Option<Box<dyn Write + Send>>,
@@ -268,6 +269,16 @@ struct AgentSession {
     bytes_from_agent: u64,
     bytes_to_agent: u64,
     io_samples: VecDeque<IoSample>,
+    opencode_session_id: Option<String>,
+    opencode_usage: Option<OpenCodeUsage>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct OpenCodeUsage {
+    input_tokens: u64,
+    output_tokens: u64,
+    input_tokens_per_second: u64,
+    output_tokens_per_second: u64,
 }
 
 struct IoSample {
@@ -649,15 +660,21 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let ui_tick_rate_normal = Duration::from_millis(33);
     let status_tick_rate = Duration::from_millis(1200);
     let worktree_tick_rate = Duration::from_millis(5000);
+    let opencode_usage_tick_rate = Duration::from_millis(1000);
     let mut last_ui_tick = Instant::now();
     let mut last_status_tick = Instant::now();
     let mut last_worktree_tick = Instant::now();
+    let mut last_opencode_usage_tick = Instant::now();
     let mut should_quit = false;
 
     while !should_quit {
         drain_agent_events(&mut app);
         drain_git_task_events(&mut app);
         refresh_agent_sessions(&mut app);
+        if last_opencode_usage_tick.elapsed() >= opencode_usage_tick_rate {
+            refresh_opencode_usage(&mut app);
+            last_opencode_usage_tick = Instant::now();
+        }
 
         // Resize terminal session to match actual popup dimensions
         if matches!(app.mode, Mode::AgentPopup) {

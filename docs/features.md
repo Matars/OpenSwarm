@@ -36,7 +36,7 @@ When a merge produces conflicts, OpenSwarm shows the conflicted files and a cust
 
 Each graph node shows live status: a spinning indicator when the agent is actively writing, idle duration when quiet, and a done/failed badge when the process exits. You can see at a glance which of your 5-10 agents are still working.
 The worktree canvas also includes an animated top-right tok/s leaderboard with Unicode bars normalized to the busiest stream, while idle worktrees are grouped into a single compact `idle xN` row to save space.
-In the details panel, token telemetry is estimated from terminal text content (shown as `tokens~`) to avoid counting ANSI redraw/control bytes as model tokens.
+In the details panel, OpenCode sessions use exact token usage from OpenCode's session database (shown as `tokens:`). Non-OpenCode sessions fall back to PTY text-based estimates (shown as `tokens~`).
 
 ## Built-in notes editor
 

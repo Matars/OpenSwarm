@@ -1961,10 +1961,16 @@ fn agent_session_output_text_bytes(session: &AgentSession) -> u64 {
 }
 
 fn agent_session_context_tokens(session: &AgentSession) -> u64 {
+    if let Some(usage) = session.opencode_usage {
+        return usage.input_tokens;
+    }
     estimate_tokens(session.bytes_to_agent)
 }
 
 fn agent_session_output_tokens(session: &AgentSession) -> u64 {
+    if let Some(usage) = session.opencode_usage {
+        return usage.output_tokens;
+    }
     estimate_tokens(agent_session_output_text_bytes(session))
 }
 
@@ -1973,10 +1979,16 @@ fn agent_session_total_tokens(session: &AgentSession) -> u64 {
 }
 
 fn agent_session_context_tokens_per_second(session: &AgentSession, now: Instant) -> u64 {
+    if let Some(usage) = session.opencode_usage {
+        return usage.input_tokens_per_second;
+    }
     agent_session_direction_tokens_per_second(session, now, |sample| sample.bytes_to_agent)
 }
 
 fn agent_session_output_tokens_per_second(session: &AgentSession, now: Instant) -> u64 {
+    if let Some(usage) = session.opencode_usage {
+        return usage.output_tokens_per_second;
+    }
     agent_session_direction_tokens_per_second(session, now, |sample| sample.bytes_from_agent)
 }
 
@@ -2827,8 +2839,13 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             let total_tokens = agent_session_total_tokens(session);
             let context_rate = agent_session_context_tokens_per_second(session, now);
             let output_rate = agent_session_output_tokens_per_second(session, now);
+            let token_label = if session.opencode_usage.is_some() {
+                "tokens:"
+            } else {
+                "tokens~:"
+            };
             lines.push(Line::from(vec![
-                Span::styled("tokens~:", Style::default().fg(Color::Gray)),
+                Span::styled(token_label, Style::default().fg(Color::Gray)),
                 Span::styled(
                     format!(
                         "in {} ({}/s)",
@@ -3201,7 +3218,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Shows branch/path/HEAD and worktree flags"),
             Line::from("- Shows ahead/behind and dirty/locked state"),
             Line::from("- Includes total PTY counts (live/active/idle)"),
-            Line::from("- Shows selected PTY text-based token estimates with per-second rates"),
+            Line::from("- Shows OpenCode exact token usage when available, else PTY estimates"),
             Line::from("- Status section reports the latest command outcome"),
             Line::from("- Use this panel to validate readiness before push/merge"),
             Line::from("- Tab: move focus to next panel"),

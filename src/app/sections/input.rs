@@ -483,14 +483,15 @@ fn launch_agent_in_terminal(
             let prompt = build_conflict_resolve_prompt(app, context);
 
             if agent == ExternalAgent::Opencode {
-                let (launch_cmd, resumed_session) = build_opencode_launch_command(
+                let launch = build_opencode_launch_command(
                     path,
                     Some(prompt.as_str()),
                     allow_opencode_session_resume,
                 );
-                write_to_agent(app, path, launch_cmd.as_str())?;
+                write_to_agent(app, path, launch.command.as_str())?;
+                attach_session_agent(app, path, agent, launch.session_id);
                 app.pending_conflict_context = None;
-                app.status_line = if resumed_session {
+                app.status_line = if launch.resumed {
                     "Reconnected OpenCode session with conflict-resolution prompt (--prompt)"
                         .to_string()
                 } else {
@@ -501,6 +502,7 @@ fn launch_agent_in_terminal(
 
             let launch_cmd = format!("{}\r", agent.command_name());
             write_to_agent(app, path, launch_cmd.as_str())?;
+            attach_session_agent(app, path, agent, None);
             let prompt_with_enter = format!("{}\r", normalize_terminal_newlines(prompt.as_str()));
             write_to_agent(app, path, prompt_with_enter.as_str())?;
             app.pending_conflict_context = None;
@@ -512,12 +514,13 @@ fn launch_agent_in_terminal(
         }
     }
 
-    let (launch_cmd, resumed_session) = if agent == ExternalAgent::Opencode {
-        build_opencode_launch_command(path, None, allow_opencode_session_resume)
+    let (launch_cmd, resumed_session, opencode_session_id) = if agent == ExternalAgent::Opencode {
+        build_opencode_launch_command(path, None, allow_opencode_session_resume).into_parts()
     } else {
-        (format!("{}\r", agent.command_name()), false)
+        (format!("{}\r", agent.command_name()), false, None)
     };
     write_to_agent(app, path, launch_cmd.as_str())?;
+    attach_session_agent(app, path, agent, opencode_session_id);
 
     app.status_line = if resumed_session {
         "Reconnected OpenCode session in terminal".to_string()
@@ -525,6 +528,24 @@ fn launch_agent_in_terminal(
         format!("Launched {} in terminal", agent.display_name())
     };
     Ok(())
+}
+
+fn attach_session_agent(
+    app: &mut App,
+    path: &str,
+    agent: ExternalAgent,
+    opencode_session_id: Option<String>,
+) {
+    if let Some(session) = app.agent_sessions.get_mut(path) {
+        session.agent_kind = Some(agent);
+        if agent == ExternalAgent::Opencode {
+            session.opencode_session_id = opencode_session_id;
+            session.opencode_usage = None;
+        } else {
+            session.opencode_session_id = None;
+            session.opencode_usage = None;
+        }
+    }
 }
 
 fn launch_opencode_conflict_resolution(app: &mut App) -> Result<(), Box<dyn Error>> {
@@ -560,7 +581,7 @@ fn build_opencode_launch_command(
     worktree_path: &str,
     prompt: Option<&str>,
     allow_resume: bool,
-) -> (String, bool) {
+) -> OpenCodeLaunchCommand {
     let resumed_session = if allow_resume {
         resolve_recent_opencode_session_id_for_worktree(worktree_path)
     } else {
@@ -568,7 +589,7 @@ fn build_opencode_launch_command(
     };
 
     let mut cmd = String::from("opencode");
-    let resumed = if let Some(session_id) = resumed_session {
+    let resumed = if let Some(session_id) = resumed_session.as_ref() {
         cmd.push_str(" --session ");
         cmd.push_str(shell_ansi_c_quote(session_id.as_str()).as_str());
         true
@@ -581,7 +602,23 @@ fn build_opencode_launch_command(
         cmd.push_str(shell_ansi_c_quote(text).as_str());
     }
     cmd.push('\r');
-    (cmd, resumed)
+    OpenCodeLaunchCommand {
+        command: cmd,
+        resumed,
+        session_id: resumed_session,
+    }
+}
+
+struct OpenCodeLaunchCommand {
+    command: String,
+    resumed: bool,
+    session_id: Option<String>,
+}
+
+impl OpenCodeLaunchCommand {
+    fn into_parts(self) -> (String, bool, Option<String>) {
+        (self.command, self.resumed, self.session_id)
+    }
 }
 
 fn resolve_recent_opencode_session_id_for_worktree(worktree_path: &str) -> Option<String> {
@@ -1976,6 +2013,7 @@ fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>>
     let now = Instant::now();
     let session = AgentSession {
         state: AgentState::Launching,
+        agent_kind: None,
         parser: vt100::Parser::new(TERM_ROWS, TERM_COLS, 2000),
         master: Some(pair.master),
         writer: Some(writer),
@@ -1986,6 +2024,8 @@ fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>>
         bytes_from_agent: 0,
         bytes_to_agent: 0,
         io_samples: VecDeque::new(),
+        opencode_session_id: None,
+        opencode_usage: None,
     };
 
     app.agent_sessions.insert(path.to_string(), session);
@@ -2149,6 +2189,178 @@ fn refresh_agent_sessions(app: &mut App) {
             }
         }
     }
+}
+
+const OPENCODE_USAGE_RATE_WINDOW_MS: u64 = 4000;
+
+fn refresh_opencode_usage(app: &mut App) {
+    let mut should_query = false;
+    for (path, session) in app.agent_sessions.iter_mut() {
+        let tracks_opencode = session.agent_kind == Some(ExternalAgent::Opencode)
+            || session.opencode_session_id.is_some();
+        if !tracks_opencode {
+            continue;
+        }
+        should_query = true;
+        if session.opencode_session_id.is_none() {
+            session.opencode_session_id =
+                resolve_recent_opencode_session_id_for_worktree(path.as_str());
+        }
+    }
+
+    if !should_query || !command_exists_on_path("opencode") {
+        for session in app.agent_sessions.values_mut() {
+            if session.agent_kind == Some(ExternalAgent::Opencode)
+                || session.opencode_session_id.is_some()
+            {
+                session.opencode_usage = None;
+            }
+        }
+        return;
+    }
+
+    let mut ids = BTreeSet::new();
+    for session in app.agent_sessions.values() {
+        if let Some(session_id) = session.opencode_session_id.as_ref() {
+            ids.insert(session_id.clone());
+        }
+    }
+
+    if ids.is_empty() {
+        for session in app.agent_sessions.values_mut() {
+            if session.agent_kind == Some(ExternalAgent::Opencode) {
+                session.opencode_usage = None;
+            }
+        }
+        return;
+    }
+
+    let session_ids = ids.into_iter().collect::<Vec<_>>();
+    let Ok(usage_by_session) = load_opencode_usage_for_sessions(session_ids.as_slice()) else {
+        return;
+    };
+
+    for session in app.agent_sessions.values_mut() {
+        let Some(session_id) = session.opencode_session_id.as_ref() else {
+            if session.agent_kind == Some(ExternalAgent::Opencode) {
+                session.opencode_usage = None;
+            }
+            continue;
+        };
+
+        session.opencode_usage = usage_by_session.get(session_id).copied();
+    }
+}
+
+fn load_opencode_usage_for_sessions(
+    session_ids: &[String],
+) -> Result<BTreeMap<String, OpenCodeUsage>, Box<dyn Error>> {
+    if session_ids.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let cutoff_ms = now_ms.saturating_sub(OPENCODE_USAGE_RATE_WINDOW_MS);
+
+    let mut in_values = String::new();
+    for (idx, session_id) in session_ids.iter().enumerate() {
+        if idx > 0 {
+            in_values.push(',');
+        }
+        in_values.push('\'');
+        in_values.push_str(session_id.replace('\'', "''").as_str());
+        in_values.push('\'');
+    }
+
+    let sql = format!(
+        "WITH totals AS (\
+            SELECT session_id,\
+                   SUM(COALESCE(json_extract(data, '$.tokens.input'), 0)) AS input_tokens,\
+                   SUM(COALESCE(json_extract(data, '$.tokens.output'), 0)) AS output_tokens\
+              FROM part\
+             WHERE json_extract(data, '$.type') = 'step-finish'\
+               AND session_id IN ({in_values})\
+             GROUP BY session_id\
+        ), recent AS (\
+            SELECT session_id,\
+                   SUM(COALESCE(json_extract(data, '$.tokens.input'), 0)) AS input_tokens,\
+                   SUM(COALESCE(json_extract(data, '$.tokens.output'), 0)) AS output_tokens\
+              FROM part\
+             WHERE json_extract(data, '$.type') = 'step-finish'\
+               AND time_created >= {cutoff_ms}\
+               AND session_id IN ({in_values})\
+             GROUP BY session_id\
+        )\
+        SELECT totals.session_id,\
+               totals.input_tokens,\
+               totals.output_tokens,\
+               COALESCE(recent.input_tokens, 0),\
+               COALESCE(recent.output_tokens, 0)\
+          FROM totals\
+          LEFT JOIN recent ON recent.session_id = totals.session_id"
+    );
+
+    let output = Command::new("opencode")
+        .args(["db", sql.as_str()])
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "OpenCode usage query failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    Ok(parse_opencode_usage_rows(
+        String::from_utf8_lossy(&output.stdout).as_ref(),
+        OPENCODE_USAGE_RATE_WINDOW_MS,
+    ))
+}
+
+fn parse_opencode_usage_rows(tsv: &str, rate_window_ms: u64) -> BTreeMap<String, OpenCodeUsage> {
+    let mut usage_by_session = BTreeMap::new();
+
+    for (idx, line) in tsv.lines().enumerate() {
+        if idx == 0 || line.trim().is_empty() {
+            continue;
+        }
+
+        let cols = line.split('\t').collect::<Vec<_>>();
+        if cols.len() < 5 {
+            continue;
+        }
+
+        let session_id = cols[0].trim();
+        if session_id.is_empty() {
+            continue;
+        }
+
+        let input_tokens = parse_tsv_u64(cols[1]);
+        let output_tokens = parse_tsv_u64(cols[2]);
+        let recent_input_tokens = parse_tsv_u64(cols[3]);
+        let recent_output_tokens = parse_tsv_u64(cols[4]);
+        let window_secs = (rate_window_ms as f64 / 1000.0).max(1.0);
+
+        usage_by_session.insert(
+            session_id.to_string(),
+            OpenCodeUsage {
+                input_tokens,
+                output_tokens,
+                input_tokens_per_second: (recent_input_tokens as f64 / window_secs).round() as u64,
+                output_tokens_per_second: (recent_output_tokens as f64 / window_secs).round()
+                    as u64,
+            },
+        );
+    }
+
+    usage_by_session
+}
+
+fn parse_tsv_u64(value: &str) -> u64 {
+    value.trim().parse::<u64>().unwrap_or(0)
 }
 
 fn handle_commit_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Error>> {
