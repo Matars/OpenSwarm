@@ -25,7 +25,7 @@ nav_order: 3
 | Arrow keys | Directional graph navigation (nearest node in that direction) |
 | `h` / `l` | Move between siblings at the same depth |
 | `j` / `k` | Move to child / parent levels |
-| `Ctrl+K` | Cycle graph builder (top-down balanced / layered) |
+| `Ctrl+K` | Cycle graph builder (top-down balanced / layered / left-right / trunk / swimlanes / indented) |
 | `Tab` | Cycle focus: Canvas, Details, Actions |
 | `?` | Toggle help modal |
 

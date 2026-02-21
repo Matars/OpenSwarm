@@ -112,6 +112,10 @@ enum ViewMode {
 enum WorktreeGraphBuilder {
     TopDownBalanced,
     Layered,
+    LeftToRight,
+    Trunk,
+    Swimlanes,
+    Indented,
 }
 
 impl WorktreeGraphBuilder {
@@ -119,13 +123,21 @@ impl WorktreeGraphBuilder {
         match self {
             WorktreeGraphBuilder::TopDownBalanced => "top-down",
             WorktreeGraphBuilder::Layered => "layered",
+            WorktreeGraphBuilder::LeftToRight => "left-right",
+            WorktreeGraphBuilder::Trunk => "trunk",
+            WorktreeGraphBuilder::Swimlanes => "swimlanes",
+            WorktreeGraphBuilder::Indented => "indented",
         }
     }
 
     fn next(self) -> Self {
         match self {
             WorktreeGraphBuilder::TopDownBalanced => WorktreeGraphBuilder::Layered,
-            WorktreeGraphBuilder::Layered => WorktreeGraphBuilder::TopDownBalanced,
+            WorktreeGraphBuilder::Layered => WorktreeGraphBuilder::LeftToRight,
+            WorktreeGraphBuilder::LeftToRight => WorktreeGraphBuilder::Trunk,
+            WorktreeGraphBuilder::Trunk => WorktreeGraphBuilder::Swimlanes,
+            WorktreeGraphBuilder::Swimlanes => WorktreeGraphBuilder::Indented,
+            WorktreeGraphBuilder::Indented => WorktreeGraphBuilder::TopDownBalanced,
         }
     }
 }

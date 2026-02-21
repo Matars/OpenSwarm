@@ -629,7 +629,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
 
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
     let collapsed_root_idx = None;
-    let logical = graph_layout(&parents, app.worktree_graph_builder);
+    let logical = graph_layout(&parents, app.worktree_graph_builder, &app.worktrees);
     let node_points: Vec<(f64, f64)> = logical
         .iter()
         .map(|point| logical_to_canvas_point(*point))
@@ -1961,10 +1961,18 @@ fn animated_agent_spinner(session: &AgentSession, now: Instant) -> char {
     FRAMES[(tick % FRAMES.len() as u128) as usize]
 }
 
-fn graph_layout(parents: &[Option<usize>], builder: WorktreeGraphBuilder) -> Vec<(f32, f32)> {
+fn graph_layout(
+    parents: &[Option<usize>],
+    builder: WorktreeGraphBuilder,
+    worktrees: &[WorktreeEntry],
+) -> Vec<(f32, f32)> {
     match builder {
         WorktreeGraphBuilder::TopDownBalanced => graph_layout_top_down_balanced(parents),
         WorktreeGraphBuilder::Layered => graph_layout_layered(parents),
+        WorktreeGraphBuilder::LeftToRight => graph_layout_left_to_right(parents),
+        WorktreeGraphBuilder::Trunk => graph_layout_trunk(parents),
+        WorktreeGraphBuilder::Swimlanes => graph_layout_swimlanes(parents, worktrees),
+        WorktreeGraphBuilder::Indented => graph_layout_indented(parents),
     }
 }
 
@@ -2045,19 +2053,286 @@ fn graph_layout_layered(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
     }
 
     let depths = graph_depths(parents);
+    let (children, roots) = graph_children_and_roots(parents);
+    let x_units = assign_layered_x_units(&children, &roots);
+
+    let max_depth = depths.iter().copied().max().unwrap_or(0).max(1);
+    let min_x = x_units.iter().copied().reduce(f32::min).unwrap_or(0.0);
+    let max_x = x_units.iter().copied().reduce(f32::max).unwrap_or(1.0);
+    let x_span = (max_x - min_x).max(1.0);
+
+    let mut positions = vec![(0.5f32, 0.5f32); count];
+    for idx in 0..count {
+        let x = 0.08 + ((x_units[idx] - min_x) / x_span) * 0.84;
+        let y = 0.14 + (depths[idx] as f32 / max_depth as f32) * 0.78;
+        positions[idx] = (x.clamp(0.06, 0.94), y.clamp(0.12, 0.95));
+    }
+
+    positions
+}
+
+fn graph_layout_left_to_right(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
+    let count = parents.len();
+    if count == 0 {
+        return Vec::new();
+    }
+
+    let depths = graph_depths(parents);
+    let (children, roots) = graph_children_and_roots(parents);
+    let x_units = assign_layered_x_units(&children, &roots);
+    let min_order = x_units.iter().copied().reduce(f32::min).unwrap_or(0.0);
+    let max_order = x_units.iter().copied().reduce(f32::max).unwrap_or(1.0);
+    let order_span = (max_order - min_order).max(1.0);
+    let max_depth = depths.iter().copied().max().unwrap_or(0).max(1);
+
+    let mut positions = vec![(0.5f32, 0.5f32); count];
+    for idx in 0..count {
+        let x = 0.10 + (depths[idx] as f32 / max_depth as f32) * 0.82;
+        let y = 0.10 + ((x_units[idx] - min_order) / order_span) * 0.82;
+        positions[idx] = (x.clamp(0.06, 0.95), y.clamp(0.10, 0.94));
+    }
+
+    positions
+}
+
+fn graph_layout_trunk(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
+    let count = parents.len();
+    if count == 0 {
+        return Vec::new();
+    }
+
+    let depths = graph_depths(parents);
+    let max_depth = depths.iter().copied().max().unwrap_or(0).max(1);
+    let (children, roots) = graph_children_and_roots(parents);
+    let subtree = subtree_sizes(&children);
+
+    let trunk_root = roots
+        .iter()
+        .copied()
+        .max_by_key(|idx| subtree[*idx])
+        .unwrap_or(0);
+
+    let mut trunk_nodes: Vec<usize> = Vec::new();
+    let mut current = trunk_root;
+    loop {
+        trunk_nodes.push(current);
+        let next = children[current]
+            .iter()
+            .copied()
+            .max_by_key(|idx| subtree[*idx]);
+        let Some(next_idx) = next else {
+            break;
+        };
+        current = next_idx;
+    }
+    let trunk_set: BTreeSet<usize> = trunk_nodes.iter().copied().collect();
+
+    let mut positions = graph_layout_layered(parents);
+    for idx in 0..count {
+        let y = 0.12 + (depths[idx] as f32 / max_depth as f32) * 0.80;
+        positions[idx].1 = y.clamp(0.12, 0.95);
+    }
+    for idx in &trunk_nodes {
+        positions[*idx].0 = 0.5;
+    }
+
+    fn place_side_branches(
+        node: usize,
+        center_x: f32,
+        base_side: f32,
+        depth: usize,
+        children: &[Vec<usize>],
+        trunk_set: &BTreeSet<usize>,
+        positions: &mut [(f32, f32)],
+    ) {
+        let mut branch_children: Vec<usize> = children[node]
+            .iter()
+            .copied()
+            .filter(|idx| !trunk_set.contains(idx))
+            .collect();
+        if branch_children.is_empty() {
+            return;
+        }
+        branch_children.sort_unstable();
+
+        let base_span = (0.14f32 / (depth as f32 + 1.0)).max(0.04);
+        for (i, child) in branch_children.iter().enumerate() {
+            let side = if i % 2 == 0 { base_side } else { -base_side };
+            let lane = (i / 2) as f32 + 1.0;
+            let x = (center_x + side * lane * base_span).clamp(0.06, 0.94);
+            positions[*child].0 = x;
+            place_side_branches(
+                *child,
+                x,
+                side,
+                depth.saturating_add(1),
+                children,
+                trunk_set,
+                positions,
+            );
+        }
+    }
+
+    for (depth_idx, node) in trunk_nodes.iter().enumerate() {
+        let base_side = if depth_idx % 2 == 0 { -1.0 } else { 1.0 };
+        place_side_branches(
+            *node,
+            0.5,
+            base_side,
+            depth_idx,
+            &children,
+            &trunk_set,
+            &mut positions,
+        );
+    }
+
+    positions
+}
+
+fn graph_layout_swimlanes(
+    parents: &[Option<usize>],
+    worktrees: &[WorktreeEntry],
+) -> Vec<(f32, f32)> {
+    let count = parents.len();
+    if count == 0 {
+        return Vec::new();
+    }
+
+    let depths = graph_depths(parents);
+    let max_depth = depths.iter().copied().max().unwrap_or(0).max(1);
+
+    let mut lane_names: Vec<String> = Vec::new();
+    let mut lane_by_idx = vec![0usize; count];
+    for idx in 0..count {
+        let lane = worktrees
+            .get(idx)
+            .map(|wt| {
+                if wt.detached {
+                    "detached".to_string()
+                } else {
+                    wt.branch.split('/').next().unwrap_or("root").to_string()
+                }
+            })
+            .unwrap_or_else(|| "root".to_string());
+
+        let lane_idx = lane_names
+            .iter()
+            .position(|value| value == &lane)
+            .unwrap_or_else(|| {
+                lane_names.push(lane);
+                lane_names.len() - 1
+            });
+        lane_by_idx[idx] = lane_idx;
+    }
+
+    let lane_count = lane_names.len().max(1);
+    let mut grouped: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
+    for idx in 0..count {
+        grouped
+            .entry((lane_by_idx[idx], depths[idx]))
+            .or_default()
+            .push(idx);
+    }
+
+    let mut positions = vec![(0.5f32, 0.5f32); count];
+    for ((lane_idx, depth), nodes) in grouped {
+        let lane_center = if lane_count == 1 {
+            0.5
+        } else {
+            0.10 + (lane_idx as f32 / (lane_count - 1) as f32) * 0.80
+        };
+        let y = 0.12 + (depth as f32 / max_depth as f32) * 0.80;
+        let n = nodes.len().max(1);
+        for (rank, idx) in nodes.iter().enumerate() {
+            let centered = rank as f32 - (n.saturating_sub(1) as f32 * 0.5);
+            let x = lane_center + centered * 0.045;
+            positions[*idx] = (x.clamp(0.06, 0.94), y.clamp(0.12, 0.95));
+        }
+    }
+
+    for _ in 0..4 {
+        for idx in 0..count {
+            if let Some(parent) = parents[idx] {
+                if parent >= count || parent == idx {
+                    continue;
+                }
+                let lane_center = if lane_count == 1 {
+                    0.5
+                } else {
+                    0.10 + (lane_by_idx[idx] as f32 / (lane_count - 1) as f32) * 0.80
+                };
+                let target = (positions[parent].0 * 0.35) + (lane_center * 0.65);
+                positions[idx].0 = (positions[idx].0 * 0.70 + target * 0.30).clamp(0.06, 0.94);
+            }
+        }
+    }
+
+    positions
+}
+
+fn graph_layout_indented(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
+    let count = parents.len();
+    if count == 0 {
+        return Vec::new();
+    }
+
+    let depths = graph_depths(parents);
+    let max_depth = depths.iter().copied().max().unwrap_or(0).max(1);
+    let (children, roots) = graph_children_and_roots(parents);
+
+    fn dfs(node: usize, children: &[Vec<usize>], out: &mut Vec<usize>) {
+        out.push(node);
+        for child in &children[node] {
+            dfs(*child, children, out);
+        }
+    }
+
+    let mut order = Vec::with_capacity(count);
+    for root in roots {
+        dfs(root, &children, &mut order);
+    }
+    for idx in 0..count {
+        if !order.contains(&idx) {
+            order.push(idx);
+        }
+    }
+
+    let mut rank_by_idx = vec![0usize; count];
+    for (rank, idx) in order.iter().enumerate() {
+        rank_by_idx[*idx] = rank;
+    }
+
+    let mut positions = vec![(0.5f32, 0.5f32); count];
+    let max_rank = count.saturating_sub(1).max(1);
+    for idx in 0..count {
+        let x = 0.08 + (depths[idx] as f32 / max_depth as f32) * 0.84;
+        let y = 0.10 + (rank_by_idx[idx] as f32 / max_rank as f32) * 0.82;
+        positions[idx] = (x.clamp(0.06, 0.95), y.clamp(0.10, 0.95));
+    }
+
+    positions
+}
+
+fn graph_children_and_roots(parents: &[Option<usize>]) -> (Vec<Vec<usize>>, Vec<usize>) {
+    let count = parents.len();
     let mut children: Vec<Vec<usize>> = vec![Vec::new(); count];
     let mut roots: Vec<usize> = Vec::new();
+
     for idx in 0..count {
         match parents[idx] {
             Some(parent) if parent < count && parent != idx => children[parent].push(idx),
             _ => roots.push(idx),
         }
     }
+
     for list in &mut children {
         list.sort_unstable();
     }
     roots.sort_unstable();
+    (children, roots)
+}
 
+fn assign_layered_x_units(children: &[Vec<usize>], roots: &[usize]) -> Vec<f32> {
     fn assign_layered_x(
         idx: usize,
         children: &[Vec<usize>],
@@ -2079,26 +2354,34 @@ fn graph_layout_layered(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
         x_units[idx] = (x_units[first] + x_units[last]) * 0.5;
     }
 
-    let mut x_units = vec![0.0f32; count];
+    let mut x_units = vec![0.0f32; children.len()];
     let mut cursor = 0.0f32;
     for root in roots {
-        assign_layered_x(root, &children, &mut x_units, &mut cursor);
+        assign_layered_x(*root, children, &mut x_units, &mut cursor);
         cursor += 0.8;
     }
+    x_units
+}
 
-    let max_depth = depths.iter().copied().max().unwrap_or(0).max(1);
-    let min_x = x_units.iter().copied().reduce(f32::min).unwrap_or(0.0);
-    let max_x = x_units.iter().copied().reduce(f32::max).unwrap_or(1.0);
-    let x_span = (max_x - min_x).max(1.0);
-
-    let mut positions = vec![(0.5f32, 0.5f32); count];
-    for idx in 0..count {
-        let x = 0.08 + ((x_units[idx] - min_x) / x_span) * 0.84;
-        let y = 0.14 + (depths[idx] as f32 / max_depth as f32) * 0.78;
-        positions[idx] = (x.clamp(0.06, 0.94), y.clamp(0.12, 0.95));
+fn subtree_sizes(children: &[Vec<usize>]) -> Vec<usize> {
+    fn size_of(idx: usize, children: &[Vec<usize>], cache: &mut [Option<usize>]) -> usize {
+        if let Some(size) = cache[idx] {
+            return size;
+        }
+        let size = 1usize.saturating_add(
+            children[idx]
+                .iter()
+                .map(|child| size_of(*child, children, cache))
+                .sum::<usize>(),
+        );
+        cache[idx] = Some(size);
+        size
     }
 
-    positions
+    let mut cache = vec![None; children.len()];
+    (0..children.len())
+        .map(|idx| size_of(idx, children, &mut cache))
+        .collect()
 }
 
 fn graph_depths(parents: &[Option<usize>]) -> Vec<usize> {
@@ -2731,7 +3014,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("  arrows  - move by graph direction"),
             Line::from("  h/l     - move between siblings"),
             Line::from("  j/k     - move child/parent levels"),
-            Line::from("  Ctrl+K  - cycle graph builder (top-down/layered)"),
+            Line::from("  Ctrl+K  - cycle graph builder (6 layouts)"),
             Line::from("  Tab     - cycle graph/details/actions panels"),
             Line::from("  L       - open git command history popup"),
             Line::from(""),
