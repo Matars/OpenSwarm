@@ -794,6 +794,163 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
             .process_effects(elapsed.into(), frame.buffer_mut(), effect_area);
         animation.effects.is_running()
     });
+
+    draw_worktree_token_leaderboard(frame, app, inner);
+}
+
+#[derive(Clone)]
+struct WorktreeTokenLeaderboardRow {
+    label: String,
+    tokens_per_second: u64,
+    is_selected: bool,
+    is_idle_cluster: bool,
+}
+
+fn draw_worktree_token_leaderboard(frame: &mut ratatui::Frame<'_>, app: &App, canvas_area: Rect) {
+    if canvas_area.width < 34 || canvas_area.height < 8 {
+        return;
+    }
+
+    let now = Instant::now();
+    let mut active_rows: Vec<WorktreeTokenLeaderboardRow> = Vec::new();
+    let mut idle_count = 0usize;
+
+    for (idx, entry) in app.worktrees.iter().enumerate() {
+        let tokens_per_second = app
+            .agent_sessions
+            .get(entry.path.as_str())
+            .map(|session| {
+                agent_session_context_tokens_per_second(session, now)
+                    .saturating_add(agent_session_output_tokens_per_second(session, now))
+            })
+            .unwrap_or(0);
+
+        if tokens_per_second == 0 {
+            idle_count = idle_count.saturating_add(1);
+            continue;
+        }
+
+        let label = if entry.is_current {
+            "current".to_string()
+        } else {
+            entry.branch.clone()
+        };
+        active_rows.push(WorktreeTokenLeaderboardRow {
+            label,
+            tokens_per_second,
+            is_selected: idx == app.selected_worktree,
+            is_idle_cluster: false,
+        });
+    }
+
+    active_rows.sort_by(|left, right| {
+        right
+            .tokens_per_second
+            .cmp(&left.tokens_per_second)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+
+    let mut rows = active_rows;
+    if idle_count > 0 {
+        rows.push(WorktreeTokenLeaderboardRow {
+            label: format!("idle x{}", idle_count),
+            tokens_per_second: 0,
+            is_selected: false,
+            is_idle_cluster: true,
+        });
+    }
+
+    if rows.is_empty() {
+        return;
+    }
+
+    let max_rows = canvas_area.height.saturating_sub(3) as usize;
+    if max_rows == 0 {
+        return;
+    }
+
+    if rows.len() > max_rows {
+        rows.truncate(max_rows);
+    }
+
+    let panel_width = canvas_area.width.min(44).max(34);
+    let panel_height = rows.len().saturating_add(2) as u16;
+    let area = Rect::new(
+        canvas_area.right().saturating_sub(panel_width),
+        canvas_area.y,
+        panel_width,
+        panel_height,
+    );
+
+    let block = Block::default()
+        .title(" tok/s leaderboard ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray))
+        .style(Style::default().bg(Color::Black));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if inner.width < 8 || inner.height == 0 {
+        return;
+    }
+
+    let max_tps = rows
+        .iter()
+        .map(|row| row.tokens_per_second)
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    let label_width = (inner.width as usize).saturating_sub(22).clamp(6, 16);
+    let bar_width = (inner.width as usize)
+        .saturating_sub(label_width)
+        .saturating_sub(11)
+        .max(4);
+
+    let mut lines: Vec<Line<'_>> = Vec::with_capacity(rows.len());
+    for row in rows {
+        let ratio = if row.is_idle_cluster {
+            0.0
+        } else {
+            row.tokens_per_second as f64 / max_tps as f64
+        };
+        let filled = ((ratio * bar_width as f64).round() as usize).min(bar_width);
+        let bar = format!(
+            "{}{}",
+            "#".repeat(filled.max((!row.is_idle_cluster) as usize)),
+            ".".repeat(bar_width.saturating_sub(filled.max((!row.is_idle_cluster) as usize)))
+        );
+
+        let name = truncate_text(row.label.as_str(), label_width);
+        let row_style = if row.is_idle_cluster {
+            Style::default().fg(Color::DarkGray)
+        } else if row.is_selected {
+            Style::default()
+                .fg(Color::LightCyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        let bar_style = if row.is_idle_cluster {
+            Style::default().fg(Color::DarkGray)
+        } else if row.tokens_per_second == max_tps {
+            Style::default().fg(Color::LightCyan)
+        } else {
+            Style::default().fg(Color::Green)
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled(format!("{name:label_width$}"), row_style),
+            Span::raw(" "),
+            Span::styled(
+                format!("{:>7}/s", format_compact_metric(row.tokens_per_second)),
+                row_style,
+            ),
+            Span::raw(" "),
+            Span::styled(bar, bar_style),
+        ]));
+    }
+
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 fn pulse_rect(area: Rect, center: (u16, u16)) -> Rect {
