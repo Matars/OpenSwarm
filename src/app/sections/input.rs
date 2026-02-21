@@ -236,7 +236,7 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
             app.mode = Mode::WorktreeOrchestrateInput;
             app.orchestrator_requirement_input.clear();
             app.status_line =
-                "Orchestrate worktrees: describe the feature, Enter to plan+create".to_string();
+                "Orchestrate worktrees: describe the feature, Enter to preview prompts".to_string();
         }
         KeyCode::Char('o') => {
             open_terminal_popup_for_selected_worktree(app)?;
@@ -1325,20 +1325,41 @@ fn handle_worktree_orchestrate_mode_key(app: &mut App, code: KeyCode) {
             let prompt_path = app.config.worktree_orchestrator_prompt_path.clone();
             let max_nodes = app.config.worktree_orchestrator_max_nodes;
 
-            start_git_task(app, "Orchestrate worktrees", true, true, move || {
-                orchestrate_worktrees_from_requirement(
-                    root.as_str(),
-                    requirement_text.as_str(),
-                    root_branch.as_str(),
-                    selected_branch.as_str(),
-                    existing_branches,
-                    prompt_path.as_str(),
-                    max_nodes,
-                )
-            });
+            let plan = plan_orchestrated_worktrees_from_requirement(
+                root.as_str(),
+                requirement_text.as_str(),
+                root_branch.as_str(),
+                selected_branch.as_str(),
+                existing_branches,
+                prompt_path.as_str(),
+                max_nodes,
+            );
 
-            app.mode = Mode::Normal;
+            if plan.nodes.is_empty() {
+                app.status_line = "Orchestrator produced no valid worktree nodes".to_string();
+                return;
+            }
+
+            app.orchestrator_planned_requirement = requirement_text.clone();
+            app.orchestrator_planner_source = plan.planner_source.to_string();
+            app.orchestrator_prompt_nodes = plan
+                .nodes
+                .into_iter()
+                .map(|node| OrchestratorPromptNode {
+                    prompt: build_leaf_execution_prompt(requirement_text.as_str(), &node),
+                    branch: node.branch,
+                    parent: node.parent,
+                    goal: node.goal,
+                    accepted: true,
+                })
+                .collect();
+            app.orchestrator_prompt_selected = 0;
+            app.orchestrator_prompt_edit_input.clear();
+            app.mode = Mode::WorktreeOrchestratePreview;
             app.orchestrator_requirement_input.clear();
+            app.status_line =
+                "Review leaf prompts: accept/refine each node, Enter executes accepted nodes"
+                    .to_string();
         }
         KeyCode::Backspace => {
             app.orchestrator_requirement_input.pop();
@@ -1348,6 +1369,151 @@ fn handle_worktree_orchestrate_mode_key(app: &mut App, code: KeyCode) {
         }
         _ => {}
     }
+}
+
+fn handle_worktree_orchestrate_preview_mode_key(app: &mut App, code: KeyCode) {
+    match code {
+        KeyCode::Esc => {
+            clear_orchestrator_prompt_preview(app);
+            app.mode = Mode::Normal;
+            app.status_line = "Worktree orchestration cancelled".to_string();
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if app.orchestrator_prompt_nodes.is_empty() {
+                app.orchestrator_prompt_selected = 0;
+            } else if app.orchestrator_prompt_selected == 0 {
+                app.orchestrator_prompt_selected = app.orchestrator_prompt_nodes.len() - 1;
+            } else {
+                app.orchestrator_prompt_selected -= 1;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if app.orchestrator_prompt_nodes.is_empty() {
+                app.orchestrator_prompt_selected = 0;
+            } else {
+                app.orchestrator_prompt_selected =
+                    (app.orchestrator_prompt_selected + 1) % app.orchestrator_prompt_nodes.len();
+            }
+        }
+        KeyCode::Char(' ') => {
+            if let Some(node) = app
+                .orchestrator_prompt_nodes
+                .get_mut(app.orchestrator_prompt_selected)
+            {
+                node.accepted = !node.accepted;
+            }
+        }
+        KeyCode::Char('a') | KeyCode::Char('A') => {
+            for node in &mut app.orchestrator_prompt_nodes {
+                node.accepted = true;
+            }
+        }
+        KeyCode::Char('r') | KeyCode::Char('R') => {
+            if let Some(node) = app
+                .orchestrator_prompt_nodes
+                .get(app.orchestrator_prompt_selected)
+            {
+                app.orchestrator_prompt_edit_input = node.prompt.clone();
+                app.mode = Mode::WorktreeOrchestratePromptEdit;
+                app.status_line = "Refine prompt: edit text, Enter save, Esc cancel".to_string();
+            }
+        }
+        KeyCode::Enter => {
+            let accepted_nodes_raw = app
+                .orchestrator_prompt_nodes
+                .iter()
+                .filter(|node| node.accepted)
+                .map(|node| ProposedWorktreeNode {
+                    branch: node.branch.clone(),
+                    parent: node.parent.clone(),
+                    goal: node.goal.clone(),
+                })
+                .collect::<Vec<_>>();
+
+            if accepted_nodes_raw.is_empty() {
+                app.status_line = "No accepted nodes selected for execution".to_string();
+                return;
+            }
+
+            let root_branch = resolve_main_branch();
+            let selected_branch = selected_branch_name(app);
+            let existing_branches = app
+                .worktrees
+                .iter()
+                .filter(|wt| !wt.detached && !wt.branch.trim().is_empty())
+                .map(|wt| wt.branch.clone())
+                .collect::<Vec<_>>();
+            let accepted_nodes = normalize_orchestrated_nodes(
+                accepted_nodes_raw,
+                app.orchestrator_planned_requirement.as_str(),
+                root_branch.as_str(),
+                selected_branch.as_str(),
+                existing_branches.as_slice(),
+                app.config.worktree_orchestrator_max_nodes,
+            );
+
+            let root = create_root_for_app(app);
+            let requirement = app.orchestrator_planned_requirement.clone();
+            let planner_source = app.orchestrator_planner_source.clone();
+            start_git_task(
+                app,
+                "Execute orchestrated worktrees",
+                true,
+                true,
+                move || {
+                    create_worktrees_from_orchestrated_nodes(
+                        root.as_str(),
+                        requirement.as_str(),
+                        planner_source.as_str(),
+                        accepted_nodes,
+                    )
+                },
+            );
+
+            clear_orchestrator_prompt_preview(app);
+            app.mode = Mode::Normal;
+        }
+        _ => {}
+    }
+}
+
+fn handle_worktree_orchestrate_prompt_edit_mode_key(app: &mut App, code: KeyCode) {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::WorktreeOrchestratePreview;
+            app.orchestrator_prompt_edit_input.clear();
+            app.status_line = "Prompt refine cancelled".to_string();
+        }
+        KeyCode::Enter => {
+            if let Some(node) = app
+                .orchestrator_prompt_nodes
+                .get_mut(app.orchestrator_prompt_selected)
+            {
+                let refined = app.orchestrator_prompt_edit_input.trim();
+                if !refined.is_empty() {
+                    node.prompt = refined.to_string();
+                }
+            }
+            app.mode = Mode::WorktreeOrchestratePreview;
+            app.orchestrator_prompt_edit_input.clear();
+            app.status_line = "Prompt refined for selected leaf".to_string();
+        }
+        KeyCode::Backspace => {
+            app.orchestrator_prompt_edit_input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.orchestrator_prompt_edit_input.push(c);
+        }
+        _ => {}
+    }
+}
+
+fn clear_orchestrator_prompt_preview(app: &mut App) {
+    app.orchestrator_planned_requirement.clear();
+    app.orchestrator_planner_source.clear();
+    app.orchestrator_prompt_nodes.clear();
+    app.orchestrator_prompt_selected = 0;
+    app.orchestrator_prompt_edit_input.clear();
 }
 
 fn handle_branch_conflict_confirm_mode_key(

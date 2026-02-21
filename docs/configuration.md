@@ -76,7 +76,7 @@ If this key is missing from an existing `config.toml`, OpenSwarm appends the def
 
 ### `worktree_orchestrator_enabled`
 
-Controls whether the `g` action in worktree view can run automated feature planning and batch worktree creation.
+Controls whether the `g` action in worktree view can run automated feature planning, leaf prompt preview/refinement, and batch worktree creation.
 
 | Value | Behavior |
 |-------|----------|

@@ -16,7 +16,7 @@ OpenSwarm gives you one screen:
 - **Embedded terminals + per-node session memory** -- launch shells and agents in PTY sessions directly inside the TUI; sessions persist in the background, and default OpenCode launches reconnect to the most recent session for that same worktree node after restarting OpenSwarm
 - **Inline diffs** -- switch to changes view for file staging with method-level diff analysis (Python, Rust, JS/TS, Go)
 - **One-key git operations** -- create worktrees (`a`), commit (`c`), push (`p`), merge (`m`), delete (`d`) without leaving the TUI
-- **Feature-to-worktree orchestration** -- press `g`, describe the feature, and OpenSwarm plans+creates a parent/child worktree graph (OpenCode planner with heuristic fallback)
+- **Feature-to-worktree orchestration** -- press `g`, describe the feature, review suggested per-leaf execution prompts (accept/refine each node), then execute accepted worktree creation (OpenCode planner with heuristic fallback)
 - **Agent-powered merge conflict solver** -- when merges conflict, OpenSwarm can launch OpenCode with a prefilled conflict-resolution prompt in the parent worktree, so the agent resolves/stages while you keep orchestration in one place
 
 ## Quick start
@@ -60,7 +60,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | Key | Action |
 |-----|--------|
 | `a` | Create worktree |
-| `g` | Orchestrate worktrees from a feature requirement |
+| `g` | Orchestrate feature, review per-leaf prompts, execute accepted nodes |
 | `o` | Open shell |
 | `O` | Open agent picker |
 | `c` | Commit |

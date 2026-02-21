@@ -42,6 +42,8 @@ enum Mode {
     WorktreeCommitPushInput,
     WorktreeCreateInput,
     WorktreeOrchestrateInput,
+    WorktreeOrchestratePreview,
+    WorktreeOrchestratePromptEdit,
     WorktreeBranchConflictConfirm,
     WorktreeConflictResolveConfirm,
     WorktreeRemoveDirtyConfirm,
@@ -209,6 +211,11 @@ struct App {
     new_worktree_base: WorktreeCreateBase,
     pending_create_branch: String,
     orchestrator_requirement_input: String,
+    orchestrator_planned_requirement: String,
+    orchestrator_planner_source: String,
+    orchestrator_prompt_nodes: Vec<OrchestratorPromptNode>,
+    orchestrator_prompt_selected: usize,
+    orchestrator_prompt_edit_input: String,
     confirm_delete_branch_yes: bool,
     pending_remove_worktree_path: String,
     confirm_remove_worktree_yes: bool,
@@ -251,6 +258,15 @@ struct App {
     status_refresh_tx: Sender<StatusRefreshEvent>,
     status_refresh_rx: Receiver<StatusRefreshEvent>,
     perf_debug: PerfDebugState,
+}
+
+#[derive(Clone, Debug)]
+struct OrchestratorPromptNode {
+    branch: String,
+    parent: String,
+    goal: String,
+    prompt: String,
+    accepted: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -667,6 +683,11 @@ impl App {
             new_worktree_base: WorktreeCreateBase::Selected,
             pending_create_branch: String::new(),
             orchestrator_requirement_input: String::new(),
+            orchestrator_planned_requirement: String::new(),
+            orchestrator_planner_source: String::new(),
+            orchestrator_prompt_nodes: Vec::new(),
+            orchestrator_prompt_selected: 0,
+            orchestrator_prompt_edit_input: String::new(),
             confirm_delete_branch_yes: false,
             pending_remove_worktree_path: String::new(),
             confirm_remove_worktree_yes: false,
@@ -961,6 +982,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::WorktreeOrchestrateInput => {
                             handle_worktree_orchestrate_mode_key(&mut app, key.code);
+                        }
+                        Mode::WorktreeOrchestratePreview => {
+                            handle_worktree_orchestrate_preview_mode_key(&mut app, key.code);
+                        }
+                        Mode::WorktreeOrchestratePromptEdit => {
+                            handle_worktree_orchestrate_prompt_edit_mode_key(&mut app, key.code);
                         }
                         Mode::WorktreeBranchConflictConfirm => {
                             handle_branch_conflict_confirm_mode_key(&mut app, key.code)?;

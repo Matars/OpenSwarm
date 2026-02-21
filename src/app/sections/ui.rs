@@ -70,6 +70,14 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         draw_worktree_orchestrate_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::WorktreeOrchestratePreview) {
+        draw_worktree_orchestrate_preview_modal(frame, app);
+    }
+
+    if matches!(app.mode, Mode::WorktreeOrchestratePromptEdit) {
+        draw_worktree_orchestrate_prompt_edit_modal(frame, app);
+    }
+
     if matches!(app.mode, Mode::WorktreeBranchConflictConfirm) {
         draw_branch_conflict_confirm_modal(frame, app);
     }
@@ -3330,7 +3338,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
             Line::from("- a: create worktree from branch name"),
-            Line::from("- g: orchestrate feature into a multi-worktree plan + create"),
+            Line::from("- g: orchestrate feature, review prompts per leaf, then execute"),
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- O: open agent picker for selected/conflicted parent"),
             Line::from("- c: selected worktree add+commit with message popup"),
@@ -3528,10 +3536,162 @@ fn draw_worktree_orchestrate_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     );
 
     frame.render_widget(
-        Paragraph::new("Enter: plan+create, Esc: cancel")
+        Paragraph::new("Enter: plan + prompt preview, Esc: cancel")
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Gray)),
         layout[3],
+    );
+}
+
+fn draw_worktree_orchestrate_preview_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(90, 78, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Orchestrator Prompt Preview")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightGreen));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(8),
+            Constraint::Min(8),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let accepted_count = app
+        .orchestrator_prompt_nodes
+        .iter()
+        .filter(|node| node.accepted)
+        .count();
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(format!(
+                "Requirement: {}",
+                truncate_text(app.orchestrator_planned_requirement.as_str(), 120)
+            )),
+            Line::from(format!(
+                "Planner: {} | nodes: {} | accepted: {}",
+                app.orchestrator_planner_source,
+                app.orchestrator_prompt_nodes.len(),
+                accepted_count
+            )),
+        ])
+        .style(Style::default().fg(Color::Gray)),
+        layout[0],
+    );
+
+    let node_rows: Vec<ListItem<'_>> = if app.orchestrator_prompt_nodes.is_empty() {
+        vec![ListItem::new(Line::from("(no nodes)"))]
+    } else {
+        app.orchestrator_prompt_nodes
+            .iter()
+            .enumerate()
+            .map(|(idx, node)| {
+                let selected = idx == app.orchestrator_prompt_selected;
+                let marker = if node.accepted { "[x]" } else { "[ ]" };
+                let style = if selected {
+                    Style::default().fg(Color::Black).bg(Color::Cyan)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+                let title = format!(
+                    "{} {} <- {} | {}",
+                    marker,
+                    node.branch,
+                    node.parent,
+                    truncate_text(node.goal.as_str(), 34)
+                );
+                ListItem::new(Line::from(title)).style(style)
+            })
+            .collect()
+    };
+    frame.render_widget(
+        List::new(node_rows)
+            .block(Block::default().title("Leaf Nodes").borders(Borders::ALL))
+            .style(Style::default().fg(Color::White)),
+        layout[1],
+    );
+
+    let prompt = app
+        .orchestrator_prompt_nodes
+        .get(app.orchestrator_prompt_selected)
+        .map(|node| node.prompt.as_str())
+        .unwrap_or_default();
+    let prompt_lines = wrap_text_lines(
+        prompt,
+        layout[2].width.saturating_sub(4) as usize,
+        layout[2].height.saturating_sub(2) as usize,
+    );
+    frame.render_widget(
+        Paragraph::new(prompt_lines.join("\n"))
+            .block(
+                Block::default()
+                    .title("Suggested Prompt")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(Color::White)),
+        layout[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Up/Down select | Space accept/reject | R refine | A accept all | Enter execute accepted | Esc cancel")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
+    );
+}
+
+fn draw_worktree_orchestrate_prompt_edit_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(84, 36, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Refine Leaf Prompt")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightCyan));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(5),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let target = app
+        .orchestrator_prompt_nodes
+        .get(app.orchestrator_prompt_selected)
+        .map(|node| node.branch.clone())
+        .unwrap_or_else(|| "(no node)".to_string());
+
+    frame.render_widget(
+        Paragraph::new(format!("Editing leaf: {}", target)).style(Style::default().fg(Color::Gray)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(app.orchestrator_prompt_edit_input.as_str())
+            .block(Block::default().title("Prompt Text").borders(Borders::ALL))
+            .style(Style::default().fg(Color::Cyan)),
+        layout[1],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Enter save | Esc cancel")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[2],
     );
 }
 

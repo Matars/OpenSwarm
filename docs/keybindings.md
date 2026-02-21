@@ -157,8 +157,28 @@ Vim-style editor for `notes.md` (or conflict prompt templates).
 | Key | Action |
 |-----|--------|
 | Characters | Type feature requirement |
-| `Enter` | Ask OpenCode planner + create planned worktrees |
+| `Enter` | Ask OpenCode planner and open leaf prompt preview |
 | `Esc` | Cancel |
+
+### Orchestrator leaf prompt preview modal
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` or `Down` / `Up` | Select leaf node |
+| `Space` | Toggle accept/reject for selected node |
+| `a` | Accept all nodes |
+| `r` | Refine selected node prompt |
+| `Enter` | Execute accepted nodes (create worktrees) |
+| `Esc` | Cancel orchestration |
+
+### Orchestrator leaf prompt refine modal
+
+| Key | Action |
+|-----|--------|
+| Characters | Edit prompt text |
+| `Backspace` | Delete backward |
+| `Enter` | Save refined prompt |
+| `Esc` | Cancel refine |
 
 ### Agent picker
 

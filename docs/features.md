@@ -20,7 +20,7 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 ## One-key git operations
 
 - `a` -- create worktree (choose base branch, type name)
-- `g` -- orchestrate a feature requirement into a multi-worktree plan, then create those worktrees
+- `g` -- orchestrate a feature requirement, review/accept/refine per-leaf prompts, then execute accepted worktrees
 - `c` -- commit (stages all changes in worktree view, or staged changes in changes view)
 - `p` -- push (auto-sets upstream for new branches)
 - `f` -- fetch and pull parent branch
@@ -33,7 +33,7 @@ All git operations run in the background. If you trigger another operation while
 
 ## Feature-to-worktree orchestration
 
-Press `g` in worktrees view and describe the feature (for example: `implement auth with oauth + session refresh`). OpenSwarm asks OpenCode to return a strict JSON plan of branch nodes and parent edges, then creates only the worktree abstractions on your canvas. It does not write product code, commit, push, or auto-launch agents.
+Press `g` in worktrees view and describe the feature (for example: `implement auth with oauth + session refresh`). OpenSwarm asks OpenCode to return a strict JSON plan of branch nodes and parent edges, then opens a preview for each leaf with a suggested execution prompt. You can accept/reject nodes, refine prompts per node, and then execute only the accepted worktree abstractions on your canvas. It does not write product code, commit, push, or auto-launch agents.
 
 If OpenCode is unavailable or its plan is invalid, OpenSwarm falls back to a built-in heuristic planner so the flow still works offline. The planner prompt template, enable toggle, and max node cap are configurable in `~/.config/openswarm/config.toml`.
 

@@ -1240,7 +1240,13 @@ struct ProposedWorktreeNode {
     goal: String,
 }
 
-fn orchestrate_worktrees_from_requirement(
+#[derive(Clone, Debug)]
+struct OrchestratedWorktreePlan {
+    planner_source: &'static str,
+    nodes: Vec<ProposedWorktreeNode>,
+}
+
+fn plan_orchestrated_worktrees_from_requirement(
     root: &str,
     requirement: &str,
     root_branch: &str,
@@ -1248,7 +1254,7 @@ fn orchestrate_worktrees_from_requirement(
     existing_branches: Vec<String>,
     prompt_path: &str,
     max_nodes: usize,
-) -> String {
+) -> OrchestratedWorktreePlan {
     let opencode_enabled = command_exists_on_path("opencode");
     let mut planner_source = if opencode_enabled {
         "opencode"
@@ -1291,11 +1297,23 @@ fn orchestrate_worktrees_from_requirement(
         existing_branches.as_slice(),
         max_nodes,
     );
-    if normalized.is_empty() {
+    OrchestratedWorktreePlan {
+        planner_source,
+        nodes: normalized,
+    }
+}
+
+fn create_worktrees_from_orchestrated_nodes(
+    root: &str,
+    requirement: &str,
+    planner_source: &str,
+    nodes: Vec<ProposedWorktreeNode>,
+) -> String {
+    if nodes.is_empty() {
         return "Orchestrator produced no valid worktree nodes".to_string();
     }
 
-    let order = orchestrated_node_order(&normalized);
+    let order = orchestrated_node_order(&nodes);
     let container = workspaces_container_for_root(root);
     let _ = fs::create_dir_all(container.as_path());
 
@@ -1304,7 +1322,7 @@ fn orchestrate_worktrees_from_requirement(
     let mut failed: Vec<String> = Vec::new();
 
     for idx in order {
-        let node = normalized[idx].clone();
+        let node = nodes[idx].clone();
         if branch_exists(root, node.branch.as_str()) {
             skipped.push(format!("{} (branch exists)", node.branch));
             continue;
@@ -1388,6 +1406,16 @@ fn orchestrate_worktrees_from_requirement(
         message.push_str(format!(". Failed: {}", preview).as_str());
     }
     message
+}
+
+fn build_leaf_execution_prompt(requirement: &str, node: &ProposedWorktreeNode) -> String {
+    format!(
+        "Implement only this leaf in branch '{}' (parent '{}'). Goal: {}. Requirement context: {}. Keep scope to this leaf, avoid cross-branch work, and finish with a concise progress note.",
+        node.branch,
+        node.parent,
+        single_line(node.goal.as_str()),
+        single_line(requirement),
+    )
 }
 
 fn load_worktree_orchestrator_prompt_template(path: &str) -> Option<String> {
