@@ -12,7 +12,7 @@ AI agents like Claude Code and OpenCode can handle longer tasks without supervis
 
 OpenSwarm gives you one screen:
 
-- **Worktree graph** -- see all worktrees as an interactive graph with parent-child relationships, dirty/needs-pull/committed/local-only/pushed/merged-with-parent badges, ahead/behind counts, live agent activity, and text-based estimated PTY token telemetry (ctx/out + tok/s) plus a top-right tok/s leaderboard that normalizes bars to the busiest worktree and collapses idle worktrees into one compact row
+- **Worktree graph** -- see all worktrees as an interactive graph with parent-child relationships, dirty/needs-pull/committed/local-only/pushed/merged-with-parent badges, ahead/behind counts, live agent activity, and text-based estimated PTY token telemetry (ctx/out + tok/s) plus an animated top-right tok/s leaderboard with Unicode bars normalized to the busiest worktree and idle worktrees collapsed into one compact row
 - **Embedded terminals + per-node session memory** -- launch shells and agents in PTY sessions directly inside the TUI; sessions persist in the background, and default OpenCode launches reconnect to the most recent session for that same worktree node after restarting OpenSwarm
 - **Inline diffs** -- switch to changes view for file staging with method-level diff analysis (Python, Rust, JS/TS, Go)
 - **One-key git operations** -- create worktrees (`a`), commit (`c`), push (`p`), merge (`m`), delete (`d`) without leaving the TUI

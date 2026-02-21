@@ -806,7 +806,11 @@ struct WorktreeTokenLeaderboardRow {
     is_idle_cluster: bool,
 }
 
-fn draw_worktree_token_leaderboard(frame: &mut ratatui::Frame<'_>, app: &App, canvas_area: Rect) {
+fn draw_worktree_token_leaderboard(
+    frame: &mut ratatui::Frame<'_>,
+    app: &mut App,
+    canvas_area: Rect,
+) {
     if canvas_area.width < 34 || canvas_area.height < 8 {
         return;
     }
@@ -890,7 +894,7 @@ fn draw_worktree_token_leaderboard(frame: &mut ratatui::Frame<'_>, app: &App, ca
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if inner.width < 8 || inner.height == 0 {
+    if inner.width < 23 || inner.height == 0 {
         return;
     }
 
@@ -900,27 +904,32 @@ fn draw_worktree_token_leaderboard(frame: &mut ratatui::Frame<'_>, app: &App, ca
         .max()
         .unwrap_or(0)
         .max(1);
-    let label_width = (inner.width as usize).saturating_sub(22).clamp(6, 16);
-    let bar_width = (inner.width as usize)
+    let available = inner.width as usize;
+    let label_width = available.saturating_sub(23).clamp(6, 16);
+    let bar_width = available
         .saturating_sub(label_width)
-        .saturating_sub(11)
+        .saturating_sub(19)
         .max(4);
 
     let mut lines: Vec<Line<'_>> = Vec::with_capacity(rows.len());
-    for row in rows {
+    for (rank, row) in rows.into_iter().enumerate() {
         let ratio = if row.is_idle_cluster {
             0.0
         } else {
             row.tokens_per_second as f64 / max_tps as f64
         };
-        let filled = ((ratio * bar_width as f64).round() as usize).min(bar_width);
-        let bar = format!(
-            "{}{}",
-            "#".repeat(filled.max((!row.is_idle_cluster) as usize)),
-            ".".repeat(bar_width.saturating_sub(filled.max((!row.is_idle_cluster) as usize)))
-        );
+        let bar = unicode_bar(ratio, bar_width, !row.is_idle_cluster);
 
         let name = truncate_text(row.label.as_str(), label_width);
+        let marker = if row.is_idle_cluster {
+            "⋯"
+        } else if rank == 0 {
+            "◈"
+        } else if row.is_selected {
+            "◎"
+        } else {
+            "•"
+        };
         let row_style = if row.is_idle_cluster {
             Style::default().fg(Color::DarkGray)
         } else if row.is_selected {
@@ -939,11 +948,26 @@ fn draw_worktree_token_leaderboard(frame: &mut ratatui::Frame<'_>, app: &App, ca
         };
 
         lines.push(Line::from(vec![
+            Span::styled(marker, row_style),
+            Span::raw(" "),
             Span::styled(format!("{name:label_width$}"), row_style),
             Span::raw(" "),
             Span::styled(
-                format!("{:>7}/s", format_compact_metric(row.tokens_per_second)),
+                format!("{:>6}/s", format_compact_metric(row.tokens_per_second)),
                 row_style,
+            ),
+            Span::raw(" "),
+            Span::styled(
+                if row.is_idle_cluster {
+                    "   -  ".to_string()
+                } else {
+                    format!("{:>5.2}x", ratio.max(0.01))
+                },
+                if row.is_idle_cluster {
+                    Style::default().fg(Color::DarkGray)
+                } else {
+                    Style::default().fg(Color::Gray)
+                },
             ),
             Span::raw(" "),
             Span::styled(bar, bar_style),
@@ -951,6 +975,43 @@ fn draw_worktree_token_leaderboard(frame: &mut ratatui::Frame<'_>, app: &App, ca
     }
 
     frame.render_widget(Paragraph::new(lines), inner);
+
+    let elapsed = app.canvas_leaderboard_last_tick.elapsed();
+    app.canvas_leaderboard_last_tick = Instant::now();
+    app.canvas_leaderboard_effects
+        .process_effects(elapsed.into(), frame.buffer_mut(), area);
+    draw_spinning_border_shine(frame.buffer_mut(), area);
+}
+
+fn unicode_bar(ratio: f64, width: usize, keep_min_fill: bool) -> String {
+    if width == 0 {
+        return String::new();
+    }
+
+    let filled_units = (ratio.clamp(0.0, 1.0) * (width as f64 * 8.0)).round() as usize;
+    let min_units = if keep_min_fill { 1 } else { 0 };
+    let total_units = filled_units.max(min_units).min(width * 8);
+
+    let full_cells = total_units / 8;
+    let partial = total_units % 8;
+    let mut out = String::with_capacity(width * 3);
+    out.push_str(&"█".repeat(full_cells.min(width)));
+    if full_cells < width && partial > 0 {
+        let glyph = match partial {
+            1 => '▏',
+            2 => '▎',
+            3 => '▍',
+            4 => '▌',
+            5 => '▋',
+            6 => '▊',
+            _ => '▉',
+        };
+        out.push(glyph);
+    }
+
+    let used_cells = out.chars().count().min(width);
+    out.push_str(&"░".repeat(width.saturating_sub(used_cells)));
+    out
 }
 
 fn pulse_rect(area: Rect, center: (u16, u16)) -> Rect {
@@ -1740,6 +1801,13 @@ fn build_selected_node_border_effect() -> tachyonfx::Effect {
     fx::repeating(fx::ping_pong(fx::hsl_shift_fg(
         [5.0, 12.0, 6.0],
         (2200, Interpolation::SineInOut),
+    )))
+}
+
+fn build_canvas_leaderboard_effect() -> tachyonfx::Effect {
+    fx::repeating(fx::ping_pong(fx::hsl_shift_fg(
+        [8.0, 18.0, 10.0],
+        (1600, Interpolation::SineInOut),
     )))
 }
 
