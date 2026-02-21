@@ -232,6 +232,12 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
             app.status_line =
                 "Create worktree: choose base with ←/→, then type branch name".to_string();
         }
+        KeyCode::Char('g') => {
+            app.mode = Mode::WorktreeOrchestrateInput;
+            app.orchestrator_requirement_input.clear();
+            app.status_line =
+                "Orchestrate worktrees: describe the feature, Enter to plan+create".to_string();
+        }
         KeyCode::Char('o') => {
             open_terminal_popup_for_selected_worktree(app)?;
         }
@@ -919,6 +925,9 @@ fn load_openswarm_config() -> OpenSwarmConfig {
 
     let mut default_agent: Option<ExternalAgent> = None;
     let mut conflict_prompt_path = prompts_dir.join("conflict-resolve-prompt.md");
+    let mut worktree_orchestrator_enabled = true;
+    let mut worktree_orchestrator_prompt_path = prompts_dir.join("worktree-orchestrator-prompt.md");
+    let mut worktree_orchestrator_max_nodes = 8usize;
     let mut worktree_graph_art = default_worktree_graph_art_lines();
     let mut has_worktree_graph_art = false;
 
@@ -953,6 +962,26 @@ fn load_openswarm_config() -> OpenSwarmConfig {
                         } else {
                             config_dir.join(candidate)
                         };
+                    }
+                }
+                "worktree_orchestrator_enabled" => {
+                    if let Some(v) = parse_config_bool(value) {
+                        worktree_orchestrator_enabled = v;
+                    }
+                }
+                "worktree_orchestrator_prompt" => {
+                    if let Some(v) = parse_config_string(value) {
+                        let candidate = PathBuf::from(v.as_str());
+                        worktree_orchestrator_prompt_path = if candidate.is_absolute() {
+                            candidate
+                        } else {
+                            config_dir.join(candidate)
+                        };
+                    }
+                }
+                "worktree_orchestrator_max_nodes" => {
+                    if let Some(v) = parse_config_usize(value) {
+                        worktree_orchestrator_max_nodes = v.clamp(1, 24);
                     }
                 }
                 "worktree_graph_art" => {
@@ -998,10 +1027,25 @@ fn load_openswarm_config() -> OpenSwarmConfig {
         );
     }
 
+    if !worktree_orchestrator_prompt_path.exists() {
+        if let Some(parent) = worktree_orchestrator_prompt_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(
+            worktree_orchestrator_prompt_path.as_path(),
+            default_worktree_orchestrator_prompt_template(),
+        );
+    }
+
     OpenSwarmConfig {
         config_path: config_path.to_string_lossy().to_string(),
         default_agent,
         conflict_resolve_prompt_path: conflict_prompt_path.to_string_lossy().to_string(),
+        worktree_orchestrator_enabled,
+        worktree_orchestrator_prompt_path: worktree_orchestrator_prompt_path
+            .to_string_lossy()
+            .to_string(),
+        worktree_orchestrator_max_nodes,
         worktree_graph_art,
     }
 }
@@ -1016,10 +1060,15 @@ fn openswarm_config_dir() -> PathBuf {
 
 fn default_openswarm_config_text() -> String {
     let mut text =
-        "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from ~/.config/openswarm\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n\n"
+        "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from ~/.config/openswarm\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n\n# orchestrate feature requirements into a worktree plan using OpenCode\nworktree_orchestrator_enabled = true\nworktree_orchestrator_prompt = \"prompts/worktree-orchestrator-prompt.md\"\nworktree_orchestrator_max_nodes = 8\n\n"
             .to_string();
     text.push_str(default_worktree_graph_art_config_block().as_str());
     text
+}
+
+fn default_worktree_orchestrator_prompt_template() -> String {
+    "You are planning Git worktree abstractions only. Do not write code, do not run tests, do not suggest commits.\n\nRequirement:\n{requirement}\n\nRepository defaults:\n- root branch: {root_branch}\n- selected branch: {selected_branch}\n- max nodes: {max_nodes}\n- existing branches:\n{existing_branches}\n\nReturn STRICT JSON only (no prose, no markdown fence):\n{\n  \"layout\": \"feature-parent\" | \"stacked-domains\",\n  \"nodes\": [\n    {\n      \"branch\": \"feature/example\",\n      \"parent\": \"main\",\n      \"goal\": \"short why\"\n    }\n  ]\n}\n\nRules:\n- Prefer 2-6 nodes.\n- Branch names must be lowercase and git-safe; slashes allowed.\n- Parent must be an existing branch or another node in this plan.\n- Include one top-level feature branch when useful, then split children beneath it.\n- Keep nodes focused so a developer can prompt each worktree independently."
+        .to_string()
 }
 
 fn default_worktree_graph_art_config_block() -> String {
@@ -1083,6 +1132,18 @@ fn parse_config_string(value: &str) -> Option<String> {
         return Some(stripped.to_string());
     }
     Some(head.to_string())
+}
+
+fn parse_config_bool(value: &str) -> Option<bool> {
+    match parse_config_string(value)?.to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Some(true),
+        "false" | "0" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn parse_config_usize(value: &str) -> Option<usize> {
+    parse_config_string(value)?.parse::<usize>().ok()
 }
 
 fn parse_external_agent(value: &str) -> Option<ExternalAgent> {
@@ -1226,6 +1287,67 @@ fn handle_worktree_create_mode_key(app: &mut App, code: KeyCode) -> Result<(), B
     }
 
     Ok(())
+}
+
+fn handle_worktree_orchestrate_mode_key(app: &mut App, code: KeyCode) {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.status_line = "Worktree orchestration cancelled".to_string();
+        }
+        KeyCode::Enter => {
+            refresh_runtime_settings(app);
+            if !app.config.worktree_orchestrator_enabled {
+                app.mode = Mode::Normal;
+                app.status_line =
+                    "Worktree orchestrator is disabled in config.toml (set worktree_orchestrator_enabled = true)"
+                        .to_string();
+                app.orchestrator_requirement_input.clear();
+                return;
+            }
+
+            let requirement = app.orchestrator_requirement_input.trim();
+            if requirement.is_empty() {
+                app.status_line = "Feature requirement is required".to_string();
+                return;
+            }
+
+            let root = create_root_for_app(app);
+            let selected_branch = selected_branch_name(app);
+            let root_branch = resolve_main_branch();
+            let existing_branches = app
+                .worktrees
+                .iter()
+                .filter(|wt| !wt.detached && !wt.branch.trim().is_empty())
+                .map(|wt| wt.branch.clone())
+                .collect::<Vec<_>>();
+            let requirement_text = requirement.to_string();
+            let prompt_path = app.config.worktree_orchestrator_prompt_path.clone();
+            let max_nodes = app.config.worktree_orchestrator_max_nodes;
+
+            start_git_task(app, "Orchestrate worktrees", true, true, move || {
+                orchestrate_worktrees_from_requirement(
+                    root.as_str(),
+                    requirement_text.as_str(),
+                    root_branch.as_str(),
+                    selected_branch.as_str(),
+                    existing_branches,
+                    prompt_path.as_str(),
+                    max_nodes,
+                )
+            });
+
+            app.mode = Mode::Normal;
+            app.orchestrator_requirement_input.clear();
+        }
+        KeyCode::Backspace => {
+            app.orchestrator_requirement_input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.orchestrator_requirement_input.push(c);
+        }
+        _ => {}
+    }
 }
 
 fn handle_branch_conflict_confirm_mode_key(

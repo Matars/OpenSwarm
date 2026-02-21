@@ -45,6 +45,7 @@ nav_order: 3
 | Key | Action |
 |-----|--------|
 | `a` | Create worktree |
+| `g` | Orchestrate worktrees from a feature requirement |
 | `o` | Open shell in worktree |
 | `O` | Open agent picker (or launch default agent; default OpenCode attempts session resume) |
 | `c` | Commit (`git add . && git commit`) for selected worktree |
@@ -149,6 +150,14 @@ Vim-style editor for `notes.md` (or conflict prompt templates).
 | `Left` / `Right` | Cycle base: Main, Selected, Selected+Changes |
 | Characters | Type branch name |
 | `Enter` | Create |
+| `Esc` | Cancel |
+
+### Orchestrate worktrees modal
+
+| Key | Action |
+|-----|--------|
+| Characters | Type feature requirement |
+| `Enter` | Ask OpenCode planner + create planned worktrees |
 | `Esc` | Cancel |
 
 ### Agent picker

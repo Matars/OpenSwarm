@@ -16,6 +16,7 @@ OpenSwarm gives you one screen:
 - **Embedded terminals + per-node session memory** -- launch shells and agents in PTY sessions directly inside the TUI; sessions persist in the background, and default OpenCode launches reconnect to the most recent session for that same worktree node after restarting OpenSwarm
 - **Inline diffs** -- switch to changes view for file staging with method-level diff analysis (Python, Rust, JS/TS, Go)
 - **One-key git operations** -- create worktrees (`a`), commit (`c`), push (`p`), merge (`m`), delete (`d`) without leaving the TUI
+- **Feature-to-worktree orchestration** -- press `g`, describe the feature, and OpenSwarm plans+creates a parent/child worktree graph (OpenCode planner with heuristic fallback)
 - **Agent-powered merge conflict solver** -- when merges conflict, OpenSwarm can launch OpenCode with a prefilled conflict-resolution prompt in the parent worktree, so the agent resolves/stages while you keep orchestration in one place
 
 ## Quick start
@@ -59,6 +60,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | Key | Action |
 |-----|--------|
 | `a` | Create worktree |
+| `g` | Orchestrate worktrees from a feature requirement |
 | `o` | Open shell |
 | `O` | Open agent picker |
 | `c` | Commit |
@@ -128,7 +130,7 @@ cargo install --path . --bin openswarm --force    # Install to PATH
 
 ## Configuration
 
-Agent defaults, prompt templates, and optional worktree art live in `~/.config/openswarm/` (missing `worktree_graph_art` is auto-seeded with the default ASCII block). See the [configuration reference](https://matars.github.io/OpenSwarm/configuration.html).
+Agent defaults, prompt templates, worktree orchestration controls, and optional worktree art live in `~/.config/openswarm/` (missing templates and `worktree_graph_art` are auto-seeded with defaults). See the [configuration reference](https://matars.github.io/OpenSwarm/configuration.html).
 
 ## Notes
 

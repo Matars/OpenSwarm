@@ -66,6 +66,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         draw_worktree_create_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::WorktreeOrchestrateInput) {
+        draw_worktree_orchestrate_modal(frame, app);
+    }
+
     if matches!(app.mode, Mode::WorktreeBranchConflictConfirm) {
         draw_branch_conflict_confirm_modal(frame, app);
     }
@@ -3143,6 +3147,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" create worktree"),
         ]),
         Line::from(vec![
+            Span::styled("g", Style::default().fg(Color::LightGreen)),
+            Span::raw(" orchestrate worktrees from feature requirement"),
+        ]),
+        Line::from(vec![
             Span::styled("o", Style::default().fg(Color::LightBlue)),
             Span::raw(" open terminal popup"),
         ]),
@@ -3322,6 +3330,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
             Line::from("- a: create worktree from branch name"),
+            Line::from("- g: orchestrate feature into a multi-worktree plan + create"),
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- O: open agent picker for selected/conflicted parent"),
             Line::from("- c: selected worktree add+commit with message popup"),
@@ -3450,6 +3459,76 @@ fn draw_worktree_create_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
 
     frame.render_widget(
         Paragraph::new("Esc cancels")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
+    );
+}
+
+fn draw_worktree_orchestrate_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(84, 36, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Orchestrate Worktrees")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightGreen));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let planner_state = if app.config.worktree_orchestrator_enabled {
+        "enabled"
+    } else {
+        "disabled"
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(
+                "Describe a feature; OpenSwarm asks OpenCode for a split plan and creates worktree abstractions only.",
+            ),
+            Line::from(format!(
+                "Planner: {} | max nodes: {}",
+                planner_state, app.config.worktree_orchestrator_max_nodes
+            )),
+        ])
+        .style(Style::default().fg(Color::Gray)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(format!(
+            "Prompt template: {}",
+            app.config.worktree_orchestrator_prompt_path
+        ))
+        .block(Block::default().title("Template").borders(Borders::ALL))
+        .style(Style::default().fg(Color::White)),
+        layout[1],
+    );
+
+    frame.render_widget(
+        Paragraph::new(app.orchestrator_requirement_input.as_str())
+            .block(
+                Block::default()
+                    .title("Feature Requirement")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(Color::Cyan)),
+        layout[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Enter: plan+create, Esc: cancel")
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Gray)),
         layout[3],

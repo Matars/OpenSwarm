@@ -1233,6 +1233,520 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
     }
 }
 
+#[derive(Clone, Debug)]
+struct ProposedWorktreeNode {
+    branch: String,
+    parent: String,
+    goal: String,
+}
+
+fn orchestrate_worktrees_from_requirement(
+    root: &str,
+    requirement: &str,
+    root_branch: &str,
+    selected_branch: &str,
+    existing_branches: Vec<String>,
+    prompt_path: &str,
+    max_nodes: usize,
+) -> String {
+    let opencode_enabled = command_exists_on_path("opencode");
+    let mut planner_source = if opencode_enabled {
+        "opencode"
+    } else {
+        "heuristic"
+    };
+    let prompt_template = load_worktree_orchestrator_prompt_template(prompt_path)
+        .unwrap_or_else(default_worktree_orchestrator_prompt_template);
+
+    let mut nodes = if opencode_enabled {
+        match propose_worktree_nodes_with_opencode(
+            root,
+            requirement,
+            root_branch,
+            selected_branch,
+            existing_branches.as_slice(),
+            max_nodes,
+            prompt_template.as_str(),
+        ) {
+            Ok(plan) => plan,
+            Err(_) => {
+                planner_source = "heuristic";
+                heuristic_worktree_plan(requirement, root_branch)
+            }
+        }
+    } else {
+        heuristic_worktree_plan(requirement, root_branch)
+    };
+
+    if nodes.is_empty() {
+        nodes = heuristic_worktree_plan(requirement, root_branch);
+        planner_source = "heuristic";
+    }
+
+    let normalized = normalize_orchestrated_nodes(
+        nodes,
+        requirement,
+        root_branch,
+        selected_branch,
+        existing_branches.as_slice(),
+        max_nodes,
+    );
+    if normalized.is_empty() {
+        return "Orchestrator produced no valid worktree nodes".to_string();
+    }
+
+    let order = orchestrated_node_order(&normalized);
+    let container = workspaces_container_for_root(root);
+    let _ = fs::create_dir_all(container.as_path());
+
+    let mut created: Vec<String> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+
+    for idx in order {
+        let node = normalized[idx].clone();
+        if branch_exists(root, node.branch.as_str()) {
+            skipped.push(format!("{} (branch exists)", node.branch));
+            continue;
+        }
+
+        let path = container.join(node.branch.replace('/', "-"));
+        let path_str = path.to_string_lossy().to_string();
+        if path.exists() {
+            failed.push(format!("{} (path exists: {})", node.branch, path_str));
+            continue;
+        }
+
+        let output = match Command::new("git")
+            .args([
+                "-C",
+                root,
+                "worktree",
+                "add",
+                "-b",
+                node.branch.as_str(),
+                path_str.as_str(),
+                node.parent.as_str(),
+            ])
+            .output()
+        {
+            Ok(out) => out,
+            Err(err) => {
+                failed.push(format!(
+                    "{} ({})",
+                    node.branch,
+                    sanitize_for_tui(err.to_string().as_str())
+                ));
+                continue;
+            }
+        };
+
+        if output.status.success() {
+            let _ = save_parent_hint(root, node.branch.as_str(), node.parent.as_str());
+            let goal_suffix = if node.goal.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", node.goal)
+            };
+            created.push(format!("{} <- {}{}", node.branch, node.parent, goal_suffix));
+        } else {
+            let stderr = sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+                .trim()
+                .to_string();
+            let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+                .trim()
+                .to_string();
+            let reason = if !stderr.is_empty() { stderr } else { stdout };
+            failed.push(format!("{} ({})", node.branch, reason));
+        }
+    }
+
+    let mut message = format!(
+        "Orchestrated '{}' via {}: {} created, {} skipped, {} failed",
+        single_line(requirement),
+        planner_source,
+        created.len(),
+        skipped.len(),
+        failed.len()
+    );
+    if !created.is_empty() {
+        let preview = created
+            .iter()
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" | ");
+        message.push_str(format!(". Created: {}", preview).as_str());
+    }
+    if !failed.is_empty() {
+        let preview = failed
+            .iter()
+            .take(2)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" | ");
+        message.push_str(format!(". Failed: {}", preview).as_str());
+    }
+    message
+}
+
+fn load_worktree_orchestrator_prompt_template(path: &str) -> Option<String> {
+    if !Path::new(path).exists() {
+        if let Some(parent) = Path::new(path).parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(path, default_worktree_orchestrator_prompt_template());
+    }
+    fs::read_to_string(path).ok()
+}
+
+fn propose_worktree_nodes_with_opencode(
+    root: &str,
+    requirement: &str,
+    root_branch: &str,
+    selected_branch: &str,
+    existing_branches: &[String],
+    max_nodes: usize,
+    prompt_template: &str,
+) -> Result<Vec<ProposedWorktreeNode>, String> {
+    let existing_text = if existing_branches.is_empty() {
+        "(none discovered)".to_string()
+    } else {
+        existing_branches
+            .iter()
+            .map(|branch| format!("- {}", branch))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let prompt = prompt_template
+        .replace("{requirement}", requirement)
+        .replace("{root_branch}", root_branch)
+        .replace("{selected_branch}", selected_branch)
+        .replace("{existing_branches}", existing_text.as_str())
+        .replace("{max_nodes}", max_nodes.to_string().as_str());
+
+    let output = Command::new("opencode")
+        .args(["run", "--format", "json", "--dir", root, prompt.as_str()])
+        .output()
+        .map_err(|err| sanitize_for_tui(err.to_string().as_str()))?;
+
+    if !output.status.success() {
+        let stderr = sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+            .trim()
+            .to_string();
+        return Err(if stderr.is_empty() {
+            "opencode run failed".to_string()
+        } else {
+            stderr
+        });
+    }
+
+    let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref());
+    let mut last_text: Option<String> = None;
+    for line in stdout.lines() {
+        if parse_json_string_field(line, "type").as_deref() != Some("text") {
+            continue;
+        }
+        if let Some(text) = parse_json_string_field(line, "text") {
+            last_text = Some(text);
+        }
+    }
+
+    let text = last_text.ok_or_else(|| "No text response from opencode planner".to_string())?;
+    let nodes = parse_nodes_from_planner_text(text.as_str());
+    if nodes.is_empty() {
+        Err("Opencode planner returned no branch nodes".to_string())
+    } else {
+        Ok(nodes)
+    }
+}
+
+fn parse_nodes_from_planner_text(text: &str) -> Vec<ProposedWorktreeNode> {
+    let stripped = strip_markdown_fences(text);
+    let node_blob = extract_json_array_field(stripped.as_str(), "nodes").unwrap_or(stripped);
+    parse_top_level_json_objects(node_blob.as_str())
+        .into_iter()
+        .filter_map(|object| {
+            let branch = parse_json_string_field(object.as_str(), "branch")?;
+            let parent = parse_json_string_field(object.as_str(), "parent").unwrap_or_default();
+            let goal = parse_json_string_field(object.as_str(), "goal").unwrap_or_default();
+            Some(ProposedWorktreeNode {
+                branch,
+                parent,
+                goal,
+            })
+        })
+        .collect()
+}
+
+fn extract_json_array_field(text: &str, field_name: &str) -> Option<String> {
+    let key = format!("\"{}\"", field_name);
+    let key_idx = text.find(key.as_str())?;
+    let mut idx = key_idx + key.len();
+    skip_json_ws(text, &mut idx);
+    if text.as_bytes().get(idx).copied() != Some(b':') {
+        return None;
+    }
+    idx += 1;
+    skip_json_ws(text, &mut idx);
+    if text.as_bytes().get(idx).copied() != Some(b'[') {
+        return None;
+    }
+
+    let bytes = text.as_bytes();
+    let mut i = idx;
+    let mut in_string = false;
+    let mut escaping = false;
+    let mut depth = 0usize;
+    while i < bytes.len() {
+        let ch = bytes[i];
+        if in_string {
+            if escaping {
+                escaping = false;
+            } else if ch == b'\\' {
+                escaping = true;
+            } else if ch == b'"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        match ch {
+            b'"' => in_string = true,
+            b'[' => depth = depth.saturating_add(1),
+            b']' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(text[idx..=i].to_string());
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+fn strip_markdown_fences(text: &str) -> String {
+    let trimmed = text.trim();
+    if !trimmed.starts_with("```") {
+        return trimmed.to_string();
+    }
+    let lines = trimmed.lines().collect::<Vec<_>>();
+    if lines.len() < 3 {
+        return trimmed.to_string();
+    }
+    lines[1..lines.len().saturating_sub(1)].join("\n")
+}
+
+fn heuristic_worktree_plan(requirement: &str, root_branch: &str) -> Vec<ProposedWorktreeNode> {
+    let slug = slug_from_requirement(requirement);
+    let feature_branch = format!("feature/{}", slug);
+    let lower = requirement.to_ascii_lowercase();
+    let auth_like = lower.contains("auth")
+        || lower.contains("login")
+        || lower.contains("oauth")
+        || lower.contains("session");
+    let api_like = lower.contains("api") || lower.contains("backend") || lower.contains("server");
+    let ui_like = lower.contains("ui") || lower.contains("frontend") || lower.contains("web");
+
+    let mut nodes = vec![ProposedWorktreeNode {
+        branch: feature_branch.clone(),
+        parent: root_branch.to_string(),
+        goal: "feature integration lane".to_string(),
+    }];
+
+    if auth_like {
+        nodes.push(ProposedWorktreeNode {
+            branch: format!("{}/backend", feature_branch),
+            parent: feature_branch.clone(),
+            goal: "auth services and persistence".to_string(),
+        });
+        nodes.push(ProposedWorktreeNode {
+            branch: format!("{}/frontend", feature_branch),
+            parent: feature_branch.clone(),
+            goal: "auth screens and client state".to_string(),
+        });
+        nodes.push(ProposedWorktreeNode {
+            branch: format!("{}/router", feature_branch),
+            parent: feature_branch,
+            goal: "route guards and middleware wiring".to_string(),
+        });
+        return nodes;
+    }
+
+    if api_like && !ui_like {
+        nodes.push(ProposedWorktreeNode {
+            branch: format!("{}/api", feature_branch),
+            parent: feature_branch.clone(),
+            goal: "backend API surface".to_string(),
+        });
+        nodes.push(ProposedWorktreeNode {
+            branch: format!("{}/data", feature_branch),
+            parent: feature_branch,
+            goal: "schema, migrations, data contracts".to_string(),
+        });
+        return nodes;
+    }
+
+    nodes.push(ProposedWorktreeNode {
+        branch: format!("{}/frontend", feature_branch),
+        parent: feature_branch.clone(),
+        goal: "ui and interaction layer".to_string(),
+    });
+    nodes.push(ProposedWorktreeNode {
+        branch: format!("{}/backend", feature_branch),
+        parent: feature_branch.clone(),
+        goal: "business logic and APIs".to_string(),
+    });
+    nodes.push(ProposedWorktreeNode {
+        branch: format!("{}/router", feature_branch),
+        parent: feature_branch,
+        goal: "cross-cutting integration path".to_string(),
+    });
+    nodes
+}
+
+fn normalize_orchestrated_nodes(
+    raw_nodes: Vec<ProposedWorktreeNode>,
+    requirement: &str,
+    root_branch: &str,
+    selected_branch: &str,
+    existing_branches: &[String],
+    max_nodes: usize,
+) -> Vec<ProposedWorktreeNode> {
+    let fallback_slug = slug_from_requirement(requirement);
+    let mut nodes: Vec<ProposedWorktreeNode> = Vec::new();
+    let mut seen = BTreeSet::new();
+    for (idx, node) in raw_nodes.into_iter().enumerate() {
+        if nodes.len() >= max_nodes {
+            break;
+        }
+        let mut branch = normalize_orchestrated_branch_name(node.branch.as_str());
+        if branch.is_empty() {
+            branch = format!("feature/{}/part-{}", fallback_slug, idx + 1);
+        }
+        while seen.contains(branch.as_str()) {
+            branch.push_str("-x");
+        }
+        seen.insert(branch.clone());
+
+        let parent_raw = node.parent.trim();
+        let parent = if parent_raw.is_empty() {
+            if selected_branch.trim().is_empty() {
+                root_branch.to_string()
+            } else {
+                selected_branch.to_string()
+            }
+        } else {
+            normalize_orchestrated_branch_name(parent_raw)
+        };
+
+        let goal = single_line(node.goal.as_str());
+        nodes.push(ProposedWorktreeNode {
+            branch,
+            parent,
+            goal,
+        });
+    }
+
+    let mut branch_set: BTreeSet<String> = nodes.iter().map(|node| node.branch.clone()).collect();
+    for branch in existing_branches {
+        branch_set.insert(branch.clone());
+    }
+    branch_set.insert(root_branch.to_string());
+    if !selected_branch.trim().is_empty() {
+        branch_set.insert(selected_branch.to_string());
+    }
+
+    for node in &mut nodes {
+        if node.parent.is_empty() || node.parent == node.branch {
+            node.parent = root_branch.to_string();
+        }
+        if !branch_set.contains(node.parent.as_str()) {
+            node.parent = root_branch.to_string();
+        }
+    }
+
+    nodes
+}
+
+fn normalize_orchestrated_branch_name(raw: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+    for ch in raw.trim().chars() {
+        let lower = ch.to_ascii_lowercase();
+        let keep = lower.is_ascii_alphanumeric() || matches!(lower, '/' | '-' | '_' | '.');
+        if keep {
+            out.push(lower);
+            prev_dash = false;
+            continue;
+        }
+        if !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    out.trim_matches(|c| c == '-' || c == '/').to_string()
+}
+
+fn slug_from_requirement(requirement: &str) -> String {
+    let normalized = normalize_orchestrated_branch_name(requirement);
+    let mut parts = normalized
+        .split(|c| c == '/' || c == '-')
+        .filter(|part| !part.trim().is_empty())
+        .take(4)
+        .map(|part| part.to_string())
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        return "feature".to_string();
+    }
+    if parts.len() == 1 {
+        return parts.remove(0);
+    }
+    parts.join("-")
+}
+
+fn orchestrated_node_order(nodes: &[ProposedWorktreeNode]) -> Vec<usize> {
+    let mut branch_to_idx = BTreeMap::new();
+    for (idx, node) in nodes.iter().enumerate() {
+        branch_to_idx.insert(node.branch.clone(), idx);
+    }
+
+    let mut indegree = vec![0usize; nodes.len()];
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+    for (idx, node) in nodes.iter().enumerate() {
+        if let Some(parent_idx) = branch_to_idx.get(node.parent.as_str()).copied() {
+            indegree[idx] = indegree[idx].saturating_add(1);
+            children[parent_idx].push(idx);
+        }
+    }
+
+    let mut ready: Vec<usize> = indegree
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, degree)| if *degree == 0 { Some(idx) } else { None })
+        .collect();
+    let mut out: Vec<usize> = Vec::new();
+
+    while let Some(idx) = ready.pop() {
+        out.push(idx);
+        for child in &children[idx] {
+            indegree[*child] = indegree[*child].saturating_sub(1);
+            if indegree[*child] == 0 {
+                ready.push(*child);
+            }
+        }
+    }
+
+    if out.len() == nodes.len() {
+        out
+    } else {
+        (0..nodes.len()).collect()
+    }
+}
+
 fn repo_root() -> Option<String> {
     let output = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])

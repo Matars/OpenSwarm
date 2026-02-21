@@ -41,6 +41,7 @@ enum Mode {
     CommitInput,
     WorktreeCommitPushInput,
     WorktreeCreateInput,
+    WorktreeOrchestrateInput,
     WorktreeBranchConflictConfirm,
     WorktreeConflictResolveConfirm,
     WorktreeRemoveDirtyConfirm,
@@ -99,6 +100,9 @@ struct OpenSwarmConfig {
     config_path: String,
     default_agent: Option<ExternalAgent>,
     conflict_resolve_prompt_path: String,
+    worktree_orchestrator_enabled: bool,
+    worktree_orchestrator_prompt_path: String,
+    worktree_orchestrator_max_nodes: usize,
     worktree_graph_art: Vec<String>,
 }
 
@@ -204,6 +208,7 @@ struct App {
     new_worktree_branch: String,
     new_worktree_base: WorktreeCreateBase,
     pending_create_branch: String,
+    orchestrator_requirement_input: String,
     confirm_delete_branch_yes: bool,
     pending_remove_worktree_path: String,
     confirm_remove_worktree_yes: bool,
@@ -661,6 +666,7 @@ impl App {
             new_worktree_branch: String::new(),
             new_worktree_base: WorktreeCreateBase::Selected,
             pending_create_branch: String::new(),
+            orchestrator_requirement_input: String::new(),
             confirm_delete_branch_yes: false,
             pending_remove_worktree_path: String::new(),
             confirm_remove_worktree_yes: false,
@@ -952,6 +958,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::WorktreeCreateInput => {
                             handle_worktree_create_mode_key(&mut app, key.code)?;
+                        }
+                        Mode::WorktreeOrchestrateInput => {
+                            handle_worktree_orchestrate_mode_key(&mut app, key.code);
                         }
                         Mode::WorktreeBranchConflictConfirm => {
                             handle_branch_conflict_confirm_mode_key(&mut app, key.code)?;

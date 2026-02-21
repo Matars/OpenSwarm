@@ -26,6 +26,11 @@ default_agent = ""
 # Relative paths resolve from ~/.config/openswarm/
 conflict_resolve_prompt = "prompts/conflict-resolve-prompt.md"
 
+# Feature-to-worktree orchestrator toggle and planner prompt.
+worktree_orchestrator_enabled = true
+worktree_orchestrator_prompt = "prompts/worktree-orchestrator-prompt.md"
+worktree_orchestrator_max_nodes = 8
+
 # Optional art box shown above the worktree details panel.
 # Supports ASCII or Unicode.
 worktree_graph_art = """
@@ -69,6 +74,28 @@ If this key is missing from an existing `config.toml`, OpenSwarm appends the def
 - Keep line width short for narrow terminals (the panel truncates overflow).
 - You can also set it as a single-line string and use `\n` escapes.
 
+### `worktree_orchestrator_enabled`
+
+Controls whether the `g` action in worktree view can run automated feature planning and batch worktree creation.
+
+| Value | Behavior |
+|-------|----------|
+| `true` | `g` opens the orchestration flow and can call OpenCode planner |
+| `false` | `g` shows disabled status and does not create nodes |
+
+### `worktree_orchestrator_prompt`
+
+Path to a Markdown prompt template used for feature planning with OpenCode (`opencode run --format json`). Can be absolute or relative to `~/.config/openswarm/`.
+
+A default template is created at `~/.config/openswarm/prompts/worktree-orchestrator-prompt.md` on first run.
+
+### `worktree_orchestrator_max_nodes`
+
+Hard cap on how many worktree nodes are created from a single orchestration request.
+
+- Valid range is clamped to `1..=24`.
+- Default is `8`.
+
 **Template placeholders:**
 
 | Placeholder | Replaced with |
@@ -77,6 +104,16 @@ If this key is missing from an existing `config.toml`, OpenSwarm appends the def
 | `{source_branch}` | Branch being merged |
 | `{target_branch}` | Branch being merged into |
 | `{conflicted_files}` | List of files with merge conflicts |
+
+Orchestrator template placeholders:
+
+| Placeholder | Replaced with |
+|-------------|---------------|
+| `{requirement}` | Raw feature requirement typed in modal |
+| `{root_branch}` | Resolved root branch (`main`/`master`) |
+| `{selected_branch}` | Currently selected branch in canvas |
+| `{existing_branches}` | Existing branch list at planning time |
+| `{max_nodes}` | Current configured max nodes |
 
 You can edit the prompt template inline during conflict resolution by pressing `e` in the confirmation dialog.
 
