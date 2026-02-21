@@ -1857,12 +1857,6 @@ fn workspaces_container_for_root(root: &str) -> PathBuf {
         .filter(|name| !name.is_empty())
         .unwrap_or("repo");
 
-    if cfg!(windows) {
-        return openswarm_config_dir()
-            .join("workspaces")
-            .join(repo_name);
-    }
-
     let parent = repo_root.parent().unwrap_or_else(|| Path::new("."));
     parent.join(format!(".{}-workspaces", repo_name))
 }
