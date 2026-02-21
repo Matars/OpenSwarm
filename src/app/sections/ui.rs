@@ -1421,7 +1421,7 @@ fn draw_canvas_bg_glitter_stars(
             let seed = star_seed(wx, wy);
 
             let dust_roll = seed & 0xFF;
-            if dust_roll < 26 {
+            if dust_roll < 16 {
                 paint_graph_char(
                     buf,
                     area,
@@ -1447,14 +1447,14 @@ fn draw_canvas_bg_glitter_stars(
                 .round() as i64;
 
             let glitter_seed = star_seed(wx + drift_x, wy - fall_offset + drift_y);
-            if glitter_seed % 1000 >= 11 {
+            if glitter_seed % 1000 >= 8 {
                 continue;
             }
 
-            let twinkle_speed = 0.40 + star_seed_unit(glitter_seed, 20) * 0.55;
+            let twinkle_speed = 0.14 + star_seed_unit(glitter_seed, 20) * 0.22;
             let twinkle_phase = star_seed_unit(glitter_seed, 36) * tau;
             let twinkle = ((time_seconds * twinkle_speed + twinkle_phase).sin() + 1.0) * 0.5;
-            if twinkle < 0.10 {
+            if twinkle < 0.08 {
                 continue;
             }
 
