@@ -2898,15 +2898,33 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
                 ),
             ]));
             if let Some(hitch) = app.perf_debug.last_hitch {
+                let measured_no_poll = hitch
+                    .phases
+                    .drain_agent_events
+                    .saturating_add(hitch.phases.drain_git_task_events)
+                    .saturating_add(hitch.phases.refresh_agent_sessions)
+                    .saturating_add(hitch.phases.refresh_opencode_usage)
+                    .saturating_add(hitch.phases.resize_popup)
+                    .saturating_add(hitch.phases.draw)
+                    .saturating_add(hitch.phases.event_handle)
+                    .saturating_add(hitch.phases.refresh_status)
+                    .saturating_add(hitch.phases.refresh_worktrees);
+                let blocking_adjusted = hitch
+                    .phases
+                    .total_loop
+                    .saturating_sub(hitch.phases.event_poll);
+                let unattributed = blocking_adjusted.saturating_sub(measured_no_poll);
                 lines.push(Line::from(vec![
                     Span::styled("hitch:  ", Style::default().fg(Color::Gray)),
                     Span::styled(
                         format!(
-                            "{:.1}ms total  draw {:.1}ms  status {:.1}ms  trees {:.1}ms  ({:.1}s ago)",
+                            "{:.1}ms total  draw {:.1}ms  opencode {:.1}ms  status {:.1}ms  trees {:.1}ms  unattributed {:.1}ms  ({:.1}s ago)",
                             hitch.phases.total_loop.as_secs_f64() * 1000.0,
                             hitch.phases.draw.as_secs_f64() * 1000.0,
+                            hitch.phases.refresh_opencode_usage.as_secs_f64() * 1000.0,
                             hitch.phases.refresh_status.as_secs_f64() * 1000.0,
                             hitch.phases.refresh_worktrees.as_secs_f64() * 1000.0,
+                            unattributed.as_secs_f64() * 1000.0,
                             now.saturating_duration_since(hitch.at).as_secs_f64(),
                         ),
                         Style::default().fg(Color::LightYellow),

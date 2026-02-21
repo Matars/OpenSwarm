@@ -396,7 +396,7 @@ fn hydrate_worktree_runtime_state(
 
 fn worktree_branch_state(path: &str) -> (bool, usize, usize, bool) {
     let output = match Command::new("git")
-        .args(["-C", path, "status", "--porcelain=1", "-b", "-uall"])
+        .args(["-C", path, "status", "--porcelain=1", "-b", "-uno"])
         .output()
     {
         Ok(out) if out.status.success() => {

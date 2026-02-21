@@ -395,7 +395,8 @@ impl PerfDebugState {
     }
 
     fn record_loop_phases(&mut self, phases: FramePhaseDurations) {
-        if phases.total_loop < Self::HITCH_THRESHOLD {
+        let blocking_adjusted = phases.total_loop.saturating_sub(phases.event_poll);
+        if blocking_adjusted < Self::HITCH_THRESHOLD {
             return;
         }
 
@@ -415,16 +416,35 @@ impl PerfDebugState {
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
+        let measured_no_poll = hitch
+            .phases
+            .drain_agent_events
+            .saturating_add(hitch.phases.drain_git_task_events)
+            .saturating_add(hitch.phases.refresh_agent_sessions)
+            .saturating_add(hitch.phases.refresh_opencode_usage)
+            .saturating_add(hitch.phases.resize_popup)
+            .saturating_add(hitch.phases.draw)
+            .saturating_add(hitch.phases.event_handle)
+            .saturating_add(hitch.phases.refresh_status)
+            .saturating_add(hitch.phases.refresh_worktrees);
+        let blocking_adjusted = hitch
+            .phases
+            .total_loop
+            .saturating_sub(hitch.phases.event_poll);
+        let unattributed = blocking_adjusted.saturating_sub(measured_no_poll);
+
         let line = format!(
-            "ts={} total={:.1}ms draw={:.1}ms drain_agent={:.1}ms refresh_status={:.1}ms refresh_worktrees={:.1}ms poll={:.1}ms handle={:.1}ms\n",
+            "ts={} total={:.1}ms draw={:.1}ms drain_agent={:.1}ms opencode={:.1}ms refresh_status={:.1}ms refresh_worktrees={:.1}ms poll={:.1}ms handle={:.1}ms unattributed={:.1}ms\n",
             now,
             hitch.phases.total_loop.as_secs_f64() * 1000.0,
             hitch.phases.draw.as_secs_f64() * 1000.0,
             hitch.phases.drain_agent_events.as_secs_f64() * 1000.0,
+            hitch.phases.refresh_opencode_usage.as_secs_f64() * 1000.0,
             hitch.phases.refresh_status.as_secs_f64() * 1000.0,
             hitch.phases.refresh_worktrees.as_secs_f64() * 1000.0,
             hitch.phases.event_poll.as_secs_f64() * 1000.0,
             hitch.phases.event_handle.as_secs_f64() * 1000.0,
+            unattributed.as_secs_f64() * 1000.0,
         );
 
         if let Ok(mut file) = fs::OpenOptions::new()
@@ -794,8 +814,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let ui_tick_rate_fast = Duration::from_millis(16);
     let ui_tick_rate_normal = Duration::from_millis(33);
     let status_tick_rate = Duration::from_millis(1200);
-    let worktree_tick_rate = Duration::from_millis(5000);
-    let opencode_usage_tick_rate = Duration::from_millis(1000);
+    let worktree_tick_rate = Duration::from_millis(8000);
+    let opencode_usage_tick_rate = Duration::from_millis(4000);
     let mut last_ui_tick = Instant::now();
     let mut last_status_tick = Instant::now();
     let mut last_worktree_tick = Instant::now();
@@ -820,7 +840,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         let phase_started = Instant::now();
         refresh_agent_sessions(&mut app);
         loop_phases.refresh_agent_sessions = phase_started.elapsed();
-        if last_opencode_usage_tick.elapsed() >= opencode_usage_tick_rate {
+        let can_refresh_opencode = app.view_mode == ViewMode::Worktrees
+            && !matches!(app.mode, Mode::AgentPopup)
+            && last_opencode_usage_tick.elapsed() >= opencode_usage_tick_rate;
+        if can_refresh_opencode {
             let phase_started = Instant::now();
             refresh_opencode_usage(&mut app);
             loop_phases.refresh_opencode_usage = phase_started.elapsed();
