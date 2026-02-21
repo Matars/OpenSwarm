@@ -1120,7 +1120,7 @@ fn draw_unicode_worktree_graph(
             area,
             rx.saturating_sub(area.x),
             ry.saturating_sub(area.y),
-            '●',
+            'O',
             Style::default().fg(Color::LightBlue),
         );
     }
@@ -1147,11 +1147,11 @@ fn draw_unicode_worktree_graph(
             graph_palette_color(idx)
         };
         let glyph = if selected {
-            '◉'
+            '@'
         } else if entry.is_current {
-            '●'
+            'O'
         } else {
-            '○'
+            'o'
         };
 
         paint_graph_char(
@@ -1314,22 +1314,22 @@ fn graph_link_glyph(mask: u8) -> char {
     const LRU: u8 = DIR_LEFT | DIR_RIGHT | DIR_UP;
     const ALL: u8 = DIR_UP | DIR_RIGHT | DIR_DOWN | DIR_LEFT;
     match mask {
-        UD => '│',
-        LR => '─',
-        DR => '╭',
-        DL => '╮',
-        UL => '╯',
-        UR => '╰',
-        UDR => '├',
-        UDL => '┤',
-        LRD => '┬',
-        LRU => '┴',
-        ALL => '┼',
-        DIR_UP => '│',
-        DIR_DOWN => '│',
-        DIR_LEFT => '─',
-        DIR_RIGHT => '─',
-        _ => '·',
+        UD => '|',
+        LR => '-',
+        DR => '+',
+        DL => '+',
+        UL => '+',
+        UR => '+',
+        UDR => '+',
+        UDL => '+',
+        LRD => '+',
+        LRU => '+',
+        ALL => '+',
+        DIR_UP => '|',
+        DIR_DOWN => '|',
+        DIR_LEFT => '-',
+        DIR_RIGHT => '-',
+        _ => '.',
     }
 }
 
