@@ -429,13 +429,20 @@ fn draw_pulse_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
     let status_limit = area.width.saturating_sub(12) as usize;
     let (status_text, status_color) = if let Some(task) = app.git_task.as_ref() {
         let elapsed = Instant::now().saturating_duration_since(task.started_at);
+        let queued = app.git_task_queue.len();
+        let queue_suffix = if queued > 0 {
+            format!(" +{} queued", queued)
+        } else {
+            String::new()
+        };
         (
             truncate_text(
                 format!(
-                    "[{}] {} ({:.1}s)",
+                    "[{}] {} ({:.1}s){}",
                     spinner_glyph(elapsed),
                     task.label,
-                    elapsed.as_secs_f32()
+                    elapsed.as_secs_f32(),
+                    queue_suffix,
                 )
                 .as_str(),
                 status_limit.max(10),
@@ -3095,14 +3102,21 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     if let Some(task) = app.git_task.as_ref() {
         let elapsed = Instant::now().saturating_duration_since(task.started_at);
         let spinner = spinner_glyph(elapsed);
+        let queued = app.git_task_queue.len();
+        let queue_suffix = if queued > 0 {
+            format!(" +{} queued", queued)
+        } else {
+            String::new()
+        };
         lines.push(Line::from(vec![
             Span::styled("busy ", Style::default().fg(Color::Yellow)),
             Span::styled(
                 format!(
-                    "[{}] {} ({:.1}s)",
+                    "[{}] {} ({:.1}s){}",
                     spinner,
                     task.label,
-                    elapsed.as_secs_f32()
+                    elapsed.as_secs_f32(),
+                    queue_suffix,
                 ),
                 Style::default().fg(Color::LightYellow),
             ),
@@ -3212,9 +3226,14 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     ]);
 
     let title = if app.git_task.is_some() {
-        "actions [?] busy"
+        let queued = app.git_task_queue.len();
+        if queued > 0 {
+            format!("actions [?] busy +{} queued", queued)
+        } else {
+            "actions [?] busy".to_string()
+        }
     } else {
-        "actions [?]"
+        "actions [?]".to_string()
     };
 
     frame.render_widget(

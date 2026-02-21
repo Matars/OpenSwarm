@@ -2213,6 +2213,9 @@ fn drain_git_task_events(app: &mut App) {
         if event.refresh_status {
             refresh_status(app);
         }
+
+        // Start the next queued task, if any
+        pop_next_git_task(app);
     }
 }
 

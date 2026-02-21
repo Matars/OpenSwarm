@@ -134,7 +134,7 @@ Agent defaults, prompt templates, and optional worktree art live in `~/.config/o
 
 - Uses your shell from `$SHELL` for terminal sessions
 - Worktree operations use native `git worktree` commands
-- Long-running git operations run in the background with a live progress indicator
+- Long-running git operations run in the background with a live progress indicator. Additional operations are queued automatically and execute sequentially -- press `p` on three different worktrees in quick succession and all three pushes will run one after another without waiting
 - Auto-detects `claude` and `opencode` on PATH
 - Worktrees are placed in `.<repo>-workspaces/` sibling directory
 - Startup now validates git context (inside a worktree, resolvable top-level, loadable `git worktree list`) and shows an explicit in-app error instead of an empty graph when checks fail

@@ -28,6 +28,8 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 - `d` -- delete worktree (with safety confirmations)
 - `s` / `S` -- stash push / stash pop
 
+All git operations run in the background. If you trigger another operation while one is in flight, it gets queued and auto-executes when the current task finishes. The status bar shows `+N queued` so you always know how many tasks are pending. This means you can press `p` on three different worktrees back-to-back without waiting for each push to complete.
+
 ## Agent-assisted conflict resolution
 
 When a merge produces conflicts, OpenSwarm shows the conflicted files and a customizable prompt template. Confirming launches OpenCode in the parent worktree with a prefilled resolution prompt (or opens a shell there if OpenCode is unavailable). This keeps conflict solving inside the worktree graph workflow instead of dropping to manual multi-terminal merge handling. You can still launch another agent manually with `O`. Edit the prompt template inline with `e`.

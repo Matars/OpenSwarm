@@ -2126,11 +2126,31 @@ fn start_git_task<F>(
 ) where
     F: FnOnce() -> String + Send + 'static,
 {
-    if let Some(current) = app.git_task.as_ref() {
-        app.status_line = format!("Already running '{}'", current.label);
+    if app.git_task.is_some() {
+        let queued = QueuedGitTask {
+            label: label.to_string(),
+            refresh_worktrees,
+            refresh_status,
+            task: Box::new(task),
+        };
+        app.git_task_queue.push_back(queued);
+        let n = app.git_task_queue.len();
+        app.status_line = format!("Queued '{}' ({} pending)", label, n);
         return;
     }
 
+    spawn_git_task(app, label, refresh_worktrees, refresh_status, task);
+}
+
+fn spawn_git_task<F>(
+    app: &mut App,
+    label: &str,
+    refresh_worktrees: bool,
+    refresh_status: bool,
+    task: F,
+) where
+    F: FnOnce() -> String + Send + 'static,
+{
     let label_text = label.to_string();
     app.git_task = Some(GitTaskState {
         label: label_text.clone(),
@@ -2148,6 +2168,18 @@ fn start_git_task<F>(
             refresh_status,
         });
     });
+}
+
+fn pop_next_git_task(app: &mut App) {
+    if let Some(queued) = app.git_task_queue.pop_front() {
+        spawn_git_task(
+            app,
+            &queued.label,
+            queued.refresh_worktrees,
+            queued.refresh_status,
+            queued.task,
+        );
+    }
 }
 
 fn run_git_in(path: Option<&str>, args: &[&str]) -> Result<String, Box<dyn Error>> {

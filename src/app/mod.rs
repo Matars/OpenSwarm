@@ -239,6 +239,7 @@ struct App {
     agent_tx: Sender<AgentEvent>,
     agent_rx: Receiver<AgentEvent>,
     git_task: Option<GitTaskState>,
+    git_task_queue: VecDeque<QueuedGitTask>,
     git_task_tx: Sender<GitTaskEvent>,
     git_task_rx: Receiver<GitTaskEvent>,
     status_refresh_in_flight: bool,
@@ -306,6 +307,13 @@ struct GitTaskEvent {
     outcome: String,
     refresh_worktrees: bool,
     refresh_status: bool,
+}
+
+struct QueuedGitTask {
+    label: String,
+    refresh_worktrees: bool,
+    refresh_status: bool,
+    task: Box<dyn FnOnce() -> String + Send + 'static>,
 }
 
 struct StatusSnapshot {
@@ -688,6 +696,7 @@ impl App {
             agent_tx,
             agent_rx,
             git_task: None,
+            git_task_queue: VecDeque::new(),
             git_task_tx,
             git_task_rx,
             status_refresh_in_flight: false,
@@ -985,7 +994,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             last_ui_tick = Instant::now();
         }
 
-        let refresh_git = !matches!(app.mode, Mode::AgentPopup) && app.git_task.is_none();
+        let refresh_git = !matches!(app.mode, Mode::AgentPopup)
+            && app.git_task.is_none()
+            && app.git_task_queue.is_empty();
         if refresh_git && last_status_tick.elapsed() >= status_tick_rate {
             let phase_started = Instant::now();
             if !app.status_refresh_in_flight {
