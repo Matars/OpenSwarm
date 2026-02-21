@@ -806,11 +806,7 @@ struct WorktreeTokenLeaderboardRow {
     is_idle_cluster: bool,
 }
 
-fn draw_worktree_token_leaderboard(
-    frame: &mut ratatui::Frame<'_>,
-    app: &mut App,
-    canvas_area: Rect,
-) {
+fn draw_worktree_token_leaderboard(frame: &mut ratatui::Frame<'_>, app: &App, canvas_area: Rect) {
     if canvas_area.width < 34 || canvas_area.height < 8 {
         return;
     }
@@ -975,12 +971,6 @@ fn draw_worktree_token_leaderboard(
     }
 
     frame.render_widget(Paragraph::new(lines), inner);
-
-    let elapsed = app.canvas_leaderboard_last_tick.elapsed();
-    app.canvas_leaderboard_last_tick = Instant::now();
-    app.canvas_leaderboard_effects
-        .process_effects(elapsed.into(), frame.buffer_mut(), area);
-    draw_spinning_border_shine(frame.buffer_mut(), area);
 }
 
 fn unicode_bar(ratio: f64, width: usize, keep_min_fill: bool) -> String {
@@ -1605,13 +1595,6 @@ fn build_selected_node_border_effect() -> tachyonfx::Effect {
     fx::repeating(fx::ping_pong(fx::hsl_shift_fg(
         [5.0, 12.0, 6.0],
         (2200, Interpolation::SineInOut),
-    )))
-}
-
-fn build_canvas_leaderboard_effect() -> tachyonfx::Effect {
-    fx::repeating(fx::ping_pong(fx::hsl_shift_fg(
-        [8.0, 18.0, 10.0],
-        (1600, Interpolation::SineInOut),
     )))
 }
 
