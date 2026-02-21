@@ -2047,14 +2047,100 @@ fn graph_layout(
     builder: WorktreeGraphBuilder,
     worktrees: &[WorktreeEntry],
 ) -> Vec<(f32, f32)> {
-    match builder {
+    let base = match builder {
         WorktreeGraphBuilder::TopDownBalanced => graph_layout_top_down_balanced(parents),
         WorktreeGraphBuilder::Layered => graph_layout_layered(parents),
         WorktreeGraphBuilder::LeftToRight => graph_layout_left_to_right(parents),
         WorktreeGraphBuilder::Trunk => graph_layout_trunk(parents),
         WorktreeGraphBuilder::Swimlanes => graph_layout_swimlanes(parents, worktrees),
         WorktreeGraphBuilder::Indented => graph_layout_indented(parents),
+    };
+
+    spread_graph_layout(base, parents, builder)
+}
+
+fn spread_graph_layout(
+    base: Vec<(f32, f32)>,
+    parents: &[Option<usize>],
+    builder: WorktreeGraphBuilder,
+) -> Vec<(f32, f32)> {
+    let count = base.len();
+    if count < 2 {
+        return base;
     }
+
+    let (min_dx, min_dy, spring_x, spring_y, edge_pull) = match builder {
+        WorktreeGraphBuilder::TopDownBalanced => (0.11, 0.10, 0.028, 0.028, 0.020),
+        WorktreeGraphBuilder::Layered => (0.13, 0.12, 0.034, 0.030, 0.022),
+        WorktreeGraphBuilder::LeftToRight => (0.12, 0.13, 0.030, 0.034, 0.022),
+        WorktreeGraphBuilder::Trunk => (0.13, 0.12, 0.040, 0.030, 0.026),
+        WorktreeGraphBuilder::Swimlanes => (0.14, 0.13, 0.028, 0.030, 0.024),
+        WorktreeGraphBuilder::Indented => (0.12, 0.13, 0.028, 0.036, 0.020),
+    };
+
+    let mut positions = base.clone();
+    for step in 0..30 {
+        let mut forces = vec![(0.0f32, 0.0f32); count];
+
+        for i in 0..count {
+            for j in (i + 1)..count {
+                let dx = positions[i].0 - positions[j].0;
+                let dy = positions[i].1 - positions[j].1;
+                let overlap_x = min_dx - dx.abs();
+                let overlap_y = min_dy - dy.abs();
+                if overlap_x <= 0.0 || overlap_y <= 0.0 {
+                    continue;
+                }
+
+                let x_dir = if dx.abs() < 0.001 {
+                    if (i + j + step) % 2 == 0 {
+                        1.0
+                    } else {
+                        -1.0
+                    }
+                } else {
+                    dx.signum()
+                };
+                let y_dir = if dy.abs() < 0.001 {
+                    if (i + j + step) % 3 == 0 {
+                        1.0
+                    } else {
+                        -1.0
+                    }
+                } else {
+                    dy.signum()
+                };
+
+                let fx = overlap_x * 0.060;
+                let fy = overlap_y * 0.060;
+                forces[i].0 += x_dir * fx;
+                forces[i].1 += y_dir * fy;
+                forces[j].0 -= x_dir * fx;
+                forces[j].1 -= y_dir * fy;
+            }
+        }
+
+        for idx in 0..count {
+            if let Some(parent_idx) = parents[idx] {
+                if parent_idx < count && parent_idx != idx {
+                    let pdx = positions[parent_idx].0 - positions[idx].0;
+                    let pdy = positions[parent_idx].1 - positions[idx].1;
+                    forces[idx].0 += pdx * edge_pull;
+                    forces[idx].1 += pdy * (edge_pull * 0.7);
+                }
+            }
+
+            forces[idx].0 += (base[idx].0 - positions[idx].0) * spring_x;
+            forces[idx].1 += (base[idx].1 - positions[idx].1) * spring_y;
+        }
+
+        for idx in 0..count {
+            positions[idx].0 = (positions[idx].0 + forces[idx].0).clamp(0.05, 0.95);
+            positions[idx].1 = (positions[idx].1 + forces[idx].1).clamp(0.08, 0.95);
+        }
+    }
+
+    positions
 }
 
 fn graph_layout_top_down_balanced(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
@@ -2326,7 +2412,7 @@ fn graph_layout_swimlanes(
         let n = nodes.len().max(1);
         for (rank, idx) in nodes.iter().enumerate() {
             let centered = rank as f32 - (n.saturating_sub(1) as f32 * 0.5);
-            let x = lane_center + centered * 0.045;
+            let x = lane_center + centered * 0.070;
             positions[*idx] = (x.clamp(0.06, 0.94), y.clamp(0.12, 0.95));
         }
     }
