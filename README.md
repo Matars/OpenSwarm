@@ -6,19 +6,7 @@ A keyboard-first Rust TUI for **parallel AI agent deployment across Git worktree
 
 Run 5-10 AI agents in parallel, each in its own isolated worktree, managed from a single visual interface. No terminal juggling, no `cd` between directories, no lost context.
 
-## Why OpenSwarm
-
-AI agents like Claude Code and OpenCode can handle longer tasks without supervision. The bottleneck isn't the agent -- it's managing the parallel execution environment. Each agent needs its own working directory, and orchestrating worktree creation, agent launching, status monitoring, staging, committing, pushing, and merging across 5+ branches from separate terminals is painful.
-
-OpenSwarm gives you one screen:
-
-- **Worktree graph** -- see all worktrees as an interactive graph with parent-child relationships, dirty/needs-pull/committed/local-only/pushed/merged-with-parent badges, ahead/behind counts, live agent activity, and token telemetry (exact OpenCode session usage when available, PTY-based fallback otherwise) plus an animated top-right tok/s leaderboard with Unicode bars normalized to the busiest worktree and idle worktrees collapsed into one compact row
-- **Embedded terminals + per-node session memory** -- launch shells and agents in PTY sessions directly inside the TUI; sessions persist in the background, and default OpenCode launches reconnect to the most recent session for that same worktree node after restarting OpenSwarm
-- **Inline diffs** -- switch to changes view for file staging with method-level diff analysis (Python, Rust, JS/TS, Go)
-- **One-key git operations** -- create worktrees (`a`), commit (`c`), push (`p`), merge (`m`), delete (`d`) without leaving the TUI
-- **Agent-powered merge conflict solver** -- when merges conflict, OpenSwarm can launch OpenCode with a prefilled conflict-resolution prompt in the parent worktree, so the agent resolves/stages while you keep orchestration in one place
-
-## Quick start
+## Quick Start
 
 ```bash
 # Install
@@ -35,81 +23,34 @@ Then:
 1. Press `a` to create a worktree
 2. Press `O` to launch an agent in it
 3. Repeat for parallel streams
-4. Press `c` to commit, `p` to push, `m` to merge back (with agent conflict solver if needed)
+4. Press `c` to commit, `p` to push, `m` to merge back
 
-If you close OpenSwarm and reopen it later, default OpenCode launches can reconnect to that worktree's recent session context.
-
-## Core keybindings
-
-### Navigation
+## Essential Keybindings
 
 | Key | Action |
 |-----|--------|
 | `w` | Toggle Changes / Worktrees views |
-| Arrow keys / `h` `j` `k` `l` | Move selection |
-| `Ctrl+K` | Cycle graph builder (top-down, layered, left-right, trunk, swimlanes, indented) |
-| `Tab` | Cycle panes |
-| `+` / `-` / `0` | Zoom in / out / reset |
-| `W` `A` `S` `D` | Pan canvas |
-| `Ctrl+B` | Cycle canvas background effect |
-| `Ctrl+L` | Toggle frame-lag debug stats + hitch logging |
-
-### Worktree actions
-
-| Key | Action |
-|-----|--------|
+| `h` `j` `k` `l` | Navigate graph |
 | `a` | Create worktree |
 | `o` | Open shell |
-| `O` | Open agent picker |
+| `O` | Launch agent |
 | `c` | Commit |
 | `p` | Push |
-| `f` | Fetch/pull parent |
-| `F` | Rebase selected onto parent |
 | `m` | Merge into parent |
 | `d` | Delete worktree |
 
-### Changes view
-
-| Key | Action |
-|-----|--------|
-| `a` | Smart stage/unstage (stages unstaged changes first) |
-| `j` / `k` (overview panel) | Select next/previous method |
-| `J` / `K` (overview panel) | Scroll method details down/up |
-| `Enter` / `Space` (overview panel) | Expand/collapse selected method hunk preview |
-| `u` | Unstage selected file |
-| `A` / `U` | Stage all / unstage all |
-| `c` | Commit staged |
-| `p` | Push |
-| `s` / `S` | Stash push / pop |
-
-### Terminal popup
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+G` | Toggle input / control mode |
-| `Esc` | Close popup in CONTROL mode (session stays alive) |
-| `q` | Terminate session in CONTROL mode |
-
-This is the compact set for daily flow. See the [full keybindings reference](https://matars.github.io/OpenSwarm/keybindings.html) for advanced shortcuts (help modal, prune, reflog popup, notes editor, and confirmations).
+See [full keybindings reference](https://matars.github.io/OpenSwarm/keybindings.html) for advanced shortcuts.
 
 ## Documentation
 
-Docs are at [matars.github.io/OpenSwarm](https://matars.github.io/OpenSwarm/) and live under `docs/`.
+Full docs at [matars.github.io/OpenSwarm](https://matars.github.io/OpenSwarm/):
 
-The docs follow a practical Divio-style mix (not rigidly split):
+- [Getting Started](https://matars.github.io/OpenSwarm/getting-started.html) -- tutorial
+- [Features](https://matars.github.io/OpenSwarm/features.html) -- workflow guide
+- [Keybindings](https://matars.github.io/OpenSwarm/keybindings.html) -- complete reference
+- [Configuration](https://matars.github.io/OpenSwarm/configuration.html) -- setup guide
 
-- **Tutorial-ish**: [Getting Started](https://matars.github.io/OpenSwarm/getting-started.html)
-- **How-to + workflows**: [Features](https://matars.github.io/OpenSwarm/features.html)
-- **Reference**: [Keybindings](https://matars.github.io/OpenSwarm/keybindings.html), [Configuration](https://matars.github.io/OpenSwarm/configuration.html)
-- **Explanation**: [Comparisons](https://matars.github.io/OpenSwarm/comparisons.html), [FAQ](https://matars.github.io/OpenSwarm/faq.html)
-
-Video demo: the GIF above is the quick preview; a longer walkthrough video can be linked from the docs home when added.
-
-To run docs locally:
-
-```bash
-make docs
-```
+Run docs locally: `make docs`
 
 ## Requirements
 
@@ -117,28 +58,18 @@ make docs
 - Git on PATH
 - A Git repository
 
-## Build commands
+## Build
 
 ```bash
-make dev                                          # Build and install globally
-cargo run --bin openswarm                         # Run directly
-cargo build --release --bin openswarm             # Build release binary
-cargo install --path . --bin openswarm --force    # Install to PATH
+make dev              # Build and install globally
+cargo run --bin openswarm    # Run directly
+cargo build --release --bin openswarm   # Build release
 ```
 
 ## Configuration
 
-Agent defaults, prompt templates, and optional worktree art live in `~/.config/openswarm/` (missing `worktree_graph_art` is auto-seeded with the default ASCII block). See the [configuration reference](https://matars.github.io/OpenSwarm/configuration.html).
+Agent defaults and templates in `~/.config/openswarm/`. See [configuration reference](https://matars.github.io/OpenSwarm/configuration.html).
 
-## Notes
+---
 
-- Uses your shell from `$SHELL` for terminal sessions
-- Worktree operations use native `git worktree` commands
-- Long-running git operations run in the background with a live progress indicator. Additional operations are queued automatically and execute sequentially -- press `p` on three different worktrees in quick succession and all three pushes will run one after another without waiting
-- Auto-detects `claude` and `opencode` on PATH
-- Worktrees are placed in `.<repo>-workspaces/` sibling directory
-- Startup now validates git context (inside a worktree, resolvable top-level, loadable `git worktree list`) and shows an explicit in-app error instead of an empty graph when checks fail
-
-## Current status
-
-OpenSwarm is actively evolving. Expect rapid iteration -- keybindings and UI behavior may change. Feedback and bug reports are welcome.
+OpenSwarm is actively evolving. Feedback and bug reports welcome.
