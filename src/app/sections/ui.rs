@@ -2762,6 +2762,32 @@ fn current_session_branch(app: &App) -> String {
     }
 }
 
+fn add_wrapped_field(
+    lines: &mut Vec<Line<'static>>,
+    label: &'static str,
+    value: &str,
+    max_width: usize,
+    color: Color,
+) {
+    let label_len = label.chars().count();
+    let value_max = max_width.saturating_sub(label_len).max(1);
+    let wrapped = split_text_chunks(value, value_max);
+    for (i, chunk) in wrapped.into_iter().enumerate() {
+        if i == 0 {
+            lines.push(Line::from(vec![
+                Span::styled(label, Style::default().fg(Color::Gray)),
+                Span::styled(chunk, Style::default().fg(color)),
+            ]));
+        } else {
+            let padding = " ".repeat(label_len);
+            lines.push(Line::from(vec![
+                Span::styled(padding, Style::default().fg(Color::Gray)),
+                Span::styled(chunk, Style::default().fg(color)),
+            ]));
+        }
+    }
+}
+
 fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
     let mut lines: Vec<Line<'_>> = Vec::new();
     let root_branch = current_session_branch(app);
@@ -2779,29 +2805,37 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         .count();
     let idle_sessions = live_sessions.saturating_sub(active_sessions);
 
+    let inner_width = area.width.saturating_sub(2) as usize;
+
     if let Some(selected) = app.selected_worktree() {
-        lines.push(Line::from(vec![
-            Span::styled("branch: ", Style::default().fg(Color::Gray)),
-            Span::styled(selected.branch.as_str(), Style::default().fg(Color::Cyan)),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("path:   ", Style::default().fg(Color::Gray)),
-            Span::styled(selected.path.as_str(), Style::default().fg(Color::White)),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("head:   ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                selected.head.as_str(),
-                Style::default().fg(Color::LightBlue),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("source: ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                worktree_parent_label(app, &parents),
-                Style::default().fg(Color::LightMagenta),
-            ),
-        ]));
+        add_wrapped_field(
+            &mut lines,
+            "branch: ",
+            selected.branch.as_str(),
+            inner_width,
+            Color::Cyan,
+        );
+        add_wrapped_field(
+            &mut lines,
+            "path:   ",
+            selected.path.as_str(),
+            inner_width,
+            Color::White,
+        );
+        add_wrapped_field(
+            &mut lines,
+            "head:   ",
+            selected.head.as_str(),
+            inner_width,
+            Color::LightBlue,
+        );
+        add_wrapped_field(
+            &mut lines,
+            "source: ",
+            worktree_parent_label(app, &parents).as_str(),
+            inner_width,
+            Color::LightMagenta,
+        );
         lines.push(Line::from(""));
 
         lines.push(Line::from(vec![
