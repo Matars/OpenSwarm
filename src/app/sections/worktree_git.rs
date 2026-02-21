@@ -1634,6 +1634,7 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
     let mut diff_preview: Vec<DiffPreviewLine> = Vec::new();
     let mut method_hunks: BTreeMap<String, Vec<DiffPreviewLine>> = BTreeMap::new();
     let mut current_hunk_lines: Vec<DiffPreviewLine> = Vec::new();
+    let mut current_hunk_methods: HashSet<String> = HashSet::new();
     let mut current_hunk_method: Option<String> = None;
     let mut added_lines = 0usize;
     let mut removed_lines = 0usize;
@@ -1643,10 +1644,15 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
             flush_method_hunk(
                 &mut method_hunks,
                 current_hunk_method.as_deref(),
+                &current_hunk_methods,
                 &mut current_hunk_lines,
             );
+            current_hunk_methods.clear();
             current_hunk_method = parse_hunk_header(line)
                 .and_then(|header| extract_method_name(header.as_str(), file_path));
+            if let Some(name) = current_hunk_method.as_ref() {
+                current_hunk_methods.insert(name.clone());
+            }
             current_hunk_lines.push(DiffPreviewLine {
                 kind: DiffPreviewKind::Meta,
                 text: truncate_text(line, 96),
@@ -1671,9 +1677,10 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
                 modified_hunks.insert(name.clone());
             }
             if let Some(name) = extract_method_name(rest, file_path) {
+                current_hunk_methods.insert(name.clone());
                 added_methods.insert(name);
             }
-            if current_hunk_method.is_some() {
+            if !current_hunk_lines.is_empty() {
                 current_hunk_lines.push(DiffPreviewLine {
                     kind: DiffPreviewKind::Added,
                     text: truncate_text(line, 96),
@@ -1689,9 +1696,10 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
                 modified_hunks.insert(name.clone());
             }
             if let Some(name) = extract_method_name(rest, file_path) {
+                current_hunk_methods.insert(name.clone());
                 removed_methods.insert(name);
             }
-            if current_hunk_method.is_some() {
+            if !current_hunk_lines.is_empty() {
                 current_hunk_lines.push(DiffPreviewLine {
                     kind: DiffPreviewKind::Removed,
                     text: truncate_text(line, 96),
@@ -1701,7 +1709,7 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
             continue;
         }
 
-        if current_hunk_method.is_some() {
+        if !current_hunk_lines.is_empty() {
             current_hunk_lines.push(DiffPreviewLine {
                 kind: DiffPreviewKind::Context,
                 text: truncate_text(line, 96),
@@ -1713,6 +1721,7 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
     flush_method_hunk(
         &mut method_hunks,
         current_hunk_method.as_deref(),
+        &current_hunk_methods,
         &mut current_hunk_lines,
     );
 
@@ -1758,17 +1767,21 @@ fn summarize_diff(diff: &str, file_path: &str) -> DiffSummary {
 fn flush_method_hunk(
     store: &mut BTreeMap<String, Vec<DiffPreviewLine>>,
     method: Option<&str>,
+    fallback_methods: &HashSet<String>,
     hunk_lines: &mut Vec<DiffPreviewLine>,
 ) {
-    let Some(name) = method else {
-        hunk_lines.clear();
-        return;
-    };
     if hunk_lines.is_empty() {
         return;
     }
-    let entry = store.entry(name.to_string()).or_default();
-    entry.extend(hunk_lines.iter().cloned());
+    if let Some(name) = method {
+        let entry = store.entry(name.to_string()).or_default();
+        entry.extend(hunk_lines.iter().cloned());
+    } else {
+        for name in fallback_methods {
+            let entry = store.entry(name.clone()).or_default();
+            entry.extend(hunk_lines.iter().cloned());
+        }
+    }
     hunk_lines.clear();
 }
 

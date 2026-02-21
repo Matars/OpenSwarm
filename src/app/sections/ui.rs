@@ -335,7 +335,7 @@ fn draw_selected_overview_panel(frame: &mut ratatui::Frame<'_>, app: &App, area:
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
-                    " (Shift+J/K select, Enter expand)",
+                    " (j/k select, J/K scroll, Enter/Space expand)",
                     Style::default().fg(Color::Gray),
                 ),
             ]));
@@ -514,18 +514,21 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
         ]),
         Line::from(vec![
             Span::styled("j/k", Style::default().fg(Color::LightBlue)),
-            Span::raw(" move selection/scroll"),
+            Span::raw(" move selection/method"),
         ]),
         Line::from(vec![
             Span::styled("J/K", Style::default().fg(Color::LightBlue)),
-            Span::raw(" select method in overview"),
+            Span::raw(" scroll overview"),
         ]),
         Line::from(vec![
-            Span::styled("space|a", Style::default().fg(Color::LightGreen)),
+            Span::styled("a", Style::default().fg(Color::LightGreen)),
             Span::raw(" smart stage / unstage"),
         ]),
         Line::from(vec![
-            Span::styled("enter (overview)", Style::default().fg(Color::LightGreen)),
+            Span::styled(
+                "enter|space (overview)",
+                Style::default().fg(Color::LightGreen),
+            ),
             Span::raw(" expand selected method"),
         ]),
         Line::from(vec![

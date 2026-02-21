@@ -15,7 +15,7 @@ fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn 
         }
         KeyCode::Left | KeyCode::Char('h') => app.focus_left(),
         KeyCode::Right | KeyCode::Char('l') => app.focus_right(),
-        KeyCode::Down | KeyCode::Char('j') => match app.active_pane {
+        KeyCode::Down => match app.active_pane {
             ActivePane::Files => {
                 app.select_next();
                 app.overview_scroll = 0;
@@ -25,7 +25,7 @@ fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn 
                 app.overview_scroll = app.overview_scroll.saturating_add(1);
             }
         },
-        KeyCode::Up | KeyCode::Char('k') => match app.active_pane {
+        KeyCode::Up => match app.active_pane {
             ActivePane::Files => {
                 app.select_prev();
                 app.overview_scroll = 0;
@@ -35,11 +35,31 @@ fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn 
                 app.overview_scroll = app.overview_scroll.saturating_sub(1);
             }
         },
+        KeyCode::Char('j') => match app.active_pane {
+            ActivePane::Files => {
+                app.select_next();
+                app.overview_scroll = 0;
+                refresh_selected_overview(app);
+            }
+            ActivePane::Overview => move_overview_method(app, true),
+        },
+        KeyCode::Char('k') => match app.active_pane {
+            ActivePane::Files => {
+                app.select_prev();
+                app.overview_scroll = 0;
+                refresh_selected_overview(app);
+            }
+            ActivePane::Overview => move_overview_method(app, false),
+        },
         KeyCode::Char('J') => {
-            move_overview_method(app, true);
+            if app.active_pane == ActivePane::Overview {
+                app.overview_scroll = app.overview_scroll.saturating_add(1);
+            }
         }
         KeyCode::Char('K') => {
-            move_overview_method(app, false);
+            if app.active_pane == ActivePane::Overview {
+                app.overview_scroll = app.overview_scroll.saturating_sub(1);
+            }
         }
         KeyCode::Char('r') => refresh_status(app),
         KeyCode::Enter => {
@@ -48,7 +68,13 @@ fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn 
                 refresh_status(app);
             }
         }
-        KeyCode::Char(' ') | KeyCode::Char('a') => {
+        KeyCode::Char(' ') => {
+            if !toggle_overview_method_expanded(app) {
+                toggle_stage(app)?;
+                refresh_status(app);
+            }
+        }
+        KeyCode::Char('a') => {
             toggle_stage(app)?;
             refresh_status(app);
         }
