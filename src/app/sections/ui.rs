@@ -1451,7 +1451,7 @@ fn draw_canvas_bg_glitter_stars(
                 continue;
             }
 
-            let twinkle_speed = 0.14 + star_seed_unit(glitter_seed, 20) * 0.22;
+            let twinkle_speed = 0.0042 + star_seed_unit(glitter_seed, 20) * 0.0066;
             let twinkle_phase = star_seed_unit(glitter_seed, 36) * tau;
             let twinkle = ((time_seconds * twinkle_speed + twinkle_phase).sin() + 1.0) * 0.5;
             if twinkle < 0.08 {
