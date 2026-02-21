@@ -3350,7 +3350,9 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- x: prune stale worktrees"),
             Line::from("- n: open notes.md (vim-style editor), L: git command history"),
             Line::from("- Terminal popup: ':' control mode, Ctrl+G toggles input/control"),
-            Line::from("- Agent defaults/prompts live in ~/.config/openswarm"),
+            Line::from(
+                "- Agent defaults/prompts live in ~/.config/openswarm (%USERPROFILE%\\.config\\openswarm on Windows)",
+            ),
             Line::from("- ?: close this help"),
         ],
     }

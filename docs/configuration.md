@@ -11,6 +11,12 @@ nav_order: 4
 ~/.config/openswarm/
 ```
 
+On Windows, this resolves to:
+
+```
+%USERPROFILE%\\.config\\openswarm\\
+```
+
 Created automatically on first run.
 
 ## config.toml
@@ -23,7 +29,8 @@ Created automatically on first run.
 default_agent = ""
 
 # Path to the conflict resolution prompt template.
-# Relative paths resolve from ~/.config/openswarm/
+# Relative paths resolve from the OpenSwarm config directory.
+# (~/.config/openswarm/ or %USERPROFILE%\\.config\\openswarm\\ on Windows)
 conflict_resolve_prompt = "prompts/conflict-resolve-prompt.md"
 
 # Feature-to-worktree orchestrator toggle and planner prompt.
@@ -60,9 +67,9 @@ OpenCode session resume only applies to this default-launch path (`default_agent
 
 ### `conflict_resolve_prompt`
 
-Path to a Markdown template used when launching agent-assisted merge conflict resolution. Can be absolute or relative to `~/.config/openswarm/`.
+Path to a Markdown template used when launching agent-assisted merge conflict resolution. Can be absolute or relative to the OpenSwarm config directory.
 
-A default template is created at `~/.config/openswarm/prompts/conflict-resolve-prompt.md` on first run.
+A default template is created at `~/.config/openswarm/prompts/conflict-resolve-prompt.md` (or `%USERPROFILE%\.config\openswarm\prompts\conflict-resolve-prompt.md` on Windows) on first run.
 
 ### `worktree_graph_art`
 
@@ -73,6 +80,7 @@ If this key is missing from an existing `config.toml`, OpenSwarm appends the def
 - Supports ASCII and Unicode glyphs.
 - Keep line width short for narrow terminals (the panel truncates overflow).
 - You can also set it as a single-line string and use `\n` escapes.
+- For multiline strings, keep the closing `"""` on its own line.
 
 ### `worktree_orchestrator_enabled`
 
@@ -85,9 +93,9 @@ Controls whether the `g` action in worktree view can run automated feature plann
 
 ### `worktree_orchestrator_prompt`
 
-Path to a Markdown prompt template used for feature planning with OpenCode (`opencode run --format json`). Can be absolute or relative to `~/.config/openswarm/`.
+Path to a Markdown prompt template used for feature planning with OpenCode (`opencode run --format json`). Can be absolute or relative to the OpenSwarm config directory.
 
-A default template is created at `~/.config/openswarm/prompts/worktree-orchestrator-prompt.md` on first run.
+A default template is created at `~/.config/openswarm/prompts/worktree-orchestrator-prompt.md` (or `%USERPROFILE%\.config\openswarm\prompts\worktree-orchestrator-prompt.md` on Windows) on first run.
 
 ### `worktree_orchestrator_max_nodes`
 

@@ -1051,16 +1051,45 @@ fn load_openswarm_config() -> OpenSwarmConfig {
 }
 
 fn openswarm_config_dir() -> PathBuf {
-    if let Some(home) = std::env::var_os("HOME") {
-        PathBuf::from(home).join(".config").join("openswarm")
-    } else {
-        PathBuf::from(".").join(".config").join("openswarm")
+    fn env_path(var: &str) -> Option<PathBuf> {
+        let value = std::env::var_os(var)?;
+        if value.is_empty() {
+            return None;
+        }
+        Some(PathBuf::from(value))
     }
+
+    let home = if cfg!(windows) {
+        env_path("USERPROFILE")
+            .or_else(|| {
+                let home_drive = env_path("HOMEDRIVE")?;
+                let home_path = env_path("HOMEPATH")?;
+                let mut combined = home_drive;
+                combined.push(home_path);
+                Some(combined)
+            })
+            .or_else(|| env_path("HOME"))
+            .or_else(|| {
+                std::env::var("USERNAME")
+                    .ok()
+                    .filter(|name| !name.trim().is_empty())
+                    .map(|name| PathBuf::from("C:\\Users").join(name))
+            })
+            .unwrap_or_else(|| PathBuf::from("C:\\Users\\Default"))
+    } else {
+        env_path("HOME")
+            .or_else(|| env_path("USERPROFILE"))
+            .unwrap_or_else(|| PathBuf::from("."))
+    };
+
+    home
+        .join(".config")
+        .join("openswarm")
 }
 
 fn default_openswarm_config_text() -> String {
     let mut text =
-        "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from ~/.config/openswarm\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n\n# orchestrate feature requirements into a worktree plan using OpenCode\nworktree_orchestrator_enabled = true\nworktree_orchestrator_prompt = \"prompts/worktree-orchestrator-prompt.md\"\nworktree_orchestrator_max_nodes = 8\n\n"
+        "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from the OpenSwarm config dir\n# (~/.config/openswarm, or %USERPROFILE%\\.config\\openswarm on Windows)\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n\n# orchestrate feature requirements into a worktree plan using OpenCode\nworktree_orchestrator_enabled = true\nworktree_orchestrator_prompt = \"prompts/worktree-orchestrator-prompt.md\"\nworktree_orchestrator_max_nodes = 8\n\n"
             .to_string();
     text.push_str(default_worktree_graph_art_config_block().as_str());
     text
@@ -1103,24 +1132,31 @@ fn parse_config_multiline_string(
 ) -> Option<(String, usize)> {
     let mut text = String::new();
     let mut consumed = 1usize;
-    let mut current = current_value.strip_prefix("\"\"\"")?;
+    let opening_remainder = current_value.strip_prefix("\"\"\"")?;
 
-    loop {
-        if let Some(end_idx) = current.find("\"\"\"") {
-            text.push_str(&current[..end_idx]);
-            return Some((text, consumed));
+    if let Some(end_idx) = opening_remainder.find("\"\"\"") {
+        text.push_str(&opening_remainder[..end_idx]);
+        return Some((text, consumed));
+    }
+
+    if !opening_remainder.is_empty() {
+        text.push_str(opening_remainder);
+    }
+
+    while start_idx + consumed < lines.len() {
+        let line = lines[start_idx + consumed];
+        if line.trim() == "\"\"\"" {
+            return Some((text, consumed + 1));
         }
 
-        text.push_str(current);
-
-        if start_idx + consumed >= lines.len() {
-            return None;
+        if !text.is_empty() {
+            text.push('\n');
         }
-
-        text.push('\n');
-        current = lines[start_idx + consumed];
+        text.push_str(line);
         consumed += 1;
     }
+
+    None
 }
 
 fn parse_config_string(value: &str) -> Option<String> {

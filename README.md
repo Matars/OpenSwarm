@@ -130,7 +130,7 @@ cargo install --path . --bin openswarm --force    # Install to PATH
 
 ## Configuration
 
-Agent defaults, prompt templates, worktree orchestration controls, and optional worktree art live in `~/.config/openswarm/` (missing templates and `worktree_graph_art` are auto-seeded with defaults). See the [configuration reference](https://matars.github.io/OpenSwarm/configuration.html).
+Agent defaults, wsprompt templates, worktree orchestration controls, and optional worktree art live in `~/.config/openswarm/` (or `%USERPROFILE%\\.config\\openswarm\\` on Windows). Missing templates and `worktree_graph_art` are auto-seeded with defaults. See the [configuration reference](https://matars.github.io/OpenSwarm/configuration.html).
 
 ## Notes
 
