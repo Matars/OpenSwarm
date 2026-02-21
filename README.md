@@ -71,9 +71,10 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 
 | Key | Action |
 |-----|--------|
-| `Space` / `a` | Smart stage/unstage (stages unstaged changes first) |
-| `Shift+J` / `Shift+K` | Select next/previous method in overview |
-| `Enter` (overview panel) | Expand/collapse selected method hunk preview |
+| `a` | Smart stage/unstage (stages unstaged changes first) |
+| `j` / `k` (overview panel) | Select next/previous method |
+| `J` / `K` (overview panel) | Scroll method details down/up |
+| `Enter` / `Space` (overview panel) | Expand/collapse selected method hunk preview |
 | `u` | Unstage selected file |
 | `A` / `U` | Stage all / unstage all |
 | `c` | Commit staged |
