@@ -1917,21 +1917,61 @@ fn graph_layout_radial(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
     }
 
     let depths = graph_depths(parents);
-    let mut child_counts = vec![0usize; count];
-    for parent_idx in parents.iter().flatten() {
-        if *parent_idx < count {
-            child_counts[*parent_idx] = child_counts[*parent_idx].saturating_add(1);
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); count];
+    let mut roots: Vec<usize> = Vec::new();
+    for idx in 0..count {
+        match parents[idx] {
+            Some(parent) if parent < count && parent != idx => children[parent].push(idx),
+            _ => roots.push(idx),
         }
     }
+    for list in &mut children {
+        list.sort_unstable();
+    }
+    roots.sort_unstable();
 
-    let center_idx = (0..count)
-        .filter(|idx| parents[*idx].is_none())
+    fn subtree_weight(
+        idx: usize,
+        children: &[Vec<usize>],
+        cache: &mut [Option<usize>],
+        visiting: &mut [bool],
+    ) -> usize {
+        if let Some(weight) = cache[idx] {
+            return weight;
+        }
+        if visiting[idx] {
+            return 1;
+        }
+
+        visiting[idx] = true;
+        let mut total = 1usize;
+        for child in &children[idx] {
+            total = total.saturating_add(subtree_weight(*child, children, cache, visiting));
+        }
+        visiting[idx] = false;
+        cache[idx] = Some(total);
+        total
+    }
+
+    let mut weight_cache = vec![None; count];
+    let mut visiting = vec![false; count];
+    for idx in 0..count {
+        let _ = subtree_weight(idx, &children, &mut weight_cache, &mut visiting);
+    }
+
+    let center_idx = roots
+        .iter()
+        .copied()
         .max_by(|a, b| {
-            child_counts[*a]
-                .cmp(&child_counts[*b])
+            weight_cache[*a]
+                .unwrap_or(1)
+                .cmp(&weight_cache[*b].unwrap_or(1))
                 .then_with(|| b.cmp(a))
         })
         .unwrap_or(0);
+
+    let mut radial_roots = children[center_idx].clone();
+    radial_roots.extend(roots.into_iter().filter(|idx| *idx != center_idx));
 
     let max_depth = depths
         .iter()
@@ -1942,33 +1982,104 @@ fn graph_layout_radial(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
 
     let mut positions = vec![(0.5f32, 0.5f32); count];
     positions[center_idx] = (0.5, 0.5);
-    let mut angles = vec![0.0f32; count];
-    angles[center_idx] = -std::f32::consts::FRAC_PI_2;
 
-    for ring in 1..=max_depth {
-        let mut nodes: Vec<usize> = (0..count)
-            .filter(|idx| *idx != center_idx && depths[*idx].max(1) == ring)
-            .collect();
-        if nodes.is_empty() {
-            continue;
+    let full_turn = std::f32::consts::TAU;
+    let angle_offset = -std::f32::consts::FRAC_PI_2;
+    let radial_min = 0.16f32;
+    let radial_span = 0.30f32;
+    let ring_gap = 0.05f32;
+
+    fn place_radial_subtree(
+        node: usize,
+        start_angle: f32,
+        end_angle: f32,
+        center_x: f32,
+        center_y: f32,
+        depths: &[usize],
+        max_depth: usize,
+        children: &[Vec<usize>],
+        weight_cache: &[Option<usize>],
+        positions: &mut [(f32, f32)],
+        radial_min: f32,
+        radial_span: f32,
+        ring_gap: f32,
+    ) {
+        let depth = depths[node].max(1);
+        let depth_ratio = (depth as f32 / max_depth.max(1) as f32).clamp(0.0, 1.0);
+        let radius = (radial_min + radial_span * depth_ratio).min(0.46);
+        let mid = (start_angle + end_angle) * 0.5;
+
+        let x = center_x + radius * mid.cos();
+        let y = center_y + radius * mid.sin();
+        positions[node] = (x.clamp(0.06, 0.94), y.clamp(0.08, 0.94));
+
+        let kids = &children[node];
+        if kids.is_empty() {
+            return;
         }
 
-        nodes.sort_by(|a, b| {
-            let pa = parents[*a].unwrap_or(center_idx);
-            let pb = parents[*b].unwrap_or(center_idx);
-            angles[pa].total_cmp(&angles[pb]).then_with(|| a.cmp(b))
-        });
+        let total_weight: usize = kids
+            .iter()
+            .map(|idx| weight_cache[*idx].unwrap_or(1).max(1))
+            .sum::<usize>()
+            .max(1);
 
-        let radius = (0.16 + (ring as f32 / max_depth as f32) * 0.34).min(0.44);
-        let full_turn = std::f32::consts::TAU;
-        for (slot, idx) in nodes.iter().enumerate() {
-            let angle =
-                -std::f32::consts::FRAC_PI_2 + (slot as f32 / nodes.len() as f32) * full_turn;
-            angles[*idx] = angle;
-            let x = 0.5 + radius * angle.cos();
-            let y = 0.5 + radius * angle.sin();
-            positions[*idx] = (x.clamp(0.06, 0.94), y.clamp(0.08, 0.94));
+        let mut cursor = start_angle;
+        for child in kids {
+            let weight = weight_cache[*child].unwrap_or(1).max(1) as f32;
+            let mut span = (end_angle - start_angle) * (weight / total_weight as f32);
+            span = (span - ring_gap).max(0.06);
+            let child_start = cursor + ring_gap * 0.5;
+            let child_end = (child_start + span).min(end_angle);
+            place_radial_subtree(
+                *child,
+                child_start,
+                child_end,
+                center_x,
+                center_y,
+                depths,
+                max_depth,
+                children,
+                weight_cache,
+                positions,
+                radial_min,
+                radial_span,
+                ring_gap,
+            );
+            cursor += (end_angle - start_angle) * (weight / total_weight as f32);
         }
+    }
+
+    if radial_roots.is_empty() {
+        return positions;
+    }
+
+    let total_weight: usize = radial_roots
+        .iter()
+        .map(|idx| weight_cache[*idx].unwrap_or(1).max(1))
+        .sum::<usize>()
+        .max(1);
+
+    let mut cursor = angle_offset;
+    for node in radial_roots {
+        let node_weight = weight_cache[node].unwrap_or(1).max(1) as f32;
+        let span = full_turn * (node_weight / total_weight as f32);
+        place_radial_subtree(
+            node,
+            cursor,
+            cursor + span,
+            0.5,
+            0.5,
+            &depths,
+            max_depth,
+            &children,
+            &weight_cache,
+            &mut positions,
+            radial_min,
+            radial_span,
+            ring_gap,
+        );
+        cursor += span;
     }
 
     positions
