@@ -196,8 +196,6 @@ struct App {
     canvas_bg_last_tick: Instant,
     canvas_selected_border_effects: EffectManager<&'static str>,
     canvas_selected_border_last_tick: Instant,
-    canvas_leaderboard_effects: EffectManager<&'static str>,
-    canvas_leaderboard_last_tick: Instant,
     canvas_node_animations: Vec<CanvasNodeAnimation>,
     last_worktree_node_points: BTreeMap<String, (f64, f64)>,
     worktree_animations_ready: bool,
@@ -435,9 +433,6 @@ impl App {
         let mut canvas_selected_border_effects = EffectManager::default();
         canvas_selected_border_effects
             .add_unique_effect("selected-border", build_selected_node_border_effect());
-        let mut canvas_leaderboard_effects = EffectManager::default();
-        canvas_leaderboard_effects
-            .add_unique_effect("leaderboard-glow", build_canvas_leaderboard_effect());
         Self {
             branch: "unknown".to_string(),
             ahead: 0,
@@ -467,8 +462,6 @@ impl App {
             canvas_bg_last_tick: Instant::now(),
             canvas_selected_border_effects,
             canvas_selected_border_last_tick: Instant::now(),
-            canvas_leaderboard_effects,
-            canvas_leaderboard_last_tick: Instant::now(),
             canvas_node_animations: Vec::new(),
             last_worktree_node_points: BTreeMap::new(),
             worktree_animations_ready: false,
