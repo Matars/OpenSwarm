@@ -1149,7 +1149,13 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
     let sanitized = branch.replace('/', "-");
     let root = create_root_for_app(app);
     let container = workspaces_container_for_root(root.as_str());
-    let _ = fs::create_dir_all(container.as_path());
+    if let Err(err) = fs::create_dir_all(container.as_path()) {
+        return Ok(format!(
+            "Failed preparing worktree container '{}': {}",
+            container.to_string_lossy(),
+            sanitize_for_tui(err.to_string().as_str())
+        ));
+    }
     let path = container.join(sanitized);
     let path_str = path.to_string_lossy().to_string();
     if path.exists() {
@@ -1850,6 +1856,13 @@ fn workspaces_container_for_root(root: &str) -> PathBuf {
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
         .unwrap_or("repo");
+
+    if cfg!(windows) {
+        return openswarm_config_dir()
+            .join("workspaces")
+            .join(repo_name);
+    }
+
     let parent = repo_root.parent().unwrap_or_else(|| Path::new("."));
     parent.join(format!(".{}-workspaces", repo_name))
 }

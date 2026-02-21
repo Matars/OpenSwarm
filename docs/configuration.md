@@ -129,13 +129,21 @@ You can edit the prompt template inline during conflict resolution by pressing `
 
 ## Workspace layout
 
-Worktrees are created in a sibling directory:
+Linux/macOS worktrees are created in a sibling directory:
 
 ```
 your-repo/                    # Main repository
 .<repo-name>-workspaces/      # Created by OpenSwarm
   feature-auth/               # Worktree for feature-auth branch
   fix-pagination/             # Worktree for fix-pagination branch
+```
+
+Windows worktrees are created in the user OpenSwarm directory:
+
+```
+%USERPROFILE%\.config\openswarm\workspaces\<repo-name>\
+  feature-auth\
+  fix-pagination\
 ```
 
 Branch name slashes are replaced with hyphens for filesystem safety (e.g., `feature/auth` becomes `feature-auth`).
