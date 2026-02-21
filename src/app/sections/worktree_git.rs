@@ -1,18 +1,71 @@
 fn refresh_status(app: &mut App) {
-    let output = match run_git_in(
-        app.changes_worktree_path.as_deref(),
-        &["status", "--porcelain=1", "-b", "-uall"],
-    ) {
-        Ok(text) => text,
+    let snapshot = match load_status_snapshot(app.changes_worktree_path.clone()) {
+        Ok(snapshot) => snapshot,
         Err(err) => {
-            app.status_line = err.to_string();
+            app.status_line = err;
             return;
         }
     };
+    apply_status_snapshot(app, snapshot);
+}
+
+fn start_status_refresh_task(app: &mut App) {
+    if app.status_refresh_in_flight {
+        return;
+    }
+
+    app.status_refresh_in_flight = true;
+    let path = app.changes_worktree_path.clone();
+    let tx = app.status_refresh_tx.clone();
+    thread::spawn(move || {
+        let event = match load_status_snapshot(path) {
+            Ok(snapshot) => StatusRefreshEvent {
+                snapshot: Some(snapshot),
+                error: None,
+            },
+            Err(err) => StatusRefreshEvent {
+                snapshot: None,
+                error: Some(err),
+            },
+        };
+        let _ = tx.send(event);
+    });
+}
+
+fn drain_status_refresh_events(app: &mut App) {
+    let mut last_event: Option<StatusRefreshEvent> = None;
+    while let Ok(event) = app.status_refresh_rx.try_recv() {
+        last_event = Some(event);
+    }
+
+    let Some(event) = last_event else {
+        return;
+    };
+
+    app.status_refresh_in_flight = false;
+    if let Some(snapshot) = event.snapshot {
+        apply_status_snapshot(app, snapshot);
+    } else if let Some(err) = event.error {
+        app.status_line = err;
+    }
+}
+
+fn load_status_snapshot(changes_worktree_path: Option<String>) -> Result<StatusSnapshot, String> {
+    let output = git_output_in(
+        changes_worktree_path.as_deref(),
+        &["status", "--porcelain=1", "-b", "-uall"],
+    )
+    .ok_or_else(|| "Failed to load git status".to_string())?;
 
     let mut lines = output.lines();
+    let mut branch = "unknown".to_string();
+    let mut ahead = 0usize;
+    let mut behind = 0usize;
     if let Some(head) = lines.next() {
-        parse_branch_line(app, head);
+        let (parsed_branch, parsed_ahead, parsed_behind, _) = parse_branch_snapshot(head);
+        branch = parsed_branch;
+        ahead = parsed_ahead;
+        behind = parsed_behind;
     }
 
     let mut files = Vec::new();
@@ -24,7 +77,6 @@ fn refresh_status(app: &mut App) {
         let x = line.chars().next().unwrap_or(' ');
         let y = line.chars().nth(1).unwrap_or(' ');
         let path = line[3..].trim().to_string();
-
         if should_hide_internal_worktree_path(path.as_str()) {
             continue;
         }
@@ -37,8 +89,40 @@ fn refresh_status(app: &mut App) {
         });
     }
 
-    app.files = files;
-    app.tree_items = build_tree_items(&app.files, app.changes_worktree_path.as_deref());
+    let tree_items = build_tree_items(&files, changes_worktree_path.as_deref());
+    Ok(StatusSnapshot {
+        branch,
+        ahead,
+        behind,
+        files,
+        tree_items,
+    })
+}
+
+fn selected_item_fingerprint(
+    app: &App,
+) -> Option<(String, TreeKind, bool, bool, bool, usize, usize)> {
+    app.selected_item().map(|item| {
+        (
+            item.path.clone(),
+            item.kind.clone(),
+            item.staged,
+            item.unstaged,
+            item.untracked,
+            item.added_lines,
+            item.removed_lines,
+        )
+    })
+}
+
+fn apply_status_snapshot(app: &mut App, snapshot: StatusSnapshot) {
+    let old_selected = selected_item_fingerprint(app);
+
+    app.branch = snapshot.branch;
+    app.ahead = snapshot.ahead;
+    app.behind = snapshot.behind;
+    app.files = snapshot.files;
+    app.tree_items = snapshot.tree_items;
 
     if app.tree_items.is_empty() {
         app.selected = 0;
@@ -46,12 +130,16 @@ fn refresh_status(app: &mut App) {
         app.selected = app.tree_items.len() - 1;
     }
 
+    let new_selected = selected_item_fingerprint(app);
+    let should_refresh_overview = old_selected != new_selected || app.selected_overview.is_none();
+    if should_refresh_overview {
+        refresh_selected_overview(app);
+    }
+
     let max_scroll = max_overview_scroll(app);
     if app.overview_scroll > max_scroll {
         app.overview_scroll = max_scroll;
     }
-
-    refresh_selected_overview(app);
 }
 
 fn refresh_worktrees(app: &mut App) {
@@ -1290,13 +1378,6 @@ fn run_git_with_input(args: &[&str], input: &[u8]) -> Result<CommandResult, Box<
             .trim()
             .to_string(),
     })
-}
-
-fn parse_branch_line(app: &mut App, line: &str) {
-    let (branch, ahead, behind, _) = parse_branch_snapshot(line);
-    app.branch = branch;
-    app.ahead = ahead;
-    app.behind = behind;
 }
 
 fn toggle_stage(app: &mut App) -> Result<(), Box<dyn Error>> {

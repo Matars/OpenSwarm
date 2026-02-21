@@ -240,6 +240,9 @@ struct App {
     git_task: Option<GitTaskState>,
     git_task_tx: Sender<GitTaskEvent>,
     git_task_rx: Receiver<GitTaskEvent>,
+    status_refresh_in_flight: bool,
+    status_refresh_tx: Sender<StatusRefreshEvent>,
+    status_refresh_rx: Receiver<StatusRefreshEvent>,
     perf_debug: PerfDebugState,
 }
 
@@ -302,6 +305,19 @@ struct GitTaskEvent {
     outcome: String,
     refresh_worktrees: bool,
     refresh_status: bool,
+}
+
+struct StatusSnapshot {
+    branch: String,
+    ahead: usize,
+    behind: usize,
+    files: Vec<FileEntry>,
+    tree_items: Vec<TreeItem>,
+}
+
+struct StatusRefreshEvent {
+    snapshot: Option<StatusSnapshot>,
+    error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -592,6 +608,7 @@ impl App {
     fn new() -> Self {
         let (agent_tx, agent_rx) = mpsc::channel();
         let (git_task_tx, git_task_rx) = mpsc::channel();
+        let (status_refresh_tx, status_refresh_rx) = mpsc::channel();
         let config = load_openswarm_config();
         let mut canvas_bg_effects = EffectManager::default();
         canvas_bg_effects.add_unique_effect("bg-polish", build_canvas_bg_effect());
@@ -671,6 +688,9 @@ impl App {
             git_task: None,
             git_task_tx,
             git_task_rx,
+            status_refresh_in_flight: false,
+            status_refresh_tx,
+            status_refresh_rx,
             perf_debug: PerfDebugState::new(),
         }
     }
@@ -837,6 +857,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         drain_git_task_events(&mut app);
         loop_phases.drain_git_task_events = phase_started.elapsed();
 
+        drain_status_refresh_events(&mut app);
+
         let phase_started = Instant::now();
         refresh_agent_sessions(&mut app);
         loop_phases.refresh_agent_sessions = phase_started.elapsed();
@@ -963,7 +985,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         let refresh_git = !matches!(app.mode, Mode::AgentPopup) && app.git_task.is_none();
         if refresh_git && last_status_tick.elapsed() >= status_tick_rate {
             let phase_started = Instant::now();
-            refresh_status(&mut app);
+            if !app.status_refresh_in_flight {
+                start_status_refresh_task(&mut app);
+            }
             loop_phases.refresh_status = phase_started.elapsed();
             last_status_tick = Instant::now();
         }
