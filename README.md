@@ -137,6 +137,7 @@ Agent defaults, prompt templates, and optional worktree art live in `~/.config/o
 - Long-running git operations run in the background with a live progress indicator
 - Auto-detects `claude` and `opencode` on PATH
 - Worktrees are placed in `.<repo>-workspaces/` sibling directory
+- Startup now validates git context (inside a worktree, resolvable top-level, loadable `git worktree list`) and shows an explicit in-app error instead of an empty graph when checks fail
 
 ## Current status
 

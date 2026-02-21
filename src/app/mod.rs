@@ -180,6 +180,7 @@ struct App {
     overview_method_index: usize,
     overview_method_expanded: bool,
     status_line: String,
+    worktree_load_error: Option<String>,
     mode: Mode,
     view_mode: ViewMode,
     changes_worktree_path: Option<String>,
@@ -611,6 +612,7 @@ impl App {
             overview_method_index: 0,
             overview_method_expanded: false,
             status_line: "Ready".to_string(),
+            worktree_load_error: None,
             mode: Mode::Normal,
             view_mode: ViewMode::Worktrees,
             changes_worktree_path: None,
@@ -808,6 +810,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new();
+    run_startup_checks(&mut app);
     refresh_status(&mut app);
     refresh_worktrees(&mut app);
 

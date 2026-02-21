@@ -628,8 +628,18 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, are
     let root_branch = current_session_branch(app);
 
     if app.worktrees.is_empty() {
+        let empty_text = app
+            .worktree_load_error
+            .as_ref()
+            .map(|reason| {
+                format!(
+                    "Unable to load worktrees\n{}\n\nRun from a git repo/worktree path and verify `git worktree list --porcelain`",
+                    truncate_text(single_line(reason.as_str()).as_str(), 120)
+                )
+            })
+            .unwrap_or_else(|| "No worktrees. Press 'a' to create one.".to_string());
         frame.render_widget(
-            Paragraph::new("No worktrees. Press 'a' to create one.")
+            Paragraph::new(empty_text)
                 .alignment(Alignment::Center)
                 .style(Style::default().fg(Color::DarkGray)),
             inner,
