@@ -1330,12 +1330,6 @@ fn draw_worktree_canvas_background(buf: &mut Buffer, area: Rect, app: &mut App) 
         CanvasBackgroundMode::GlitterStars => {
             draw_canvas_bg_glitter_stars(buf, area, pan_x, pan_y, time_seconds)
         }
-        CanvasBackgroundMode::AuroraFlow => {
-            draw_canvas_bg_aurora_flow(buf, area, pan_x, pan_y, time_seconds)
-        }
-        CanvasBackgroundMode::Constellation => {
-            draw_canvas_bg_constellation(buf, area, pan_x, pan_y, time_seconds)
-        }
         CanvasBackgroundMode::Crosshatch => {
             draw_canvas_bg_crosshatch(buf, area, pan_x, pan_y, time_seconds)
         }
@@ -1380,15 +1374,18 @@ fn draw_canvas_bg_glitter_stars(
             let phase_seed = star_seed(wx ^ 0x4F2A, wy ^ 0x9813);
             let phase = star_seed_unit(phase_seed, 16) * tau;
             let drift_scale_x = 0.05 + star_seed_unit(phase_seed, 40) * 0.07;
-            let drift_scale_y = 0.04 + star_seed_unit(phase_seed, 22) * 0.09;
             let drift_x = ((time_seconds * drift_scale_x + phase).sin() * 2.2
                 + (time_seconds * (drift_scale_x * 0.53) + phase * 0.31).cos() * 1.4)
                 .round() as i64;
-            let drift_y = ((time_seconds * drift_scale_y + phase * 0.73).cos() * 1.8
-                + (time_seconds * (drift_scale_y * 0.61) + phase * 0.17).sin() * 1.2)
+            let fall_rate = 1.6 + star_seed_unit(phase_seed, 22) * 3.2;
+            let fall_offset = (time_seconds * fall_rate).floor() as i64;
+            let drift_y = ((time_seconds * (0.04 + star_seed_unit(phase_seed, 54) * 0.07)
+                + phase * 0.77)
+                .sin()
+                * 1.2)
                 .round() as i64;
 
-            let glitter_seed = star_seed(wx + drift_x, wy + drift_y);
+            let glitter_seed = star_seed(wx + drift_x, wy - fall_offset + drift_y);
             if glitter_seed % 1000 >= 11 {
                 continue;
             }
@@ -1476,153 +1473,6 @@ fn draw_canvas_bg_crosshatch(
     }
 }
 
-fn draw_canvas_bg_aurora_flow(
-    buf: &mut Buffer,
-    area: Rect,
-    pan_x: i64,
-    pan_y: i64,
-    time_seconds: f64,
-) {
-    for y in 0..area.height {
-        for x in 0..area.width {
-            let wx = x as i64 + pan_x;
-            let wy = y as i64 + pan_y;
-            let seed = star_seed(wx, wy);
-
-            if (seed & 0x3FF) < 28 {
-                paint_graph_char(
-                    buf,
-                    area,
-                    x,
-                    y,
-                    '·',
-                    Style::default().fg(Color::Rgb(24, 32, 46)),
-                );
-            }
-
-            let nx = wx as f64 * 0.046;
-            let ny = wy as f64 * 0.061;
-            let wave_a = (nx + time_seconds * 0.33 + (ny * 0.57).sin() * 1.15).sin();
-            let wave_b = (ny - time_seconds * 0.27 + (nx * 0.42).cos() * 1.05).cos();
-            let density = ((wave_a * 0.62 + wave_b * 0.38 + 1.0) * 0.5) as f32;
-
-            if density < 0.66 {
-                continue;
-            }
-
-            let pulse = ((time_seconds * 0.45 + star_seed_unit(seed, 30) * std::f64::consts::TAU)
-                .sin()
-                + 1.0)
-                * 0.5;
-            let base = color_mix(
-                Color::Rgb(21, 30, 44),
-                Color::Rgb(46, 90, 120),
-                ((density - 0.55) * 1.6).clamp(0.0, 1.0),
-            );
-            let color = color_mix(base, Color::Rgb(128, 198, 218), (pulse as f32) * 0.36);
-            let glyph = if density > 0.86 {
-                '▓'
-            } else if density > 0.74 {
-                '▒'
-            } else {
-                '░'
-            };
-            paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
-        }
-    }
-}
-
-fn draw_canvas_bg_constellation(
-    buf: &mut Buffer,
-    area: Rect,
-    pan_x: i64,
-    pan_y: i64,
-    time_seconds: f64,
-) {
-    const CELL_W: i64 = 14;
-    const CELL_H: i64 = 8;
-
-    for y in 0..area.height {
-        for x in 0..area.width {
-            let seed = star_seed(x as i64 + pan_x, y as i64 + pan_y);
-            if (seed & 0x3FF) < 18 {
-                paint_graph_char(
-                    buf,
-                    area,
-                    x,
-                    y,
-                    '·',
-                    Style::default().fg(Color::Rgb(28, 33, 50)),
-                );
-            }
-        }
-    }
-
-    let min_gx = (pan_x - 6).div_euclid(CELL_W) - 1;
-    let max_gx = (pan_x + area.width as i64 + 6).div_euclid(CELL_W) + 1;
-    let min_gy = (pan_y - 4).div_euclid(CELL_H) - 1;
-    let max_gy = (pan_y + area.height as i64 + 4).div_euclid(CELL_H) + 1;
-
-    let mut nodes: BTreeMap<(i64, i64), (f64, f64, u64)> = BTreeMap::new();
-    for gy in min_gy..=max_gy {
-        for gx in min_gx..=max_gx {
-            let seed = star_seed(gx * 83, gy * 131);
-            if seed % 7 != 0 {
-                continue;
-            }
-            let ox = 2 + ((seed >> 9) % (CELL_W as u64 - 3)) as i64;
-            let oy = 1 + ((seed >> 17) % (CELL_H as u64 - 2)) as i64;
-            let sx = gx * CELL_W + ox - pan_x;
-            let sy = gy * CELL_H + oy - pan_y;
-            nodes.insert((gx, gy), (sx as f64, sy as f64, seed));
-        }
-    }
-
-    for (&(gx, gy), &(x0, y0, seed)) in &nodes {
-        if let Some(&(x1, y1, _)) = nodes.get(&(gx + 1, gy)) {
-            if (seed >> 26) & 1 == 0 {
-                draw_bg_segment(buf, area, x0, y0, x1, y1, Color::Rgb(64, 91, 131), 0.32);
-            }
-        }
-        if let Some(&(x1, y1, _)) = nodes.get(&(gx, gy + 1)) {
-            if (seed >> 27) & 1 == 1 {
-                draw_bg_segment(buf, area, x0, y0, x1, y1, Color::Rgb(54, 79, 120), 0.26);
-            }
-        }
-    }
-
-    for &(sx, sy, seed) in nodes.values() {
-        if sx < 0.0 || sy < 0.0 || sx >= area.width as f64 || sy >= area.height as f64 {
-            continue;
-        }
-        let twinkle = ((time_seconds * (0.35 + star_seed_unit(seed, 32) * 0.9)
-            + star_seed_unit(seed, 40) * std::f64::consts::TAU)
-            .sin()
-            + 1.0)
-            * 0.5;
-        let glyph = if twinkle > 0.82 {
-            '✦'
-        } else if twinkle > 0.56 {
-            '✧'
-        } else {
-            '•'
-        };
-        let color = color_mix(
-            Color::Rgb(90, 120, 161),
-            Color::Rgb(239, 247, 255),
-            twinkle as f32,
-        );
-        paint_graph_char(
-            buf,
-            area,
-            sx.round() as u16,
-            sy.round() as u16,
-            glyph,
-            Style::default().fg(color),
-        );
-    }
-}
-
 fn draw_canvas_bg_rainfall(
     buf: &mut Buffer,
     area: Rect,
@@ -1680,52 +1530,6 @@ fn draw_canvas_bg_rainfall(
             );
             paint_graph_char(buf, area, x, y, glyph, Style::default().fg(color));
         }
-    }
-}
-
-fn draw_bg_segment(
-    buf: &mut Buffer,
-    area: Rect,
-    x0: f64,
-    y0: f64,
-    x1: f64,
-    y1: f64,
-    color: Color,
-    intensity: f32,
-) {
-    let dx = x1 - x0;
-    let dy = y1 - y0;
-    let steps = dx.abs().max(dy.abs()).round() as i32;
-    if steps <= 0 {
-        return;
-    }
-
-    let line_color = color_mix(Color::Rgb(27, 34, 49), color, intensity);
-    let glyph = if dx.abs() > dy.abs() * 1.6 {
-        '─'
-    } else if dy.abs() > dx.abs() * 1.6 {
-        '│'
-    } else if (dx >= 0.0) == (dy >= 0.0) {
-        '╲'
-    } else {
-        '╱'
-    };
-
-    for i in 0..=steps {
-        let t = i as f64 / steps as f64;
-        let sx = (x0 + dx * t).round() as i64;
-        let sy = (y0 + dy * t).round() as i64;
-        if sx < 0 || sy < 0 || sx >= area.width as i64 || sy >= area.height as i64 {
-            continue;
-        }
-        paint_graph_char(
-            buf,
-            area,
-            sx as u16,
-            sy as u16,
-            glyph,
-            Style::default().fg(line_color),
-        );
     }
 }
 
