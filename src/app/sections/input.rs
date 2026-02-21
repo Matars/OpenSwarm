@@ -1310,9 +1310,7 @@ fn request_remove_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>>
         return Ok(());
     }
 
-    app.status_line = remove_selected_worktree(app)?;
-    refresh_worktrees(app);
-    refresh_status(app);
+    start_remove_worktree_task(app, selected.path, false);
     Ok(())
 }
 
@@ -1338,9 +1336,7 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
                 if path.is_empty() {
                     app.status_line = "Delete cancelled (missing worktree path)".to_string();
                 } else {
-                    app.status_line = remove_worktree_by_path(app, path.as_str(), true)?;
-                    refresh_worktrees(app);
-                    refresh_status(app);
+                    start_remove_worktree_task(app, path, true);
                 }
             } else {
                 app.status_line = "Delete cancelled".to_string();
@@ -1354,6 +1350,59 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
     }
 
     Ok(())
+}
+
+fn start_remove_worktree_task(app: &mut App, worktree_path: String, force: bool) {
+    let Some(selected) = app
+        .worktrees
+        .iter()
+        .find(|worktree| worktree.path == worktree_path)
+        .cloned()
+    else {
+        app.status_line = format!("Worktree not found: {}", worktree_path);
+        return;
+    };
+
+    if selected.is_current {
+        app.status_line = "Refusing to remove current worktree".to_string();
+        return;
+    }
+
+    if selected.dirty && !force {
+        app.status_line = "Refusing to remove dirty worktree (clean it first)".to_string();
+        return;
+    }
+
+    let selected_path = selected.path;
+    let had_live_session = has_live_terminal_session(app, selected_path.as_str());
+    terminate_terminal_session(app, selected_path.as_str());
+
+    if app.agent_popup_path.as_deref() == Some(selected_path.as_str()) {
+        app.agent_popup_path = None;
+        if matches!(app.mode, Mode::AgentPopup) {
+            app.mode = Mode::Normal;
+        }
+    }
+
+    let label = if force {
+        "Force-remove selected worktree"
+    } else {
+        "Remove selected worktree"
+    };
+
+    start_git_task(app, label, true, true, move || {
+        let result = if force {
+            run_git(&["worktree", "remove", "--force", selected_path.as_str()])
+        } else {
+            run_git(&["worktree", "remove", selected_path.as_str()])
+        };
+
+        let mut outcome = git_result_text(result);
+        if had_live_session {
+            outcome.push_str(" (closed terminal session for worktree)");
+        }
+        outcome
+    });
 }
 
 fn open_worktree_git_log_popup(app: &mut App) -> Result<(), Box<dyn Error>> {

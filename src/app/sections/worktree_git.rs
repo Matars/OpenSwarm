@@ -472,60 +472,6 @@ fn normalize_path(path: &str) -> String {
         .to_string()
 }
 
-fn remove_selected_worktree(app: &mut App) -> Result<String, Box<dyn Error>> {
-    let Some(selected) = app.selected_worktree() else {
-        return Ok("No worktree selected".to_string());
-    };
-    let selected_path = selected.path.clone();
-    remove_worktree_by_path(app, selected_path.as_str(), false)
-}
-
-fn remove_worktree_by_path(
-    app: &mut App,
-    worktree_path: &str,
-    force: bool,
-) -> Result<String, Box<dyn Error>> {
-    let Some(selected) = app
-        .worktrees
-        .iter()
-        .find(|worktree| worktree.path == worktree_path)
-        .cloned()
-    else {
-        return Ok(format!("Worktree not found: {}", worktree_path));
-    };
-
-    let selected_path = selected.path;
-
-    if selected.is_current {
-        return Ok("Refusing to remove current worktree".to_string());
-    }
-
-    if selected.dirty && !force {
-        return Ok("Refusing to remove dirty worktree (clean it first)".to_string());
-    }
-
-    let had_live_session = has_live_terminal_session(app, selected_path.as_str());
-    terminate_terminal_session(app, selected_path.as_str());
-
-    if app.agent_popup_path.as_deref() == Some(selected_path.as_str()) {
-        app.agent_popup_path = None;
-    }
-
-    let remove_output = if force {
-        run_git(&["worktree", "remove", "--force", selected_path.as_str()])?
-    } else {
-        run_git(&["worktree", "remove", selected_path.as_str()])?
-    };
-    if had_live_session {
-        Ok(format!(
-            "{} (closed terminal session for worktree)",
-            remove_output
-        ))
-    } else {
-        Ok(remove_output)
-    }
-}
-
 fn merge_selected_into_parent(app: &mut App) -> Result<String, Box<dyn Error>> {
     if app.selected_worktree >= app.worktrees.len() {
         return Ok("No worktree selected".to_string());
