@@ -225,6 +225,9 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
             refresh_worktrees(app);
             app.status_line = "Refreshed worktree list + config".to_string();
         }
+        KeyCode::Char('M') => {
+            toggle_worktree_art_mode(app);
+        }
         KeyCode::Char('a') => {
             app.mode = Mode::WorktreeCreateInput;
             app.new_worktree_branch.clear();
@@ -366,6 +369,120 @@ fn cycle_worktree_canvas_background(app: &mut App) {
         "Canvas background: {} (Ctrl+B to cycle)",
         app.worktree_canvas_bg_mode.short_label()
     );
+}
+
+fn toggle_worktree_art_mode(app: &mut App) {
+    app.worktree_art_mode = app.worktree_art_mode.next();
+    if app.worktree_art_mode == WorktreeArtMode::SpotifyConnector {
+        app.spotify_last_refresh = Instant::now()
+            .checked_sub(Duration::from_secs(5))
+            .unwrap_or_else(Instant::now);
+        refresh_spotify_now_playing(app);
+    }
+    app.status_line = format!(
+        "Worktree art mode: {} (M to toggle)",
+        app.worktree_art_mode.label()
+    );
+}
+
+fn refresh_spotify_now_playing(app: &mut App) {
+    if app.worktree_art_mode != WorktreeArtMode::SpotifyConnector {
+        return;
+    }
+
+    if app.spotify_last_refresh.elapsed() < Duration::from_millis(900) {
+        return;
+    }
+
+    app.spotify_last_refresh = Instant::now();
+
+    #[cfg(target_os = "macos")]
+    {
+        match fetch_spotify_now_playing_macos() {
+            Ok(Some(now_playing)) => {
+                app.spotify_now_playing = Some(now_playing);
+                app.spotify_refresh_error = None;
+            }
+            Ok(None) => {
+                app.spotify_now_playing = None;
+                app.spotify_refresh_error = None;
+            }
+            Err(err) => {
+                app.spotify_now_playing = None;
+                app.spotify_refresh_error = Some(err);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        app.spotify_now_playing = None;
+        app.spotify_refresh_error =
+            Some("Spotify connector currently supports macOS only".to_string());
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn fetch_spotify_now_playing_macos() -> Result<Option<SpotifyNowPlaying>, String> {
+    let script = concat!(
+        "if not application \"Spotify\" is running then return \"\"\n",
+        "tell application \"Spotify\"\n",
+        "set ps to player state as string\n",
+        "if ps is not \"playing\" and ps is not \"paused\" then return \"\"\n",
+        "set track_name to name of current track\n",
+        "set track_artist to artist of current track\n",
+        "set track_position to player position as string\n",
+        "set track_duration to duration of current track as string\n",
+        "return track_name & \"||\" & track_artist & \"||\" & ps & \"||\" & track_position & \"||\" & track_duration\n",
+        "end tell"
+    );
+
+    let output = Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .output()
+        .map_err(|err| format!("Failed to run osascript: {}", err))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            "Spotify AppleScript returned a non-zero exit status".to_string()
+        } else {
+            stderr
+        });
+    }
+
+    let payload = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if payload.is_empty() {
+        return Ok(None);
+    }
+
+    let mut parts = payload.splitn(5, "||");
+    let track = parts.next().unwrap_or_default().trim().to_string();
+    let artist = parts.next().unwrap_or_default().trim().to_string();
+    let state = parts.next().unwrap_or_default().trim().to_string();
+    let position_raw = parts.next().unwrap_or_default().trim();
+    let duration_raw = parts.next().unwrap_or_default().trim();
+
+    if track.is_empty() {
+        return Ok(None);
+    }
+
+    let position_seconds = position_raw.parse::<f64>().unwrap_or(0.0).max(0.0);
+    let duration_value = duration_raw.parse::<f64>().unwrap_or(0.0).max(0.0);
+    let duration_seconds = if duration_value > 10_000.0 {
+        duration_value / 1000.0
+    } else {
+        duration_value
+    };
+
+    Ok(Some(SpotifyNowPlaying {
+        track,
+        artist,
+        state,
+        position_seconds,
+        duration_seconds,
+    }))
 }
 
 fn toggle_perf_debug(app: &mut App) {
@@ -891,10 +1008,7 @@ fn interactive_shell_command() -> (String, Vec<&'static str>) {
         if command_exists_on_path("pwsh") {
             return ("pwsh".to_string(), vec!["-NoLogo", "-NoExit"]);
         }
-        return (
-            "powershell.exe".to_string(),
-            vec!["-NoLogo", "-NoExit"],
-        );
+        return ("powershell.exe".to_string(), vec!["-NoLogo", "-NoExit"]);
     }
 
     let shell = std::env::var("SHELL")

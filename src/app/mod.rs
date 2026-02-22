@@ -173,6 +173,37 @@ impl CanvasBackgroundMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WorktreeArtMode {
+    ConfigArt,
+    SpotifyConnector,
+}
+
+impl WorktreeArtMode {
+    fn next(self) -> Self {
+        match self {
+            WorktreeArtMode::ConfigArt => WorktreeArtMode::SpotifyConnector,
+            WorktreeArtMode::SpotifyConnector => WorktreeArtMode::ConfigArt,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            WorktreeArtMode::ConfigArt => "config art",
+            WorktreeArtMode::SpotifyConnector => "spotify connector",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct SpotifyNowPlaying {
+    track: String,
+    artist: String,
+    state: String,
+    position_seconds: f64,
+    duration_seconds: f64,
+}
+
 struct App {
     branch: String,
     ahead: usize,
@@ -199,6 +230,10 @@ struct App {
     worktree_canvas_pan_y: f64,
     worktree_graph_builder: WorktreeGraphBuilder,
     worktree_canvas_bg_mode: CanvasBackgroundMode,
+    worktree_art_mode: WorktreeArtMode,
+    spotify_now_playing: Option<SpotifyNowPlaying>,
+    spotify_last_refresh: Instant,
+    spotify_refresh_error: Option<String>,
     canvas_bg_effects: EffectManager<&'static str>,
     canvas_bg_last_tick: Instant,
     canvas_selected_border_effects: EffectManager<&'static str>,
@@ -670,6 +705,10 @@ impl App {
             worktree_canvas_pan_x: 0.0,
             worktree_canvas_pan_y: 0.0,
             worktree_canvas_bg_mode: CanvasBackgroundMode::GlitterStars,
+            worktree_art_mode: WorktreeArtMode::ConfigArt,
+            spotify_now_playing: None,
+            spotify_last_refresh: Instant::now(),
+            spotify_refresh_error: None,
             worktree_graph_builder: WorktreeGraphBuilder::Layered,
             canvas_bg_effects,
             canvas_bg_last_tick: Instant::now(),
@@ -911,6 +950,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             last_opencode_usage_tick = Instant::now();
         }
 
+        if app.view_mode == ViewMode::Worktrees {
+            refresh_spotify_now_playing(&mut app);
+        }
+
         // Resize terminal session to match actual popup dimensions
         if matches!(app.mode, Mode::AgentPopup) {
             if let Some(path) = app.agent_popup_path.clone() {
@@ -967,6 +1010,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         cycle_worktree_canvas_background(&mut app);
                         continue;
                     }
+
                     match app.mode {
                         Mode::Normal => {
                             should_quit = handle_normal_mode_key(&mut app, key)?;

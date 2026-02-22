@@ -3104,6 +3104,10 @@ fn worktree_right_panel_constraints(app: &App, area: Rect) -> [Constraint; 3] {
 }
 
 fn trimmed_art_line_count(app: &App) -> usize {
+    if app.worktree_art_mode == WorktreeArtMode::SpotifyConnector {
+        return 9;
+    }
+
     let mut start = 0usize;
     let mut end = app.config.worktree_graph_art.len();
 
@@ -3135,8 +3139,12 @@ fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect
     let max_width = area.width.saturating_sub(2) as usize;
     let max_lines = area.height.saturating_sub(2) as usize;
     let mut lines: Vec<Line<'_>> = Vec::new();
+    let mut panel_title = "art";
 
-    if max_width > 0 && max_lines > 0 {
+    if app.worktree_art_mode == WorktreeArtMode::SpotifyConnector {
+        panel_title = "spotify";
+        lines = spotify_art_lines(app, max_width, max_lines);
+    } else if max_width > 0 && max_lines > 0 {
         for raw in trimmed_art_lines(app).iter().take(max_lines) {
             let clean = sanitize_for_tui(raw.as_str());
             lines.push(Line::from(truncate_text(clean.as_str(), max_width)));
@@ -3157,6 +3165,7 @@ fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect
     let panel = Paragraph::new(lines)
         .block(
             Block::default()
+                .title(panel_title)
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Gray))
                 .style(Style::default().bg(Color::Black)),
@@ -3165,6 +3174,112 @@ fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect
         .alignment(Alignment::Left);
 
     frame.render_widget(panel, area);
+}
+
+fn spotify_art_lines(app: &App, max_width: usize, max_lines: usize) -> Vec<Line<'static>> {
+    if max_width == 0 || max_lines == 0 {
+        return Vec::new();
+    }
+
+    let mut lines = Vec::new();
+
+    if let Some(now_playing) = app.spotify_now_playing.as_ref() {
+        lines.push(Line::from("spotify connector"));
+        lines.push(Line::from(format!(
+            "state: {}",
+            sanitize_for_tui(now_playing.state.as_str())
+        )));
+        lines.push(Line::from(format!(
+            "song : {}",
+            truncate_text(
+                sanitize_for_tui(now_playing.track.as_str()).as_str(),
+                max_width.saturating_sub(7)
+            )
+        )));
+        lines.push(Line::from(format!(
+            "artist: {}",
+            truncate_text(
+                sanitize_for_tui(now_playing.artist.as_str()).as_str(),
+                max_width.saturating_sub(8)
+            )
+        )));
+
+        let progress = if now_playing.duration_seconds > 0.0 {
+            let pct = (now_playing.position_seconds / now_playing.duration_seconds).clamp(0.0, 1.0);
+            format!(
+                "time: {} / {} ({}%)",
+                format_duration(now_playing.position_seconds),
+                format_duration(now_playing.duration_seconds),
+                (pct * 100.0).round() as i32
+            )
+        } else {
+            format!("time: {}", format_duration(now_playing.position_seconds))
+        };
+        lines.push(Line::from(truncate_text(progress.as_str(), max_width)));
+        lines.push(Line::from(""));
+
+        let eq_width = max_width.min(30).max(10);
+        let levels = spotify_eq_levels(now_playing, eq_width);
+        lines.extend(spotify_eq_lines(levels));
+    } else if let Some(err) = app.spotify_refresh_error.as_deref() {
+        lines.push(Line::from("spotify connector"));
+        lines.push(Line::from(""));
+        lines.push(Line::from("Could not read Spotify:"));
+        lines.push(Line::from(truncate_text(err, max_width)));
+        lines.push(Line::from(""));
+        lines.push(Line::from("Tip: open Spotify, play a track,"));
+        lines.push(Line::from("then toggle with M."));
+    } else {
+        lines.push(Line::from("spotify connector"));
+        lines.push(Line::from(""));
+        lines.push(Line::from("No track detected."));
+        lines.push(Line::from("Open Spotify and start playback."));
+        lines.push(Line::from(""));
+        lines.push(Line::from("Toggle modes with M."));
+    }
+
+    lines.truncate(max_lines);
+    lines
+}
+
+fn spotify_eq_levels(now_playing: &SpotifyNowPlaying, bars: usize) -> Vec<u8> {
+    let mut seed = 0u64;
+    for b in now_playing.track.bytes().chain(now_playing.artist.bytes()) {
+        seed = seed.wrapping_mul(131).wrapping_add(b as u64 + 1);
+    }
+    let t = Instant::now().elapsed().as_secs_f64();
+
+    (0..bars)
+        .map(|idx| {
+            let x = idx as f64;
+            let wobble = ((seed % 19) as f64 * 0.03) + 0.85;
+            let wave_a = (t * 4.1 * wobble + x * 0.37).sin();
+            let wave_b = (t * 2.3 + x * 0.19 + (seed % 11) as f64).cos();
+            let wave_c = (t * 3.4 + x * 0.53 + (seed % 23) as f64 * 0.2).sin();
+            let mix = (wave_a * 0.52) + (wave_b * 0.32) + (wave_c * 0.16);
+            let normalized = ((mix + 1.0) * 0.5).clamp(0.0, 1.0);
+            (normalized * 7.0).round() as u8
+        })
+        .collect()
+}
+
+fn spotify_eq_lines(levels: Vec<u8>) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    for threshold in [5u8, 3u8, 1u8] {
+        let row = levels
+            .iter()
+            .map(|lvl| if *lvl >= threshold { '|' } else { ' ' })
+            .collect::<String>();
+        lines.push(Line::from(row));
+    }
+    lines
+}
+
+fn format_duration(seconds: f64) -> String {
+    let clamped = seconds.max(0.0).round() as u64;
+    let mins = clamped / 60;
+    let secs = clamped % 60;
+    format!("{}:{:02}", mins, secs)
 }
 
 fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
@@ -3304,6 +3419,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::styled("Ctrl+K", Style::default().fg(Color::LightBlue)),
             Span::raw(" next graph builder"),
         ]),
+        Line::from(vec![
+            Span::styled("M", Style::default().fg(Color::LightBlue)),
+            Span::raw(" toggle art / spotify connector"),
+        ]),
     ]);
 
     let title = if app.git_task.is_some() {
@@ -3382,6 +3501,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("  0       - reset view"),
             Line::from("  Shift+WASD - pan"),
             Line::from("  Ctrl+B  - cycle canvas background"),
+            Line::from("  M       - toggle config art / Spotify connector"),
             Line::from("  Ctrl+L  - toggle perf debugging + hitch log"),
             Line::from(""),
             Line::from("Flow: o/O launch shells or agents, c/p/m/d run git lifecycle"),
