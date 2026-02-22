@@ -1,15 +1,11 @@
 # Notes
 
-borders
-
-
-# bugs
-
-opencode merge solver does not paste nito opencode, probably need to use --prompt
-
 QOL:
 
-when staging cursor should stay in unstage where it where and not go down to staged and having to goback up
+* when staging cursor should stay in unstage where it where and not go down to staged and having to goback up
+* deleting wt should prompt for deleting child wt also
+* ability to set keybinds in config
+
 
 nown issues
 
@@ -18,3 +14,4 @@ nown issues
 * auto refresh on done command (status knows the satate)
 * add buffer for git commands so i dont have to wait
 * main not showing when behind
+
