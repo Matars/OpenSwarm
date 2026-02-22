@@ -3150,43 +3150,58 @@ fn spotify_art_lines(app: &App, max_width: usize, max_lines: usize) -> Vec<Line<
     let mut lines = Vec::new();
 
     if let Some(now_playing) = app.spotify_now_playing.as_ref() {
-        lines.push(Line::from("spotify connector"));
-        lines.push(Line::from(format!(
-            "state: {}",
-            sanitize_for_tui(now_playing.state.as_str())
-        )));
-        lines.push(Line::from(format!(
-            "song : {}",
-            truncate_text(
-                sanitize_for_tui(now_playing.track.as_str()).as_str(),
-                max_width.saturating_sub(7)
-            )
-        )));
-        lines.push(Line::from(format!(
-            "artist: {}",
-            truncate_text(
-                sanitize_for_tui(now_playing.artist.as_str()).as_str(),
-                max_width.saturating_sub(8)
-            )
-        )));
-
-        let progress = if now_playing.duration_seconds > 0.0 {
-            let pct = (now_playing.position_seconds / now_playing.duration_seconds).clamp(0.0, 1.0);
-            format!(
-                "time: {} / {} ({}%)",
-                format_duration(now_playing.position_seconds),
-                format_duration(now_playing.duration_seconds),
-                (pct * 100.0).round() as i32
-            )
+        let left_width = 12usize;
+        let right_width = max_width.saturating_sub(left_width + 1);
+        let title = truncate_text(
+            sanitize_for_tui(now_playing.track.as_str()).as_str(),
+            right_width.saturating_sub(2),
+        );
+        let artist = truncate_text(
+            sanitize_for_tui(now_playing.artist.as_str()).as_str(),
+            right_width.saturating_sub(2),
+        );
+        let ratio = if now_playing.duration_seconds > 0.0 {
+            (now_playing.position_seconds / now_playing.duration_seconds).clamp(0.0, 1.0)
         } else {
-            format!("time: {}", format_duration(now_playing.position_seconds))
+            0.0
         };
-        lines.push(Line::from(truncate_text(progress.as_str(), max_width)));
-        lines.push(Line::from(""));
+        let status_icon = spotify_status_icon(now_playing.state.as_str());
+        let timing = format!(
+            "{} {} / {}",
+            status_icon,
+            format_duration(now_playing.position_seconds),
+            format_duration(now_playing.duration_seconds)
+        );
+        let progress = spotify_chevron_progress(ratio, right_width.clamp(12, 26));
+        let controls = "⏮  ⏯  ⏭";
 
-        let eq_width = max_width.min(30).max(10);
-        let levels = spotify_eq_levels(now_playing, eq_width);
-        lines.extend(spotify_eq_lines(levels));
+        let left = [
+            "┌──────────┐",
+            "│▓▓▓▓▓▓▓▓▓▓│",
+            "│▓▓▒▒▒▒▒▒▓▓│",
+            "│▓▒▒▓▓▓▓▒▒▓│",
+            "│▓▒▒▒▒▒▒▒▒▓│",
+            "└──────────┘",
+        ];
+        let right = [
+            format!("♫ {}", title),
+            format!("♬ {}", artist),
+            timing,
+            String::new(),
+            controls.to_string(),
+            progress,
+        ];
+
+        for idx in 0..left.len() {
+            let l = left[idx];
+            let r = right.get(idx).cloned().unwrap_or_default();
+            lines.push(Line::from(format!(
+                "{:<width$} {}",
+                l,
+                r,
+                width = left_width
+            )));
+        }
     } else if let Some(err) = app.spotify_refresh_error.as_deref() {
         lines.push(Line::from("spotify connector"));
         lines.push(Line::from(""));
@@ -3208,40 +3223,23 @@ fn spotify_art_lines(app: &App, max_width: usize, max_lines: usize) -> Vec<Line<
     lines
 }
 
-fn spotify_eq_levels(now_playing: &SpotifyNowPlaying, bars: usize) -> Vec<u8> {
-    let mut seed = 0u64;
-    for b in now_playing.track.bytes().chain(now_playing.artist.bytes()) {
-        seed = seed.wrapping_mul(131).wrapping_add(b as u64 + 1);
-    }
-    let t = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
-
-    (0..bars)
-        .map(|idx| {
-            let x = idx as f64;
-            let wobble = ((seed % 19) as f64 * 0.03) + 0.85;
-            let wave_a = (t * 4.1 * wobble + x * 0.37).sin();
-            let wave_b = (t * 2.3 + x * 0.19 + (seed % 11) as f64).cos();
-            let wave_c = (t * 3.4 + x * 0.53 + (seed % 23) as f64 * 0.2).sin();
-            let mix = (wave_a * 0.52) + (wave_b * 0.32) + (wave_c * 0.16);
-            let normalized = ((mix + 1.0) * 0.5).clamp(0.0, 1.0);
-            (normalized * 7.0).round() as u8
-        })
-        .collect()
+fn spotify_chevron_progress(ratio: f64, width: usize) -> String {
+    let clamped_width = width.max(8);
+    let filled = ((clamped_width as f64) * ratio.clamp(0.0, 1.0)).round() as usize;
+    let filled = filled.min(clamped_width);
+    format!(
+        "{}{}",
+        ">".repeat(filled),
+        "-".repeat(clamped_width.saturating_sub(filled))
+    )
 }
 
-fn spotify_eq_lines(levels: Vec<u8>) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-    for threshold in [5u8, 3u8, 1u8] {
-        let row = levels
-            .iter()
-            .map(|lvl| if *lvl >= threshold { '|' } else { ' ' })
-            .collect::<String>();
-        lines.push(Line::from(row));
+fn spotify_status_icon(state: &str) -> &'static str {
+    match state {
+        "playing" => "▶",
+        "paused" => "⏸",
+        _ => "■",
     }
-    lines
 }
 
 fn format_duration(seconds: f64) -> String {
