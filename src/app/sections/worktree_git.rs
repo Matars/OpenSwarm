@@ -605,10 +605,42 @@ fn parse_branch_snapshot(line: &str) -> (String, usize, usize, bool) {
 }
 
 fn normalize_path(path: &str) -> String {
-    fs::canonicalize(Path::new(path))
-        .unwrap_or_else(|_| Path::new(path).to_path_buf())
-        .to_string_lossy()
-        .to_string()
+    let resolved = fs::canonicalize(Path::new(path)).unwrap_or_else(|_| Path::new(path).to_path_buf());
+    path_for_git_arg(resolved.as_path())
+}
+
+fn path_for_git_arg(path: &Path) -> String {
+    #[cfg(windows)]
+    {
+        return strip_windows_verbatim_prefix(path)
+            .to_string_lossy()
+            .to_string();
+    }
+
+    #[cfg(not(windows))]
+    {
+        path.to_string_lossy().to_string()
+    }
+}
+
+#[cfg(windows)]
+fn strip_windows_verbatim_prefix(path: &Path) -> PathBuf {
+    let raw = path.to_string_lossy();
+
+    if let Some(rest) = raw.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{}", rest));
+    }
+    if let Some(rest) = raw.strip_prefix(r"\\?\") {
+        return PathBuf::from(rest);
+    }
+    if let Some(rest) = raw.strip_prefix("//?/UNC/") {
+        return PathBuf::from(format!("//{}", rest));
+    }
+    if let Some(rest) = raw.strip_prefix("//?/") {
+        return PathBuf::from(rest);
+    }
+
+    path.to_path_buf()
 }
 
 fn merge_selected_into_parent(app: &mut App) -> Result<String, Box<dyn Error>> {
@@ -1148,6 +1180,8 @@ fn delete_branch_and_create_worktree(
 fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
     let sanitized = branch.replace('/', "-");
     let root = create_root_for_app(app);
+    let root_path = PathBuf::from(root.as_str());
+    let root_git_arg = path_for_git_arg(root_path.as_path());
     let container = workspaces_container_for_root(root.as_str());
     if let Err(err) = fs::create_dir_all(container.as_path()) {
         return Ok(format!(
@@ -1157,7 +1191,7 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
         ));
     }
     let path = container.join(sanitized);
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_for_git_arg(path.as_path());
     if path.exists() {
         return Ok(format!(
             "Target path already exists: {} (pick another branch name)",
@@ -1169,7 +1203,7 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
     let output = Command::new("git")
         .args([
             "-C",
-            root.as_str(),
+            root_git_arg.as_str(),
             "worktree",
             "add",
             "-b",
@@ -1187,7 +1221,7 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
 
     if output.status.success() {
         let verified = Command::new("git")
-            .args(["-C", root.as_str(), "worktree", "list", "--porcelain"])
+            .args(["-C", root_git_arg.as_str(), "worktree", "list", "--porcelain"])
             .output()
             .ok()
             .map(|out| sanitize_for_tui(String::from_utf8_lossy(&out.stdout).as_ref()))
@@ -1336,6 +1370,7 @@ fn create_worktrees_from_orchestrated_nodes(
     }
 
     let order = orchestrated_node_order(&nodes);
+    let root_git_arg = path_for_git_arg(Path::new(root));
     let container = workspaces_container_for_root(root);
     let _ = fs::create_dir_all(container.as_path());
 
@@ -1351,7 +1386,7 @@ fn create_worktrees_from_orchestrated_nodes(
         }
 
         let path = container.join(node.branch.replace('/', "-"));
-        let path_str = path.to_string_lossy().to_string();
+        let path_str = path_for_git_arg(path.as_path());
         if path.exists() {
             failed.push(format!("{} (path exists: {})", node.branch, path_str));
             continue;
@@ -1360,7 +1395,7 @@ fn create_worktrees_from_orchestrated_nodes(
         let output = match Command::new("git")
             .args([
                 "-C",
-                root,
+                root_git_arg.as_str(),
                 "worktree",
                 "add",
                 "-b",
@@ -1833,7 +1868,7 @@ fn repo_container_from_path(path: &str) -> Option<String> {
             Path::new(path).join(raw)
         };
         let common_abs = fs::canonicalize(common_dir.as_path()).unwrap_or(common_dir);
-        let parent = common_abs.parent()?.to_string_lossy().to_string();
+        let parent = path_for_git_arg(common_abs.parent()?);
         if parent.is_empty() {
             None
         } else {
