@@ -52,6 +52,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | `Tab` | Cycle panes |
 | `+` / `-` / `0` | Zoom in / out / reset |
 | `W` `A` `S` `D` | Pan canvas |
+| `M` | Toggle worktree art panel mode (config art / Spotify connector) |
 | `Ctrl+B` | Cycle canvas background effect |
 | `Ctrl+L` | Toggle frame-lag debug stats + hitch logging |
 
