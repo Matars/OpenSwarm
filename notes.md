@@ -17,3 +17,4 @@ nown issues
 * token calculation is wront (only per second to my knowledge)
 * auto refresh on done command (status knows the satate)
 * add buffer for git commands so i dont have to wait
+* main not showing when behind
