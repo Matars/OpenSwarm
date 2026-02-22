@@ -12,6 +12,7 @@ use std::{
     fs,
 };
 
+use base64::{prelude::BASE64_STANDARD, Engine};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
@@ -20,11 +21,12 @@ use crossterm::terminal::{
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
 use ratatui::Terminal;
+use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
 use tachyonfx::{fx, EffectManager, Interpolation};
 
 #[derive(Clone, Debug)]
@@ -199,9 +201,12 @@ impl WorktreeArtMode {
 struct SpotifyNowPlaying {
     track: String,
     artist: String,
-    state: String,
-    position_seconds: f64,
-    duration_seconds: f64,
+    art_url: Option<String>,
+}
+
+struct SpotifyCoverArt {
+    source_url: String,
+    image: StatefulProtocol,
 }
 
 struct App {
@@ -232,6 +237,8 @@ struct App {
     worktree_canvas_bg_mode: CanvasBackgroundMode,
     worktree_art_mode: WorktreeArtMode,
     spotify_now_playing: Option<SpotifyNowPlaying>,
+    spotify_cover_art: Option<SpotifyCoverArt>,
+    spotify_image_picker: Option<Picker>,
     spotify_last_refresh: Instant,
     spotify_refresh_error: Option<String>,
     canvas_bg_effects: EffectManager<&'static str>,
@@ -680,6 +687,7 @@ impl App {
         let mut canvas_selected_border_effects = EffectManager::default();
         canvas_selected_border_effects
             .add_unique_effect("selected-border", build_selected_node_border_effect());
+        let spotify_image_picker = Picker::from_query_stdio().ok();
         Self {
             branch: "unknown".to_string(),
             ahead: 0,
@@ -707,6 +715,8 @@ impl App {
             worktree_canvas_bg_mode: CanvasBackgroundMode::GlitterStars,
             worktree_art_mode: WorktreeArtMode::ConfigArt,
             spotify_now_playing: None,
+            spotify_cover_art: None,
+            spotify_image_picker,
             spotify_last_refresh: Instant::now(),
             spotify_refresh_error: None,
             worktree_graph_builder: WorktreeGraphBuilder::Layered,

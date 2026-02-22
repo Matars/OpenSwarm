@@ -397,6 +397,7 @@ fn refresh_spotify_now_playing(app: &mut App) {
     app.spotify_last_refresh = Instant::now();
 
     if let Ok(Some(now_playing)) = fetch_spotify_now_playing_playerctl() {
+        sync_spotify_cover_art(app, &now_playing);
         app.spotify_now_playing = Some(now_playing);
         app.spotify_refresh_error = None;
         return;
@@ -406,15 +407,18 @@ fn refresh_spotify_now_playing(app: &mut App) {
     {
         match fetch_spotify_now_playing_macos() {
             Ok(Some(now_playing)) => {
+                sync_spotify_cover_art(app, &now_playing);
                 app.spotify_now_playing = Some(now_playing);
                 app.spotify_refresh_error = None;
             }
             Ok(None) => {
                 app.spotify_now_playing = None;
+                app.spotify_cover_art = None;
                 app.spotify_refresh_error = None;
             }
             Err(err) => {
                 app.spotify_now_playing = None;
+                app.spotify_cover_art = None;
                 app.spotify_refresh_error = Some(err);
             }
         }
@@ -423,11 +427,67 @@ fn refresh_spotify_now_playing(app: &mut App) {
     #[cfg(not(target_os = "macos"))]
     {
         app.spotify_now_playing = None;
+        app.spotify_cover_art = None;
         app.spotify_refresh_error = Some(
             "No MPRIS Spotify metadata found (try installing playerctl and starting playback)"
                 .to_string(),
         );
     }
+}
+
+fn sync_spotify_cover_art(app: &mut App, now_playing: &SpotifyNowPlaying) {
+    let Some(url) = now_playing.art_url.as_deref() else {
+        app.spotify_cover_art = None;
+        return;
+    };
+
+    if app
+        .spotify_cover_art
+        .as_ref()
+        .map(|art| art.source_url.as_str() == url)
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    let Some(picker) = app.spotify_image_picker.as_ref() else {
+        app.spotify_cover_art = None;
+        return;
+    };
+
+    app.spotify_cover_art = load_spotify_cover_art(url, picker).ok();
+}
+
+fn load_spotify_cover_art(url: &str, picker: &Picker) -> Result<SpotifyCoverArt, String> {
+    let bytes = if let Some(file_path) = url.strip_prefix("file://") {
+        fs::read(file_path).map_err(|err| format!("Failed to read cover art file: {}", err))?
+    } else if url.starts_with("data:") {
+        let encoded = url
+            .split_once("base64,")
+            .map(|(_, data)| data)
+            .ok_or_else(|| "Invalid base64 art URL".to_string())?;
+        BASE64_STANDARD
+            .decode(encoded)
+            .map_err(|err| format!("Failed to decode base64 cover art: {}", err))?
+    } else {
+        reqwest::blocking::Client::new()
+            .get(url)
+            .send()
+            .and_then(|resp| resp.bytes())
+            .map(|bytes| bytes.to_vec())
+            .map_err(|err| format!("Failed to download cover art: {}", err))?
+    };
+
+    let image = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|err| format!("Could not detect cover art format: {}", err))?
+        .decode()
+        .map_err(|err| format!("Could not decode cover art image: {}", err))?;
+
+    Ok(SpotifyCoverArt {
+        source_url: url.to_string(),
+        image: picker.new_resize_protocol(image),
+    })
 }
 
 fn fetch_spotify_now_playing_playerctl() -> Result<Option<SpotifyNowPlaying>, String> {
@@ -437,7 +497,7 @@ fn fetch_spotify_now_playing_playerctl() -> Result<Option<SpotifyNowPlaying>, St
             "--player=spotify",
             "metadata",
             "--format",
-            "{{status}}||{{title}}||{{artist}}||{{mpris:length}}",
+            "{{title}}||{{artist}}||{{mpris:artUrl}}",
         ])
         .output()
         .map_err(|err| format!("Failed to run playerctl: {}", err))?;
@@ -460,42 +520,23 @@ fn fetch_spotify_now_playing_playerctl() -> Result<Option<SpotifyNowPlaying>, St
         return Ok(None);
     }
 
-    let mut parts = payload.splitn(4, "||");
-    let state = parts.next().unwrap_or_default().trim().to_ascii_lowercase();
+    let mut parts = payload.splitn(3, "||");
     let track = parts.next().unwrap_or_default().trim().to_string();
     let artist = parts.next().unwrap_or_default().trim().to_string();
-    let duration_raw = parts.next().unwrap_or_default().trim();
+    let art_raw = parts.next().unwrap_or_default().trim();
 
     if track.is_empty() {
         return Ok(None);
     }
 
-    let position_output = Command::new("playerctl")
-        .args(["--player=spotify", "position"])
-        .output()
-        .map_err(|err| format!("Failed to run playerctl position: {}", err))?;
-    let position_seconds = if position_output.status.success() {
-        String::from_utf8_lossy(&position_output.stdout)
-            .trim()
-            .parse::<f64>()
-            .unwrap_or(0.0)
-            .max(0.0)
-    } else {
-        0.0
-    };
-    let duration_micros = duration_raw.parse::<f64>().unwrap_or(0.0).max(0.0);
-    let duration_seconds = if duration_micros > 0.0 {
-        duration_micros / 1_000_000.0
-    } else {
-        0.0
-    };
-
     Ok(Some(SpotifyNowPlaying {
         track,
         artist,
-        state,
-        position_seconds,
-        duration_seconds,
+        art_url: if art_raw.is_empty() {
+            None
+        } else {
+            Some(art_raw.to_string())
+        },
     }))
 }
 
@@ -508,9 +549,11 @@ fn fetch_spotify_now_playing_macos() -> Result<Option<SpotifyNowPlaying>, String
         "if ps is not \"playing\" and ps is not \"paused\" then return \"\"\n",
         "set track_name to name of current track\n",
         "set track_artist to artist of current track\n",
-        "set track_position to player position as string\n",
-        "set track_duration to duration of current track as string\n",
-        "return track_name & \"||\" & track_artist & \"||\" & ps & \"||\" & track_position & \"||\" & track_duration\n",
+        "set art_url to \"\"\n",
+        "try\n",
+        "set art_url to artwork url of current track\n",
+        "end try\n",
+        "return track_name & \"||\" & track_artist & \"||\" & art_url\n",
         "end tell"
     );
 
@@ -534,31 +577,23 @@ fn fetch_spotify_now_playing_macos() -> Result<Option<SpotifyNowPlaying>, String
         return Ok(None);
     }
 
-    let mut parts = payload.splitn(5, "||");
+    let mut parts = payload.splitn(3, "||");
     let track = parts.next().unwrap_or_default().trim().to_string();
     let artist = parts.next().unwrap_or_default().trim().to_string();
-    let state = parts.next().unwrap_or_default().trim().to_string();
-    let position_raw = parts.next().unwrap_or_default().trim();
-    let duration_raw = parts.next().unwrap_or_default().trim();
+    let art_raw = parts.next().unwrap_or_default().trim();
 
     if track.is_empty() {
         return Ok(None);
     }
 
-    let position_seconds = position_raw.parse::<f64>().unwrap_or(0.0).max(0.0);
-    let duration_value = duration_raw.parse::<f64>().unwrap_or(0.0).max(0.0);
-    let duration_seconds = if duration_value > 10_000.0 {
-        duration_value / 1000.0
-    } else {
-        duration_value
-    };
-
     Ok(Some(SpotifyNowPlaying {
         track,
         artist,
-        state,
-        position_seconds,
-        duration_seconds,
+        art_url: if art_raw.is_empty() {
+            None
+        } else {
+            Some(art_raw.to_string())
+        },
     }))
 }
 
