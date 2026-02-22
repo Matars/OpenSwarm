@@ -3071,7 +3071,7 @@ fn worktree_right_panel_constraints(app: &App, area: Rect) -> [Constraint; 3] {
 
 fn trimmed_art_line_count(app: &App) -> usize {
     if app.worktree_art_mode == WorktreeArtMode::SpotifyConnector {
-        return 9;
+        return 14;
     }
 
     let mut start = 0usize;
@@ -3101,20 +3101,38 @@ fn trimmed_art_lines<'a>(app: &'a App) -> &'a [String] {
     &app.config.worktree_graph_art[start..end]
 }
 
-fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
-    let max_width = area.width.saturating_sub(2) as usize;
-    let max_lines = area.height.saturating_sub(2) as usize;
-    let mut lines: Vec<Line<'_>> = Vec::new();
-    let mut panel_title = "art";
+fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, area: Rect) {
+    let title = if app.worktree_art_mode == WorktreeArtMode::SpotifyConnector {
+        "spotify"
+    } else {
+        "art"
+    };
+
+    frame.render_widget(
+        Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Gray))
+            .style(Style::default().bg(Color::Black)),
+        area,
+    );
+
+    let inner = area.inner(Margin::new(1, 1));
+    if inner.width < 2 || inner.height < 2 {
+        return;
+    }
 
     if app.worktree_art_mode == WorktreeArtMode::SpotifyConnector {
-        panel_title = "spotify";
-        lines = spotify_art_lines(app, max_width, max_lines);
-    } else if max_width > 0 && max_lines > 0 {
-        for raw in trimmed_art_lines(app).iter().take(max_lines) {
-            let clean = sanitize_for_tui(raw.as_str());
-            lines.push(Line::from(truncate_text(clean.as_str(), max_width)));
-        }
+        draw_spotify_art_panel(frame, app, inner);
+        return;
+    }
+
+    let max_width = inner.width as usize;
+    let max_lines = inner.height as usize;
+    let mut lines: Vec<Line<'_>> = Vec::new();
+    for raw in trimmed_art_lines(app).iter().take(max_lines) {
+        let clean = sanitize_for_tui(raw.as_str());
+        lines.push(Line::from(truncate_text(clean.as_str(), max_width)));
     }
 
     if lines.is_empty() {
@@ -3128,125 +3146,82 @@ fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect
         )));
     }
 
-    let panel = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .title(panel_title)
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Gray))
-                .style(Style::default().bg(Color::Black)),
-        )
-        .style(Style::default().bg(Color::Black).fg(Color::White))
-        .alignment(Alignment::Left);
-
-    frame.render_widget(panel, area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().bg(Color::Black).fg(Color::White))
+            .alignment(Alignment::Left),
+        inner,
+    );
 }
 
-fn spotify_art_lines(app: &App, max_width: usize, max_lines: usize) -> Vec<Line<'static>> {
-    if max_width == 0 || max_lines == 0 {
-        return Vec::new();
-    }
-
-    let mut lines = Vec::new();
-
+fn draw_spotify_art_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, area: Rect) {
     if let Some(now_playing) = app.spotify_now_playing.as_ref() {
-        let left_width = 12usize;
-        let right_width = max_width.saturating_sub(left_width + 1);
-        let title = truncate_text(
-            sanitize_for_tui(now_playing.track.as_str()).as_str(),
-            right_width.saturating_sub(2),
-        );
-        let artist = truncate_text(
-            sanitize_for_tui(now_playing.artist.as_str()).as_str(),
-            right_width.saturating_sub(2),
-        );
-        let ratio = if now_playing.duration_seconds > 0.0 {
-            (now_playing.position_seconds / now_playing.duration_seconds).clamp(0.0, 1.0)
+        let cover_width = area
+            .height
+            .saturating_mul(2)
+            .clamp(12, 24)
+            .min(area.width / 2);
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(cover_width), Constraint::Min(10)])
+            .split(area);
+
+        let cover_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray));
+        frame.render_widget(cover_block, columns[0]);
+        let cover_inner = columns[0].inner(Margin::new(1, 1));
+
+        if let Some(cover) = app.spotify_cover_art.as_mut() {
+            frame.render_stateful_widget(StatefulImage::default(), cover_inner, &mut cover.image);
         } else {
-            0.0
-        };
-        let status_icon = spotify_status_icon(now_playing.state.as_str());
-        let timing = format!(
-            "{} {} / {}",
-            status_icon,
-            format_duration(now_playing.position_seconds),
-            format_duration(now_playing.duration_seconds)
-        );
-        let progress = spotify_chevron_progress(ratio, right_width.clamp(12, 26));
-        let controls = "⏮  ⏯  ⏭";
-
-        let left = [
-            "┌──────────┐",
-            "│▓▓▓▓▓▓▓▓▓▓│",
-            "│▓▓▒▒▒▒▒▒▓▓│",
-            "│▓▒▒▓▓▓▓▒▒▓│",
-            "│▓▒▒▒▒▒▒▒▒▓│",
-            "└──────────┘",
-        ];
-        let right = [
-            format!("♫ {}", title),
-            format!("♬ {}", artist),
-            timing,
-            String::new(),
-            controls.to_string(),
-            progress,
-        ];
-
-        for idx in 0..left.len() {
-            let l = left[idx];
-            let r = right.get(idx).cloned().unwrap_or_default();
-            lines.push(Line::from(format!(
-                "{:<width$} {}",
-                l,
-                r,
-                width = left_width
-            )));
+            frame.render_widget(
+                Paragraph::new("no cover")
+                    .alignment(Alignment::Center)
+                    .style(Style::default().fg(Color::DarkGray)),
+                cover_inner,
+            );
         }
-    } else if let Some(err) = app.spotify_refresh_error.as_deref() {
-        lines.push(Line::from("spotify connector"));
-        lines.push(Line::from(""));
-        lines.push(Line::from("Could not read Spotify:"));
-        lines.push(Line::from(truncate_text(err, max_width)));
-        lines.push(Line::from(""));
-        lines.push(Line::from("Tip: open Spotify, play a track,"));
-        lines.push(Line::from("then toggle with M."));
+
+        let right_width = columns[1].width.saturating_sub(1) as usize;
+        let lines = vec![
+            Line::from(vec![
+                Span::styled("song  ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    truncate_text(
+                        sanitize_for_tui(now_playing.track.as_str()).as_str(),
+                        right_width,
+                    ),
+                    Style::default().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("artist", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    format!(
+                        " {}",
+                        truncate_text(
+                            sanitize_for_tui(now_playing.artist.as_str()).as_str(),
+                            right_width
+                        )
+                    ),
+                    Style::default().fg(Color::White),
+                ),
+            ]),
+        ];
+        frame.render_widget(Paragraph::new(lines).alignment(Alignment::Left), columns[1]);
+        return;
+    }
+
+    let mut lines: Vec<Line<'_>> = Vec::new();
+    if let Some(err) = app.spotify_refresh_error.as_deref() {
+        lines.push(Line::from("Could not read Spotify"));
+        lines.push(Line::from(truncate_text(err, area.width as usize)));
     } else {
-        lines.push(Line::from("spotify connector"));
-        lines.push(Line::from(""));
         lines.push(Line::from("No track detected."));
-        lines.push(Line::from("Open Spotify and start playback."));
-        lines.push(Line::from(""));
-        lines.push(Line::from("Toggle modes with M."));
+        lines.push(Line::from("Start Spotify playback."));
     }
-
-    lines.truncate(max_lines);
-    lines
-}
-
-fn spotify_chevron_progress(ratio: f64, width: usize) -> String {
-    let clamped_width = width.max(8);
-    let filled = ((clamped_width as f64) * ratio.clamp(0.0, 1.0)).round() as usize;
-    let filled = filled.min(clamped_width);
-    format!(
-        "{}{}",
-        ">".repeat(filled),
-        "-".repeat(clamped_width.saturating_sub(filled))
-    )
-}
-
-fn spotify_status_icon(state: &str) -> &'static str {
-    match state {
-        "playing" => "▶",
-        "paused" => "⏸",
-        _ => "■",
-    }
-}
-
-fn format_duration(seconds: f64) -> String {
-    let clamped = seconds.max(0.0).round() as u64;
-    let mins = clamped / 60;
-    let secs = clamped % 60;
-    format!("{}:{:02}", mins, secs)
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Left), area);
 }
 
 fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {

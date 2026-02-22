@@ -8,7 +8,7 @@ nav_order: 2
 ## Worktree graph visualization
 
 Worktrees are displayed as an interactive graph with parent-child relationships. Navigate with arrow keys or `h`/`j`/`k`/`l`. Press `Ctrl+K` to cycle graph builders: top-down balanced, layered, left-right, trunk, swimlanes, and indented. Zoom and pan the canvas. Each node shows branch name, status badges (`dirty`, `behind parent`, `behind head`, `committed`, `local only`, `pushed`, `merged with parent`), ahead/behind counts, and live agent activity. Edges are color-coded by branch and rendered with terminal-safe single-width glyphs for consistent alignment.
-Press `M` to switch the right-side art panel between configured static art and the Spotify connector view (now playing + animated bars). The connector reads Spotify metadata through `playerctl` (MPRIS) when available and falls back to AppleScript on macOS.
+Press `M` to switch the right-side art panel between configured static art and the Spotify connector view (album art + song + artist). The connector reads Spotify metadata through `playerctl` (MPRIS) when available and falls back to AppleScript on macOS.
 
 ## Embedded PTY terminals
 

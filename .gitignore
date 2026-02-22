@@ -10,3 +10,6 @@
 # Rust backup files
 **/*.rs.bk
 
+# Local experimentation forks
+/vendor/
+/third_party/
