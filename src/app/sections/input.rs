@@ -396,6 +396,12 @@ fn refresh_spotify_now_playing(app: &mut App) {
 
     app.spotify_last_refresh = Instant::now();
 
+    if let Ok(Some(now_playing)) = fetch_spotify_now_playing_playerctl() {
+        app.spotify_now_playing = Some(now_playing);
+        app.spotify_refresh_error = None;
+        return;
+    }
+
     #[cfg(target_os = "macos")]
     {
         match fetch_spotify_now_playing_macos() {
@@ -417,9 +423,65 @@ fn refresh_spotify_now_playing(app: &mut App) {
     #[cfg(not(target_os = "macos"))]
     {
         app.spotify_now_playing = None;
-        app.spotify_refresh_error =
-            Some("Spotify connector currently supports macOS only".to_string());
+        app.spotify_refresh_error = Some(
+            "No MPRIS Spotify metadata found (try installing playerctl and starting playback)"
+                .to_string(),
+        );
     }
+}
+
+fn fetch_spotify_now_playing_playerctl() -> Result<Option<SpotifyNowPlaying>, String> {
+    // Inspired by qxb3/fum's MPRIS metadata flow (MIT).
+    let output = Command::new("playerctl")
+        .args([
+            "--player=spotify",
+            "metadata",
+            "--format",
+            "{{status}}||{{title}}||{{artist}}||{{position}}||{{mpris:length}}",
+        ])
+        .output()
+        .map_err(|err| format!("Failed to run playerctl: {}", err))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            "playerctl returned a non-zero exit status".to_string()
+        } else {
+            stderr
+        });
+    }
+
+    let payload = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if payload.is_empty() {
+        return Ok(None);
+    }
+
+    let mut parts = payload.splitn(5, "||");
+    let state = parts.next().unwrap_or_default().trim().to_string();
+    let track = parts.next().unwrap_or_default().trim().to_string();
+    let artist = parts.next().unwrap_or_default().trim().to_string();
+    let position_raw = parts.next().unwrap_or_default().trim();
+    let duration_raw = parts.next().unwrap_or_default().trim();
+
+    if track.is_empty() {
+        return Ok(None);
+    }
+
+    let position_seconds = position_raw.parse::<f64>().unwrap_or(0.0).max(0.0);
+    let duration_micros = duration_raw.parse::<f64>().unwrap_or(0.0).max(0.0);
+    let duration_seconds = if duration_micros > 0.0 {
+        duration_micros / 1_000_000.0
+    } else {
+        0.0
+    };
+
+    Ok(Some(SpotifyNowPlaying {
+        track,
+        artist,
+        state,
+        position_seconds,
+        duration_seconds,
+    }))
 }
 
 #[cfg(target_os = "macos")]
