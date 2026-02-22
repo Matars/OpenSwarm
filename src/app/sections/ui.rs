@@ -3190,14 +3190,26 @@ fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, area: 
 
 fn draw_spotify_art_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, area: Rect) {
     if let Some(now_playing) = app.spotify_now_playing.as_ref() {
+        let text_min_width: u16 = 20;
+        let gap_width: u16 = 2;
+        let max_cover_width = area
+            .width
+            .saturating_sub(text_min_width)
+            .saturating_sub(gap_width)
+            .max(8);
         let cover_width = area
             .height
             .saturating_mul(2)
             .clamp(12, 24)
-            .min(area.width / 2);
+            .min(max_cover_width)
+            .max(8);
         let columns = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(cover_width), Constraint::Min(10)])
+            .constraints([
+                Constraint::Length(cover_width),
+                Constraint::Length(gap_width),
+                Constraint::Min(text_min_width),
+            ])
             .split(area);
 
         let cover_height = (cover_width / 2).max(6).min(area.height);
@@ -3214,7 +3226,7 @@ fn draw_spotify_art_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, area: R
             );
         }
 
-        let right_width = columns[1].width.saturating_sub(1) as usize;
+        let right_width = columns[2].width.saturating_sub(1) as usize;
         let lines = vec![
             Line::from(vec![
                 Span::styled("song  ", Style::default().fg(Color::Gray)),
@@ -3240,7 +3252,7 @@ fn draw_spotify_art_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, area: R
                 ),
             ]),
         ];
-        frame.render_widget(Paragraph::new(lines).alignment(Alignment::Left), columns[1]);
+        frame.render_widget(Paragraph::new(lines).alignment(Alignment::Left), columns[2]);
         return;
     }
 
