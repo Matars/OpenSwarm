@@ -3200,11 +3200,14 @@ fn draw_spotify_art_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, area: R
             .constraints([Constraint::Length(cover_width), Constraint::Min(10)])
             .split(area);
 
+        let cover_height = (cover_width / 2).max(6).min(area.height);
+        let cover_rect = Rect::new(columns[0].x, columns[0].y, columns[0].width, cover_height);
+
         let cover_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::DarkGray));
-        frame.render_widget(cover_block, columns[0]);
-        let cover_inner = columns[0].inner(Margin::new(1, 1));
+        frame.render_widget(cover_block, cover_rect);
+        let cover_inner = cover_rect.inner(Margin::new(1, 1));
 
         if let Some(cover) = app.spotify_cover_art.as_mut() {
             frame.render_stateful_widget(StatefulImage::default(), cover_inner, &mut cover.image);
