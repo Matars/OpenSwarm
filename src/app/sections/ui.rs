@@ -3213,7 +3213,10 @@ fn spotify_eq_levels(now_playing: &SpotifyNowPlaying, bars: usize) -> Vec<u8> {
     for b in now_playing.track.bytes().chain(now_playing.artist.bytes()) {
         seed = seed.wrapping_mul(131).wrapping_add(b as u64 + 1);
     }
-    let t = Instant::now().elapsed().as_secs_f64();
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
 
     (0..bars)
         .map(|idx| {
