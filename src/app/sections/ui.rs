@@ -3660,7 +3660,7 @@ fn draw_worktree_orchestrate_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(4),
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(1),
@@ -3672,6 +3672,8 @@ fn draw_worktree_orchestrate_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     } else {
         "disabled"
     };
+    let planner_status = orchestrator_plan_status_text(app);
+    let planner_status_style = orchestrator_plan_status_style(app);
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(
@@ -3681,6 +3683,10 @@ fn draw_worktree_orchestrate_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
                 "Planner: {} | max nodes: {}",
                 planner_state, app.config.worktree_orchestrator_max_nodes
             )),
+            Line::from(vec![
+                Span::styled("Planner status: ", Style::default().fg(Color::Gray)),
+                Span::styled(planner_status, planner_status_style),
+            ]),
         ])
         .style(Style::default().fg(Color::Gray)),
         layout[0],
@@ -3708,11 +3714,36 @@ fn draw_worktree_orchestrate_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     );
 
     frame.render_widget(
-        Paragraph::new("Enter: plan + prompt preview, Esc: cancel")
+        Paragraph::new("Enter: plan + prompt preview, Esc: cancel (disabled while planning)")
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Gray)),
         layout[3],
     );
+}
+
+fn orchestrator_plan_status_text(app: &App) -> String {
+    match app.orchestrator_plan_state {
+        OrchestratorPlanState::Idle => "idle".to_string(),
+        OrchestratorPlanState::Loading { started_at } => {
+            let elapsed = Instant::now().saturating_duration_since(started_at);
+            format!(
+                "{} loading ({:.1}s)",
+                spinner_glyph(elapsed),
+                elapsed.as_secs_f32()
+            )
+        }
+        OrchestratorPlanState::Failed { ref message } => {
+            format!("failed ({})", truncate_text(message.as_str(), 64))
+        }
+    }
+}
+
+fn orchestrator_plan_status_style(app: &App) -> Style {
+    match app.orchestrator_plan_state {
+        OrchestratorPlanState::Idle => Style::default().fg(Color::LightCyan),
+        OrchestratorPlanState::Loading { .. } => Style::default().fg(Color::Yellow),
+        OrchestratorPlanState::Failed { .. } => Style::default().fg(Color::Red),
+    }
 }
 
 fn draw_worktree_orchestrate_preview_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
@@ -3813,7 +3844,7 @@ fn draw_worktree_orchestrate_preview_modal(frame: &mut ratatui::Frame<'_>, app: 
     );
 
     frame.render_widget(
-        Paragraph::new("Up/Down select | Space accept/reject | R refine | A accept all | Enter execute accepted | Esc cancel")
+        Paragraph::new("Up/Down select | Space accept/reject | R refine | A accept all | Enter execute + launch prompts in background | Esc cancel")
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Gray)),
         layout[3],

@@ -605,7 +605,8 @@ fn parse_branch_snapshot(line: &str) -> (String, usize, usize, bool) {
 }
 
 fn normalize_path(path: &str) -> String {
-    let resolved = fs::canonicalize(Path::new(path)).unwrap_or_else(|_| Path::new(path).to_path_buf());
+    let resolved =
+        fs::canonicalize(Path::new(path)).unwrap_or_else(|_| Path::new(path).to_path_buf());
     path_for_git_arg(resolved.as_path())
 }
 
@@ -1221,7 +1222,13 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
 
     if output.status.success() {
         let verified = Command::new("git")
-            .args(["-C", root_git_arg.as_str(), "worktree", "list", "--porcelain"])
+            .args([
+                "-C",
+                root_git_arg.as_str(),
+                "worktree",
+                "list",
+                "--porcelain",
+            ])
             .output()
             .ok()
             .map(|out| sanitize_for_tui(String::from_utf8_lossy(&out.stdout).as_ref()))
@@ -1299,6 +1306,7 @@ struct ProposedWorktreeNode {
 #[derive(Clone, Debug)]
 struct OrchestratedWorktreePlan {
     planner_source: &'static str,
+    planner_error: Option<String>,
     nodes: Vec<ProposedWorktreeNode>,
 }
 
@@ -1317,6 +1325,7 @@ fn plan_orchestrated_worktrees_from_requirement(
     } else {
         "heuristic"
     };
+    let mut planner_error: Option<String> = None;
     let prompt_template = load_worktree_orchestrator_prompt_template(prompt_path)
         .unwrap_or_else(default_worktree_orchestrator_prompt_template);
 
@@ -1331,8 +1340,9 @@ fn plan_orchestrated_worktrees_from_requirement(
             prompt_template.as_str(),
         ) {
             Ok(plan) => plan,
-            Err(_) => {
+            Err(err) => {
                 planner_source = "heuristic";
+                planner_error = Some(err);
                 heuristic_worktree_plan(requirement, root_branch)
             }
         }
@@ -1343,6 +1353,9 @@ fn plan_orchestrated_worktrees_from_requirement(
     if nodes.is_empty() {
         nodes = heuristic_worktree_plan(requirement, root_branch);
         planner_source = "heuristic";
+        if planner_error.is_none() {
+            planner_error = Some("Planner returned no valid branch nodes".to_string());
+        }
     }
 
     let normalized = normalize_orchestrated_nodes(
@@ -1355,6 +1368,7 @@ fn plan_orchestrated_worktrees_from_requirement(
     );
     OrchestratedWorktreePlan {
         planner_source,
+        planner_error,
         nodes: normalized,
     }
 }

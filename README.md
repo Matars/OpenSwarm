@@ -62,7 +62,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | Key | Action |
 |-----|--------|
 | `a` | Create worktree |
-| `g` | Orchestrate feature, review per-leaf prompts, execute accepted nodes |
+| `g` | Orchestrate feature, review per-leaf prompts, execute accepted nodes, and start prompts in background PTYs |
 | `o` | Open shell |
 | `O` | Open agent picker |
 | `c` | Commit |

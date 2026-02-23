@@ -253,11 +253,13 @@ struct App {
     new_worktree_base: WorktreeCreateBase,
     pending_create_branch: String,
     orchestrator_requirement_input: String,
+    orchestrator_plan_state: OrchestratorPlanState,
     orchestrator_planned_requirement: String,
     orchestrator_planner_source: String,
     orchestrator_prompt_nodes: Vec<OrchestratorPromptNode>,
     orchestrator_prompt_selected: usize,
     orchestrator_prompt_edit_input: String,
+    pending_orchestrator_launch: Option<PendingOrchestratorLaunch>,
     confirm_delete_branch_yes: bool,
     pending_remove_worktree_path: String,
     confirm_remove_worktree_yes: bool,
@@ -292,6 +294,8 @@ struct App {
     notes_pending_op: Option<char>,
     agent_tx: Sender<AgentEvent>,
     agent_rx: Receiver<AgentEvent>,
+    orchestrator_plan_tx: Sender<OrchestratorPlanEvent>,
+    orchestrator_plan_rx: Receiver<OrchestratorPlanEvent>,
     git_task: Option<GitTaskState>,
     git_task_queue: VecDeque<QueuedGitTask>,
     git_task_tx: Sender<GitTaskEvent>,
@@ -309,6 +313,27 @@ struct OrchestratorPromptNode {
     goal: String,
     prompt: String,
     accepted: bool,
+}
+
+enum OrchestratorPlanState {
+    Idle,
+    Loading { started_at: Instant },
+    Failed { message: String },
+}
+
+struct OrchestratorPlanEvent {
+    requirement: String,
+    result: Result<OrchestratedWorktreePlan, String>,
+}
+
+struct PendingOrchestratorLaunch {
+    requirement: String,
+    nodes: Vec<OrchestratorLaunchNode>,
+}
+
+struct OrchestratorLaunchNode {
+    branch: String,
+    prompt: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -679,6 +704,7 @@ enum DiffPreviewKind {
 impl App {
     fn new() -> Self {
         let (agent_tx, agent_rx) = mpsc::channel();
+        let (orchestrator_plan_tx, orchestrator_plan_rx) = mpsc::channel();
         let (git_task_tx, git_task_rx) = mpsc::channel();
         let (status_refresh_tx, status_refresh_rx) = mpsc::channel();
         let config = load_openswarm_config();
@@ -732,11 +758,13 @@ impl App {
             new_worktree_base: WorktreeCreateBase::Selected,
             pending_create_branch: String::new(),
             orchestrator_requirement_input: String::new(),
+            orchestrator_plan_state: OrchestratorPlanState::Idle,
             orchestrator_planned_requirement: String::new(),
             orchestrator_planner_source: String::new(),
             orchestrator_prompt_nodes: Vec::new(),
             orchestrator_prompt_selected: 0,
             orchestrator_prompt_edit_input: String::new(),
+            pending_orchestrator_launch: None,
             confirm_delete_branch_yes: false,
             pending_remove_worktree_path: String::new(),
             confirm_remove_worktree_yes: false,
@@ -771,6 +799,8 @@ impl App {
             notes_pending_op: None,
             agent_tx,
             agent_rx,
+            orchestrator_plan_tx,
+            orchestrator_plan_rx,
             git_task: None,
             git_task_queue: VecDeque::new(),
             git_task_tx,
@@ -946,6 +976,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         loop_phases.drain_git_task_events = phase_started.elapsed();
 
         drain_status_refresh_events(&mut app);
+        drain_orchestrator_plan_events(&mut app);
 
         let phase_started = Instant::now();
         refresh_agent_sessions(&mut app);

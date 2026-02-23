@@ -238,6 +238,8 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
         KeyCode::Char('g') => {
             app.mode = Mode::WorktreeOrchestrateInput;
             app.orchestrator_requirement_input.clear();
+            app.orchestrator_plan_state = OrchestratorPlanState::Idle;
+            app.pending_orchestrator_launch = None;
             app.status_line =
                 "Orchestrate worktrees: describe the feature, Enter to preview prompts".to_string();
         }
@@ -1644,10 +1646,26 @@ fn handle_worktree_create_mode_key(app: &mut App, code: KeyCode) -> Result<(), B
 fn handle_worktree_orchestrate_mode_key(app: &mut App, code: KeyCode) {
     match code {
         KeyCode::Esc => {
+            if matches!(
+                app.orchestrator_plan_state,
+                OrchestratorPlanState::Loading { .. }
+            ) {
+                app.status_line =
+                    "Planner is still running; wait for completion before closing".to_string();
+                return;
+            }
             app.mode = Mode::Normal;
             app.status_line = "Worktree orchestration cancelled".to_string();
         }
         KeyCode::Enter => {
+            if matches!(
+                app.orchestrator_plan_state,
+                OrchestratorPlanState::Loading { .. }
+            ) {
+                app.status_line = "Planner already running for this requirement".to_string();
+                return;
+            }
+
             refresh_runtime_settings(app);
             if !app.config.worktree_orchestrator_enabled {
                 app.mode = Mode::Normal;
@@ -1677,46 +1695,37 @@ fn handle_worktree_orchestrate_mode_key(app: &mut App, code: KeyCode) {
             let prompt_path = app.config.worktree_orchestrator_prompt_path.clone();
             let max_nodes = app.config.worktree_orchestrator_max_nodes;
 
-            let plan = plan_orchestrated_worktrees_from_requirement(
-                root.as_str(),
-                requirement_text.as_str(),
-                root_branch.as_str(),
-                selected_branch.as_str(),
+            app.orchestrator_plan_state = OrchestratorPlanState::Loading {
+                started_at: Instant::now(),
+            };
+            app.status_line = "Planning worktree graph with OpenCode...".to_string();
+            start_orchestrator_plan_task(
+                app,
+                root,
+                requirement_text,
+                root_branch,
+                selected_branch,
                 existing_branches,
-                prompt_path.as_str(),
+                prompt_path,
                 max_nodes,
             );
-
-            if plan.nodes.is_empty() {
-                app.status_line = "Orchestrator produced no valid worktree nodes".to_string();
-                return;
-            }
-
-            app.orchestrator_planned_requirement = requirement_text.clone();
-            app.orchestrator_planner_source = plan.planner_source.to_string();
-            app.orchestrator_prompt_nodes = plan
-                .nodes
-                .into_iter()
-                .map(|node| OrchestratorPromptNode {
-                    prompt: build_leaf_execution_prompt(requirement_text.as_str(), &node),
-                    branch: node.branch,
-                    parent: node.parent,
-                    goal: node.goal,
-                    accepted: true,
-                })
-                .collect();
-            app.orchestrator_prompt_selected = 0;
-            app.orchestrator_prompt_edit_input.clear();
-            app.mode = Mode::WorktreeOrchestratePreview;
-            app.orchestrator_requirement_input.clear();
-            app.status_line =
-                "Review leaf prompts: accept/refine each node, Enter executes accepted nodes"
-                    .to_string();
         }
         KeyCode::Backspace => {
+            if matches!(
+                app.orchestrator_plan_state,
+                OrchestratorPlanState::Loading { .. }
+            ) {
+                return;
+            }
             app.orchestrator_requirement_input.pop();
         }
         KeyCode::Char(c) => {
+            if matches!(
+                app.orchestrator_plan_state,
+                OrchestratorPlanState::Loading { .. }
+            ) {
+                return;
+            }
             app.orchestrator_requirement_input.push(c);
         }
         _ => {}
@@ -1727,6 +1736,7 @@ fn handle_worktree_orchestrate_preview_mode_key(app: &mut App, code: KeyCode) {
     match code {
         KeyCode::Esc => {
             clear_orchestrator_prompt_preview(app);
+            app.pending_orchestrator_launch = None;
             app.mode = Mode::Normal;
             app.status_line = "Worktree orchestration cancelled".to_string();
         }
@@ -1781,6 +1791,15 @@ fn handle_worktree_orchestrate_preview_mode_key(app: &mut App, code: KeyCode) {
                     goal: node.goal.clone(),
                 })
                 .collect::<Vec<_>>();
+            let launch_nodes = app
+                .orchestrator_prompt_nodes
+                .iter()
+                .filter(|node| node.accepted)
+                .map(|node| OrchestratorLaunchNode {
+                    branch: node.branch.clone(),
+                    prompt: node.prompt.clone(),
+                })
+                .collect::<Vec<_>>();
 
             if accepted_nodes_raw.is_empty() {
                 app.status_line = "No accepted nodes selected for execution".to_string();
@@ -1807,6 +1826,10 @@ fn handle_worktree_orchestrate_preview_mode_key(app: &mut App, code: KeyCode) {
             let root = create_root_for_app(app);
             let requirement = app.orchestrator_planned_requirement.clone();
             let planner_source = app.orchestrator_planner_source.clone();
+            app.pending_orchestrator_launch = Some(PendingOrchestratorLaunch {
+                requirement: requirement.clone(),
+                nodes: launch_nodes,
+            });
             start_git_task(
                 app,
                 "Execute orchestrated worktrees",
@@ -1866,6 +1889,7 @@ fn clear_orchestrator_prompt_preview(app: &mut App) {
     app.orchestrator_prompt_nodes.clear();
     app.orchestrator_prompt_selected = 0;
     app.orchestrator_prompt_edit_input.clear();
+    app.pending_orchestrator_launch = None;
 }
 
 fn handle_branch_conflict_confirm_mode_key(
@@ -2855,8 +2879,212 @@ fn drain_git_task_events(app: &mut App) {
             refresh_status(app);
         }
 
+        if event.label == "Execute orchestrated worktrees" {
+            launch_pending_orchestrator_agents(app);
+        }
+
         // Start the next queued task, if any
         pop_next_git_task(app);
+    }
+}
+
+fn launch_pending_orchestrator_agents(app: &mut App) {
+    let Some(pending) = app.pending_orchestrator_launch.take() else {
+        return;
+    };
+
+    let agent = preferred_orchestrator_agent(app);
+    if agent.is_none() {
+        app.status_line = format!(
+            "Executed orchestration for '{}', but no agent CLI found to run prompts",
+            truncate_text(single_line(pending.requirement.as_str()).as_str(), 80)
+        );
+        return;
+    }
+    let agent = agent.unwrap_or(ExternalAgent::Opencode);
+
+    let mut launched = 0usize;
+    let mut skipped = 0usize;
+    let mut failed = 0usize;
+
+    for node in pending.nodes {
+        let Some(path) = app
+            .worktrees
+            .iter()
+            .find(|wt| !wt.detached && wt.branch == node.branch)
+            .map(|wt| wt.path.clone())
+        else {
+            failed = failed.saturating_add(1);
+            continue;
+        };
+
+        match launch_orchestrated_prompt_in_background(
+            app,
+            path.as_str(),
+            agent,
+            node.prompt.as_str(),
+        ) {
+            Ok(LaunchPromptResult::Launched) => {
+                launched = launched.saturating_add(1);
+            }
+            Ok(LaunchPromptResult::SkippedAlreadyRunning) => {
+                skipped = skipped.saturating_add(1);
+            }
+            Err(_) => {
+                failed = failed.saturating_add(1);
+            }
+        }
+    }
+
+    app.status_line = format!(
+        "Orchestrator prompts started: {} launched, {} skipped, {} failed (agent: {})",
+        launched,
+        skipped,
+        failed,
+        agent.command_name()
+    );
+}
+
+fn preferred_orchestrator_agent(app: &App) -> Option<ExternalAgent> {
+    if let Some(default_agent) = app.config.default_agent {
+        if app.detected_agents.contains(&default_agent) {
+            return Some(default_agent);
+        }
+    }
+
+    if app.detected_agents.contains(&ExternalAgent::Opencode) {
+        return Some(ExternalAgent::Opencode);
+    }
+
+    app.detected_agents.first().copied()
+}
+
+enum LaunchPromptResult {
+    Launched,
+    SkippedAlreadyRunning,
+}
+
+fn launch_orchestrated_prompt_in_background(
+    app: &mut App,
+    path: &str,
+    agent: ExternalAgent,
+    prompt: &str,
+) -> Result<LaunchPromptResult, Box<dyn Error>> {
+    if !has_live_terminal_session(app, path) {
+        launch_shell_session(app, path)?;
+    }
+
+    if app
+        .agent_sessions
+        .get(path)
+        .map(|session| session.state == AgentState::Running)
+        .unwrap_or(false)
+    {
+        return Ok(LaunchPromptResult::SkippedAlreadyRunning);
+    }
+
+    wait_for_terminal_ready(app, path);
+
+    if agent == ExternalAgent::Opencode {
+        let launch = build_opencode_launch_command(path, Some(prompt), false);
+        write_to_agent(app, path, launch.command.as_str())?;
+        attach_session_agent(app, path, agent, launch.session_id);
+    } else {
+        let launch_cmd = format!("{}\r", agent.command_name());
+        write_to_agent(app, path, launch_cmd.as_str())?;
+        attach_session_agent(app, path, agent, None);
+        let prompt_with_enter = format!("{}\r", normalize_terminal_newlines(prompt));
+        write_to_agent(app, path, prompt_with_enter.as_str())?;
+    }
+
+    Ok(LaunchPromptResult::Launched)
+}
+
+fn start_orchestrator_plan_task(
+    app: &mut App,
+    root: String,
+    requirement_text: String,
+    root_branch: String,
+    selected_branch: String,
+    existing_branches: Vec<String>,
+    prompt_path: String,
+    max_nodes: usize,
+) {
+    let tx = app.orchestrator_plan_tx.clone();
+    thread::spawn(move || {
+        let result = std::panic::catch_unwind(|| {
+            plan_orchestrated_worktrees_from_requirement(
+                root.as_str(),
+                requirement_text.as_str(),
+                root_branch.as_str(),
+                selected_branch.as_str(),
+                existing_branches,
+                prompt_path.as_str(),
+                max_nodes,
+            )
+        })
+        .map_err(|_| "Planner crashed unexpectedly".to_string());
+        let _ = tx.send(OrchestratorPlanEvent {
+            requirement: requirement_text,
+            result,
+        });
+    });
+}
+
+fn drain_orchestrator_plan_events(app: &mut App) {
+    while let Ok(event) = app.orchestrator_plan_rx.try_recv() {
+        match event.result {
+            Ok(plan) => {
+                if plan.nodes.is_empty() {
+                    let message = "Orchestrator produced no valid worktree nodes".to_string();
+                    app.orchestrator_plan_state = OrchestratorPlanState::Failed {
+                        message: message.clone(),
+                    };
+                    app.status_line = message;
+                    continue;
+                }
+
+                app.orchestrator_planned_requirement = event.requirement.clone();
+                app.orchestrator_planner_source = plan.planner_source.to_string();
+                app.orchestrator_prompt_nodes = plan
+                    .nodes
+                    .into_iter()
+                    .map(|node| OrchestratorPromptNode {
+                        prompt: build_leaf_execution_prompt(event.requirement.as_str(), &node),
+                        branch: node.branch,
+                        parent: node.parent,
+                        goal: node.goal,
+                        accepted: true,
+                    })
+                    .collect();
+                app.orchestrator_prompt_selected = 0;
+                app.orchestrator_prompt_edit_input.clear();
+                app.orchestrator_requirement_input.clear();
+                app.orchestrator_plan_state = OrchestratorPlanState::Idle;
+                app.mode = Mode::WorktreeOrchestratePreview;
+
+                if let Some(err) = plan.planner_error {
+                    app.status_line = format!(
+                        "Planner fallback: OpenCode failed, used heuristic ({})",
+                        truncate_text(single_line(err.as_str()).as_str(), 120)
+                    );
+                } else {
+                    app.status_line =
+                        "Review leaf prompts: accept/refine each node, Enter executes accepted nodes"
+                            .to_string();
+                }
+            }
+            Err(err) => {
+                let message = format!(
+                    "Orchestrator planner crashed: {}",
+                    single_line(err.as_str())
+                );
+                app.orchestrator_plan_state = OrchestratorPlanState::Failed {
+                    message: message.clone(),
+                };
+                app.status_line = message;
+            }
+        }
     }
 }
 

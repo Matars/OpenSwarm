@@ -34,7 +34,9 @@ All git operations run in the background. If you trigger another operation while
 
 ## Feature-to-worktree orchestration
 
-Press `g` in worktrees view and describe the feature (for example: `implement auth with oauth + session refresh`). OpenSwarm asks OpenCode to return a strict JSON plan of branch nodes and parent edges, then opens a preview for each leaf with a suggested execution prompt. You can accept/reject nodes, refine prompts per node, and then execute only the accepted worktree abstractions on your canvas. It does not write product code, commit, push, or auto-launch agents.
+Press `g` in worktrees view and describe the feature (for example: `implement auth with oauth + session refresh`). OpenSwarm asks OpenCode to return a strict JSON plan of branch nodes and parent edges, then opens a preview for each leaf with a suggested execution prompt. The modal now shows planner state (`idle`, animated `loading`, or `failed`) so you can tell if the model is still working. You can accept/reject nodes, refine prompts per node, and then execute only the accepted worktree abstractions on your canvas.
+
+When you execute accepted nodes, OpenSwarm also starts each accepted leaf prompt in a background PTY session for that worktree, so your current screen stays in place. Press `o` on any created node to inspect the running terminal.
 
 If OpenCode is unavailable or its plan is invalid, OpenSwarm falls back to a built-in heuristic planner so the flow still works offline. The planner prompt template, enable toggle, and max node cap are configurable in `~/.config/openswarm/config.toml`.
 
