@@ -48,6 +48,7 @@ enum Mode {
     WorktreeOrchestratePromptEdit,
     WorktreeBranchConflictConfirm,
     WorktreeConflictResolveConfirm,
+    WorktreeRemoveChildrenConfirm,
     WorktreeRemoveDirtyConfirm,
     WorktreeGitLogPopup,
     LegacyWorkspaceMigrateConfirm,
@@ -262,6 +263,7 @@ struct App {
     pending_orchestrator_launch: Option<PendingOrchestratorLaunch>,
     confirm_delete_branch_yes: bool,
     pending_remove_worktree_path: String,
+    pending_remove_worktree_children: Vec<String>,
     confirm_remove_worktree_yes: bool,
     confirm_conflict_resolve_yes: bool,
     worktree_commit_input: String,
@@ -767,6 +769,7 @@ impl App {
             pending_orchestrator_launch: None,
             confirm_delete_branch_yes: false,
             pending_remove_worktree_path: String::new(),
+            pending_remove_worktree_children: Vec::new(),
             confirm_remove_worktree_yes: false,
             confirm_conflict_resolve_yes: false,
             worktree_commit_input: String::new(),
@@ -1079,6 +1082,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::WorktreeConflictResolveConfirm => {
                             handle_conflict_resolve_confirm_mode_key(&mut app, key.code)?;
+                        }
+                        Mode::WorktreeRemoveChildrenConfirm => {
+                            handle_worktree_remove_children_confirm_mode_key(&mut app, key.code)?;
                         }
                         Mode::WorktreeRemoveDirtyConfirm => {
                             handle_worktree_remove_dirty_confirm_mode_key(&mut app, key.code)?;

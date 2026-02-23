@@ -27,7 +27,7 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 - `f` -- fetch and pull parent branch (or selected main branch if behind head)
 - `F` -- rebase selected worktree branch onto parent branch
 - `m` -- merge worktree into parent
-- `d` -- delete worktree (with safety confirmations)
+- `d` -- delete worktree (with safety confirmations, including parent+children delete prompt)
 - `s` / `S` -- stash push / stash pop
 
 All git operations run in the background. If you trigger another operation while one is in flight, it gets queued and auto-executes when the current task finishes. The status bar shows `+N queued` so you always know how many tasks are pending. This means you can press `p` on three different worktrees back-to-back without waiting for each push to complete.

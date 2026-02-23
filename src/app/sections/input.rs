@@ -1979,8 +1979,22 @@ fn request_remove_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>>
         return Ok(());
     }
 
+    let children = removable_descendant_paths(app, selected.path.as_str());
+    if !children.is_empty() {
+        app.pending_remove_worktree_path = selected.path;
+        app.pending_remove_worktree_children = children;
+        app.confirm_remove_worktree_yes = false;
+        app.mode = Mode::WorktreeRemoveChildrenConfirm;
+        app.status_line = format!(
+            "Selected worktree has {} child worktree(s)",
+            app.pending_remove_worktree_children.len()
+        );
+        return Ok(());
+    }
+
     if selected.dirty {
         app.pending_remove_worktree_path = selected.path;
+        app.pending_remove_worktree_children.clear();
         app.confirm_remove_worktree_yes = false;
         app.mode = Mode::WorktreeRemoveDirtyConfirm;
         app.status_line = "Selected worktree has uncommitted changes".to_string();
@@ -1988,6 +2002,62 @@ fn request_remove_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>>
     }
 
     start_remove_worktree_task(app, selected.path, false);
+    Ok(())
+}
+
+fn handle_worktree_remove_children_confirm_mode_key(
+    app: &mut App,
+    code: KeyCode,
+) -> Result<(), Box<dyn Error>> {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.confirm_remove_worktree_yes = false;
+            app.pending_remove_worktree_path.clear();
+            app.pending_remove_worktree_children.clear();
+            app.status_line = "Delete cancelled".to_string();
+        }
+        KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
+            app.confirm_remove_worktree_yes = !app.confirm_remove_worktree_yes;
+        }
+        KeyCode::Char('y') => app.confirm_remove_worktree_yes = true,
+        KeyCode::Char('n') => app.confirm_remove_worktree_yes = false,
+        KeyCode::Enter => {
+            if app.confirm_remove_worktree_yes {
+                let paths = pending_remove_worktree_targets(app);
+                if paths.is_empty() {
+                    app.status_line = "Delete cancelled (missing worktree path)".to_string();
+                } else {
+                    let has_dirty = paths.iter().any(|path| {
+                        app.worktrees
+                            .iter()
+                            .find(|worktree| worktree.path == *path)
+                            .map(|worktree| worktree.dirty)
+                            .unwrap_or(false)
+                    });
+
+                    if has_dirty {
+                        app.mode = Mode::WorktreeRemoveDirtyConfirm;
+                        app.confirm_remove_worktree_yes = false;
+                        app.status_line =
+                            "One or more selected worktrees have uncommitted changes".to_string();
+                        return Ok(());
+                    }
+
+                    start_remove_worktrees_task(app, paths, false);
+                }
+            } else {
+                app.status_line = "Delete cancelled".to_string();
+            }
+
+            app.mode = Mode::Normal;
+            app.confirm_remove_worktree_yes = false;
+            app.pending_remove_worktree_path.clear();
+            app.pending_remove_worktree_children.clear();
+        }
+        _ => {}
+    }
+
     Ok(())
 }
 
@@ -2000,6 +2070,7 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
             app.mode = Mode::Normal;
             app.confirm_remove_worktree_yes = false;
             app.pending_remove_worktree_path.clear();
+            app.pending_remove_worktree_children.clear();
             app.status_line = "Delete cancelled".to_string();
         }
         KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
@@ -2009,11 +2080,11 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
         KeyCode::Char('n') => app.confirm_remove_worktree_yes = false,
         KeyCode::Enter => {
             if app.confirm_remove_worktree_yes {
-                let path = app.pending_remove_worktree_path.clone();
-                if path.is_empty() {
+                let paths = pending_remove_worktree_targets(app);
+                if paths.is_empty() {
                     app.status_line = "Delete cancelled (missing worktree path)".to_string();
                 } else {
-                    start_remove_worktree_task(app, path, true);
+                    start_remove_worktrees_task(app, paths, true);
                 }
             } else {
                 app.status_line = "Delete cancelled".to_string();
@@ -2022,6 +2093,7 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
             app.mode = Mode::Normal;
             app.confirm_remove_worktree_yes = false;
             app.pending_remove_worktree_path.clear();
+            app.pending_remove_worktree_children.clear();
         }
         _ => {}
     }
@@ -2030,55 +2102,142 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
 }
 
 fn start_remove_worktree_task(app: &mut App, worktree_path: String, force: bool) {
-    let Some(selected) = app
+    start_remove_worktrees_task(app, vec![worktree_path], force);
+}
+
+fn pending_remove_worktree_targets(app: &App) -> Vec<String> {
+    if app.pending_remove_worktree_path.is_empty() {
+        return Vec::new();
+    }
+
+    let mut targets = app.pending_remove_worktree_children.clone();
+    if !targets
+        .iter()
+        .any(|path| path == app.pending_remove_worktree_path.as_str())
+    {
+        targets.push(app.pending_remove_worktree_path.clone());
+    }
+    targets
+}
+
+fn removable_descendant_paths(app: &App, parent_path: &str) -> Vec<String> {
+    if app.worktrees.is_empty() {
+        return Vec::new();
+    }
+
+    let root_branch = current_session_branch(app);
+    let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
+    let Some(parent_idx) = app
         .worktrees
         .iter()
-        .find(|worktree| worktree.path == worktree_path)
-        .cloned()
+        .position(|worktree| worktree.path == parent_path)
     else {
-        app.status_line = format!("Worktree not found: {}", worktree_path);
-        return;
+        return Vec::new();
     };
 
-    if selected.is_current {
-        app.status_line = "Refusing to remove current worktree".to_string();
-        return;
-    }
-
-    if selected.dirty && !force {
-        app.status_line = "Refusing to remove dirty worktree (clean it first)".to_string();
-        return;
-    }
-
-    let selected_path = selected.path;
-    let had_live_session = has_live_terminal_session(app, selected_path.as_str());
-    terminate_terminal_session(app, selected_path.as_str());
-
-    if app.agent_popup_path.as_deref() == Some(selected_path.as_str()) {
-        app.agent_popup_path = None;
-        if matches!(app.mode, Mode::AgentPopup) {
-            app.mode = Mode::Normal;
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); app.worktrees.len()];
+    for (idx, parent) in parents.iter().enumerate() {
+        if let Some(parent_idx_for_node) = parent {
+            if *parent_idx_for_node != idx && *parent_idx_for_node < children.len() {
+                children[*parent_idx_for_node].push(idx);
+            }
         }
     }
 
-    let label = if force {
-        "Force-remove selected worktree"
-    } else {
-        "Remove selected worktree"
+    fn collect_postorder(idx: usize, children: &[Vec<usize>], out: &mut Vec<usize>) {
+        for child in &children[idx] {
+            collect_postorder(*child, children, out);
+            out.push(*child);
+        }
+    }
+
+    let mut ordered_idxs: Vec<usize> = Vec::new();
+    collect_postorder(parent_idx, &children, &mut ordered_idxs);
+    ordered_idxs
+        .into_iter()
+        .filter_map(|idx| app.worktrees.get(idx).map(|worktree| worktree.path.clone()))
+        .collect()
+}
+
+fn start_remove_worktrees_task(app: &mut App, worktree_paths: Vec<String>, force: bool) {
+    if worktree_paths.is_empty() {
+        app.status_line = "Delete cancelled (no worktrees selected)".to_string();
+        return;
+    }
+
+    let mut targets: Vec<WorktreeEntry> = Vec::new();
+    for path in &worktree_paths {
+        let Some(worktree) = app
+            .worktrees
+            .iter()
+            .find(|worktree| worktree.path == *path)
+            .cloned()
+        else {
+            app.status_line = format!("Worktree not found: {}", path);
+            return;
+        };
+
+        if worktree.is_current {
+            app.status_line = format!("Refusing to remove current worktree: {}", worktree.path);
+            return;
+        }
+
+        if worktree.dirty && !force {
+            app.status_line = format!(
+                "Refusing to remove dirty worktree without force: {}",
+                worktree.path
+            );
+            return;
+        }
+
+        targets.push(worktree);
+    }
+
+    let mut closed_sessions = 0usize;
+    for target in &targets {
+        if has_live_terminal_session(app, target.path.as_str()) {
+            closed_sessions = closed_sessions.saturating_add(1);
+        }
+        terminate_terminal_session(app, target.path.as_str());
+
+        if app.agent_popup_path.as_deref() == Some(target.path.as_str()) {
+            app.agent_popup_path = None;
+            if matches!(app.mode, Mode::AgentPopup) {
+                app.mode = Mode::Normal;
+            }
+        }
+    }
+
+    let target_paths = targets
+        .into_iter()
+        .map(|worktree| worktree.path)
+        .collect::<Vec<_>>();
+    let target_count = target_paths.len();
+    let label = match (force, target_count > 1) {
+        (true, true) => "Force-remove selected worktree tree",
+        (true, false) => "Force-remove selected worktree",
+        (false, true) => "Remove selected worktree tree",
+        (false, false) => "Remove selected worktree",
     };
 
     start_git_task(app, label, true, true, move || {
-        let result = if force {
-            run_git(&["worktree", "remove", "--force", selected_path.as_str()])
-        } else {
-            run_git(&["worktree", "remove", selected_path.as_str()])
-        };
+        let mut outcomes: Vec<String> = Vec::new();
+        for path in &target_paths {
+            let result = if force {
+                run_git(&["worktree", "remove", "--force", path.as_str()])
+            } else {
+                run_git(&["worktree", "remove", path.as_str()])
+            };
 
-        let mut outcome = git_result_text(result);
-        if had_live_session {
-            outcome.push_str(" (closed terminal session for worktree)");
+            outcomes.push(format!("{}: {}", path, git_result_text(result)));
         }
-        outcome
+
+        let mut combined = outcomes.join(" | ");
+        if closed_sessions > 0 {
+            combined
+                .push_str(format!(" (closed {} terminal session(s))", closed_sessions).as_str());
+        }
+        combined
     });
 }
 

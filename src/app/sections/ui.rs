@@ -86,6 +86,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         draw_conflict_resolve_confirm_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::WorktreeRemoveChildrenConfirm) {
+        draw_worktree_remove_children_confirm_modal(frame, app);
+    }
+
     if matches!(app.mode, Mode::WorktreeRemoveDirtyConfirm) {
         draw_worktree_remove_dirty_confirm_modal(frame, app);
     }
@@ -4235,6 +4239,111 @@ fn ansi_idx_to_color(i: u8) -> Color {
     }
 }
 
+fn draw_worktree_remove_children_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(80, 40, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Delete Children")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightYellow));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Min(4),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let target = if app.pending_remove_worktree_path.is_empty() {
+        "(selected worktree)"
+    } else {
+        app.pending_remove_worktree_path.as_str()
+    };
+    let child_count = app.pending_remove_worktree_children.len();
+
+    frame.render_widget(
+        Paragraph::new(format!(
+            "Worktree '{}' has {} child worktree(s). Delete all children too?",
+            target, child_count
+        ))
+        .style(Style::default().fg(Color::White)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Yes removes descendants first, then the selected parent worktree.")
+            .style(Style::default().fg(Color::Gray)),
+        layout[1],
+    );
+
+    let preview_limit = 6usize;
+    let mut preview_lines: Vec<Line<'static>> = Vec::new();
+    for child in app
+        .pending_remove_worktree_children
+        .iter()
+        .take(preview_limit)
+    {
+        preview_lines.push(Line::from(vec![
+            Span::styled("- ", Style::default().fg(Color::DarkGray)),
+            Span::styled(child.clone(), Style::default().fg(Color::LightYellow)),
+        ]));
+    }
+    if child_count > preview_limit {
+        preview_lines.push(Line::from(Span::styled(
+            format!("... and {} more", child_count.saturating_sub(preview_limit)),
+            Style::default().fg(Color::Gray),
+        )));
+    }
+    if preview_lines.is_empty() {
+        preview_lines.push(Line::from(Span::styled(
+            "(no child worktrees found)",
+            Style::default().fg(Color::Gray),
+        )));
+    }
+
+    frame.render_widget(
+        Paragraph::new(preview_lines)
+            .block(Block::default().borders(Borders::ALL).title("Children")),
+        layout[2],
+    );
+
+    let yes_style = if app.confirm_remove_worktree_yes {
+        Style::default().fg(Color::Black).bg(Color::LightRed)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let no_style = if app.confirm_remove_worktree_yes {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::Black).bg(Color::LightGreen)
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("[ Yes: delete parent + children ]", yes_style),
+            Span::raw("   "),
+            Span::styled("[ No: cancel ]", no_style),
+        ]))
+        .alignment(Alignment::Center),
+        layout[3],
+    );
+
+    frame.render_widget(
+        Paragraph::new("No is selected by default")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[4],
+    );
+}
+
 fn draw_worktree_remove_dirty_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     let popup = centered_rect(76, 28, frame.area());
     frame.render_widget(Clear, popup);
@@ -4263,20 +4372,34 @@ fn draw_worktree_remove_dirty_confirm_modal(frame: &mut ratatui::Frame<'_>, app:
         app.pending_remove_worktree_path.as_str()
     };
 
+    let target_count = app.pending_remove_worktree_children.len().saturating_add(1);
+    let (prompt_line, hint_line) = if app.pending_remove_worktree_children.is_empty() {
+        (
+            format!(
+                "Worktree '{}' has uncommitted changes. Force delete anyway?",
+                target
+            ),
+            "Yes runs `git worktree remove --force` and discards uncommitted changes in that worktree."
+                .to_string(),
+        )
+    } else {
+        (
+            format!(
+                "{} selected worktrees have uncommitted changes. Force delete all anyway?",
+                target_count
+            ),
+            "Yes runs `git worktree remove --force` for all selected parent/child worktrees and discards local changes."
+                .to_string(),
+        )
+    };
+
     frame.render_widget(
-        Paragraph::new(format!(
-            "Worktree '{}' has uncommitted changes. Force delete anyway?",
-            target
-        ))
-        .style(Style::default().fg(Color::White)),
+        Paragraph::new(prompt_line).style(Style::default().fg(Color::White)),
         layout[0],
     );
 
     frame.render_widget(
-        Paragraph::new(
-            "Yes runs `git worktree remove --force` and discards uncommitted changes in that worktree.",
-        )
-        .style(Style::default().fg(Color::Gray)),
+        Paragraph::new(hint_line).style(Style::default().fg(Color::Gray)),
         layout[1],
     );
 
