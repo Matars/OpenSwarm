@@ -35,7 +35,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         let columns = Layout::default()
             .direction(Direction::Horizontal)
             .spacing(1)
-            .constraints([Constraint::Percentage(72), Constraint::Percentage(28)])
+            .constraints([
+                Constraint::Percentage(app.worktree_canvas_width_percent),
+                Constraint::Percentage(100u16.saturating_sub(app.worktree_canvas_width_percent)),
+            ])
             .split(frame.area());
 
         let right = Layout::default()
@@ -3095,15 +3098,38 @@ fn worktree_right_panel_constraints(app: &App, area: Rect) -> [Constraint; 3] {
     let total_height = area.height;
     let spacing = 2u16;
     let available = total_height.saturating_sub(spacing);
+    let min_art = 3u16;
     let min_details = 8u16;
     let min_actions = 8u16;
+
+    if available
+        < min_art
+            .saturating_add(min_details)
+            .saturating_add(min_actions)
+    {
+        return [
+            Constraint::Min(min_art),
+            Constraint::Min(min_details),
+            Constraint::Min(min_actions),
+        ];
+    }
+
     let max_art = available.saturating_sub(min_details.saturating_add(min_actions));
-    let art_height = desired_art_height.clamp(3, max_art.max(3));
+    let base_art = desired_art_height.clamp(min_art, max_art.max(min_art));
+    let art_height = (base_art as i16 + app.worktree_art_height_delta)
+        .clamp(min_art as i16, max_art as i16) as u16;
+
+    let remaining = available.saturating_sub(art_height);
+    let max_details = remaining.saturating_sub(min_actions);
+    let base_details = (remaining / 2).clamp(min_details, max_details);
+    let details_height = (base_details as i16 + app.worktree_details_height_delta)
+        .clamp(min_details as i16, max_details as i16) as u16;
+    let actions_height = remaining.saturating_sub(details_height);
 
     [
         Constraint::Length(art_height),
-        Constraint::Min(min_details),
-        Constraint::Min(min_actions),
+        Constraint::Length(details_height),
+        Constraint::Length(actions_height),
     ]
 }
 
@@ -3146,11 +3172,17 @@ fn draw_worktree_art_panel(frame: &mut ratatui::Frame<'_>, app: &mut App, area: 
         "art"
     };
 
+    let border_color = if app.worktree_focus == WorktreePane::Art {
+        Color::Cyan
+    } else {
+        Color::Gray
+    };
+
     frame.render_widget(
         Block::default()
             .title(title)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Gray))
+            .border_style(Style::default().fg(border_color))
             .style(Style::default().bg(Color::Black)),
         area,
     );
@@ -3386,6 +3418,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("+/-", Style::default().fg(Color::LightBlue)),
+            Span::raw(" resize focused panel"),
+        ]),
+        Line::from(vec![
+            Span::styled("[/]", Style::default().fg(Color::LightBlue)),
             Span::raw(" zoom canvas"),
         ]),
         Line::from(vec![
@@ -3482,11 +3518,12 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("  h/l     - move between siblings"),
             Line::from("  j/k     - move child/parent levels"),
             Line::from("  Ctrl+K  - cycle graph builder (6 layouts)"),
-            Line::from("  Tab     - cycle graph/details/actions panels"),
+            Line::from("  Tab     - cycle canvas/art/details/actions panels"),
             Line::from("  L       - open git command history popup"),
             Line::from(""),
-            Line::from("Camera:"),
-            Line::from("  +/-     - zoom in/out"),
+            Line::from("Layout + Camera:"),
+            Line::from("  +/-     - resize focused panel"),
+            Line::from("  [/]     - zoom in/out"),
             Line::from("  0       - reset view"),
             Line::from("  Shift+WASD - pan"),
             Line::from("  Ctrl+B  - cycle canvas background"),
@@ -3496,6 +3533,14 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("Flow: o/O launch shells or agents, c/p/m/d run git lifecycle"),
             Line::from(""),
             Line::from("  ?: close this help"),
+        ],
+        WorktreePane::Art => vec![
+            Line::from("Art panel"),
+            Line::from("- Shows config art or Spotify now-playing card"),
+            Line::from("- Border turns cyan when this panel is focused"),
+            Line::from("- +/- resizes this panel vertically inside right stack"),
+            Line::from("- Tab: move focus to next panel"),
+            Line::from("- ?: close this help"),
         ],
         WorktreePane::Details => vec![
             Line::from("Details panel"),

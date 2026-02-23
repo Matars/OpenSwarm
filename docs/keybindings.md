@@ -26,16 +26,17 @@ nav_order: 3
 | `h` / `l` | Move between siblings at the same depth |
 | `j` / `k` | Move to child / parent levels |
 | `Ctrl+K` | Cycle graph builder (top-down balanced / layered / left-right / trunk / swimlanes / indented) |
-| `Tab` | Cycle focus: Canvas, Details, Actions |
+| `Tab` | Cycle focus: Canvas, Art, Details, Actions |
 | `?` | Toggle help modal |
 
 ### Canvas
 
 | Key | Action |
 |-----|--------|
-| `+` / `=` | Zoom in |
-| `-` | Zoom out |
-| `0` | Reset zoom and pan |
+| `+` / `=` | Resize focused pane (`Canvas` = horizontal split, right stack = vertical split) |
+| `-` | Resize focused pane in the opposite direction |
+| `[` / `]` | Canvas camera zoom out / in |
+| `0` | Reset canvas zoom and pan |
 | `W` `A` `S` `D` | Pan up / left / down / right |
 | `M` | Toggle worktree art panel mode (config art / Spotify connector) |
 | `Ctrl+B` | Cycle canvas background mode (stars / crosshatch / rain) |

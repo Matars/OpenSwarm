@@ -206,8 +206,10 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
         KeyCode::Right => move_worktree_selection(app, NavDirection::Right),
         KeyCode::Up => move_worktree_selection(app, NavDirection::Up),
         KeyCode::Down => move_worktree_selection(app, NavDirection::Down),
-        KeyCode::Char('+') | KeyCode::Char('=') => zoom_worktree_canvas(app, true),
-        KeyCode::Char('-') => zoom_worktree_canvas(app, false),
+        KeyCode::Char('+') | KeyCode::Char('=') => resize_worktree_section(app, true),
+        KeyCode::Char('-') => resize_worktree_section(app, false),
+        KeyCode::Char(']') => zoom_worktree_canvas(app, true),
+        KeyCode::Char('[') => zoom_worktree_canvas(app, false),
         KeyCode::Char('0') => reset_worktree_canvas_view(app),
         KeyCode::Char('W') => pan_worktree_canvas(app, 0.0, 1.0),
         KeyCode::Char('A') => pan_worktree_canvas(app, -1.0, 0.0),
@@ -346,6 +348,42 @@ fn zoom_worktree_canvas(app: &mut App, zoom_in: bool) {
     }
 
     app.status_line = format!("Canvas zoom: {:.2}x", app.worktree_canvas_zoom);
+}
+
+fn resize_worktree_section(app: &mut App, grow: bool) {
+    const CANVAS_STEP: i16 = 4;
+    const ART_STEP: i16 = 2;
+    const DETAILS_STEP: i16 = 2;
+
+    match app.worktree_focus {
+        WorktreePane::Canvas => {
+            let delta = if grow { CANVAS_STEP } else { -CANVAS_STEP };
+            let next = (app.worktree_canvas_width_percent as i16 + delta).clamp(52, 86);
+            app.worktree_canvas_width_percent = next as u16;
+            app.status_line = format!(
+                "Canvas width: {}% (right stack {}%)",
+                app.worktree_canvas_width_percent,
+                100u16.saturating_sub(app.worktree_canvas_width_percent)
+            );
+        }
+        WorktreePane::Art => {
+            let delta = if grow { ART_STEP } else { -ART_STEP };
+            app.worktree_art_height_delta = (app.worktree_art_height_delta + delta).clamp(-28, 28);
+            app.status_line = "Art section height adjusted".to_string();
+        }
+        WorktreePane::Details => {
+            let delta = if grow { DETAILS_STEP } else { -DETAILS_STEP };
+            app.worktree_details_height_delta =
+                (app.worktree_details_height_delta + delta).clamp(-28, 28);
+            app.status_line = "Details section height adjusted".to_string();
+        }
+        WorktreePane::Actions => {
+            let delta = if grow { DETAILS_STEP } else { -DETAILS_STEP };
+            app.worktree_details_height_delta =
+                (app.worktree_details_height_delta - delta).clamp(-28, 28);
+            app.status_line = "Actions section height adjusted".to_string();
+        }
+    }
 }
 
 fn pan_worktree_canvas(app: &mut App, dx: f64, dy: f64) {

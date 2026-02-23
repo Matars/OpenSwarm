@@ -231,6 +231,9 @@ struct App {
     worktrees: Vec<WorktreeEntry>,
     selected_worktree: usize,
     worktree_focus: WorktreePane,
+    worktree_canvas_width_percent: u16,
+    worktree_art_height_delta: i16,
+    worktree_details_height_delta: i16,
     worktree_canvas_zoom: f64,
     worktree_canvas_pan_x: f64,
     worktree_canvas_pan_y: f64,
@@ -575,6 +578,7 @@ impl PerfDebugState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WorktreePane {
     Canvas,
+    Art,
     Details,
     Actions,
 }
@@ -737,6 +741,9 @@ impl App {
             worktrees: Vec::new(),
             selected_worktree: 0,
             worktree_focus: WorktreePane::Canvas,
+            worktree_canvas_width_percent: 72,
+            worktree_art_height_delta: 0,
+            worktree_details_height_delta: 0,
             worktree_canvas_zoom: 1.0,
             worktree_canvas_pan_x: 0.0,
             worktree_canvas_pan_y: 0.0,
@@ -851,7 +858,8 @@ impl App {
 
     fn next_worktree_pane(&mut self) {
         self.worktree_focus = match self.worktree_focus {
-            WorktreePane::Canvas => WorktreePane::Details,
+            WorktreePane::Canvas => WorktreePane::Art,
+            WorktreePane::Art => WorktreePane::Details,
             WorktreePane::Details => WorktreePane::Actions,
             WorktreePane::Actions => WorktreePane::Canvas,
         };
