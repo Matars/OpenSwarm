@@ -91,6 +91,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | Key | Action |
 |-----|--------|
 | `Ctrl+G` | Toggle input / control mode |
+| `Shift+Up` / `Shift+Down` | Scroll terminal view up/down (without sending arrows to shell) |
 | `Esc` | Close popup in CONTROL mode (session stays alive) |
 | `q` | Terminate session in CONTROL mode |
 
