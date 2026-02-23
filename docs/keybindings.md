@@ -54,7 +54,7 @@ nav_order: 3
 | `f` | Fetch and pull parent branch (or selected main branch if behind head) |
 | `F` | Rebase selected branch onto parent branch |
 | `m` | Merge selected worktree into parent |
-| `d` | Delete selected worktree |
+| `d` | Delete selected worktree (asks to delete children when present) |
 | `x` | Prune stale worktrees |
 | `L` | Open git reflog popup |
 | `r` | Refresh worktree list |
@@ -200,7 +200,7 @@ Vim-style editor for `notes.md` (or conflict prompt templates).
 
 ### Confirmation dialogs
 
-All confirmation dialogs (delete dirty worktree, quit with sessions, branch conflict, merge conflict):
+All confirmation dialogs (delete parent+children, delete dirty worktree, quit with sessions, branch conflict, merge conflict):
 
 | Key | Action |
 |-----|--------|

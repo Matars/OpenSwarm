@@ -70,7 +70,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | `f` | Fetch/pull parent (or selected main branch if behind head) |
 | `F` | Rebase selected onto parent |
 | `m` | Merge into parent |
-| `d` | Delete worktree |
+| `d` | Delete worktree (prompts to delete child worktrees when applicable) |
 
 ### Changes view
 
