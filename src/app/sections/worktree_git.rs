@@ -1,4 +1,8 @@
 fn refresh_status(app: &mut App) {
+    if app.status_refresh_in_flight {
+        return;
+    }
+
     let snapshot = match load_status_snapshot(app.changes_worktree_path.clone()) {
         Ok(snapshot) => snapshot,
         Err(err) => {
@@ -605,7 +609,8 @@ fn parse_branch_snapshot(line: &str) -> (String, usize, usize, bool) {
 }
 
 fn normalize_path(path: &str) -> String {
-    let resolved = fs::canonicalize(Path::new(path)).unwrap_or_else(|_| Path::new(path).to_path_buf());
+    let resolved =
+        fs::canonicalize(Path::new(path)).unwrap_or_else(|_| Path::new(path).to_path_buf());
     path_for_git_arg(resolved.as_path())
 }
 
@@ -1221,7 +1226,13 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
 
     if output.status.success() {
         let verified = Command::new("git")
-            .args(["-C", root_git_arg.as_str(), "worktree", "list", "--porcelain"])
+            .args([
+                "-C",
+                root_git_arg.as_str(),
+                "worktree",
+                "list",
+                "--porcelain",
+            ])
             .output()
             .ok()
             .map(|out| sanitize_for_tui(String::from_utf8_lossy(&out.stdout).as_ref()))
@@ -2162,6 +2173,48 @@ fn build_folder_overview(
     repo_path: Option<&str>,
 ) -> FileOverview {
     let prefix = format!("{}/", folder.path);
+    let folder_state = build_state_label(&FileEntry {
+        path: folder.path.clone(),
+        staged: folder.staged,
+        unstaged: folder.unstaged,
+        untracked: folder.untracked,
+    });
+    let mut total_files = 0usize;
+    let mut total_untracked = 0usize;
+    for file in files {
+        if !(file.path == folder.path || file.path.starts_with(prefix.as_str())) {
+            continue;
+        }
+        total_files += 1;
+        if file.untracked {
+            total_untracked += 1;
+        }
+    }
+
+    let should_skip_preview = should_skip_untracked_preview(folder.path.as_str())
+        || total_files > 240
+        || total_untracked > 180;
+    if should_skip_preview {
+        let mut traditional_diff = Vec::new();
+        if total_files > 0 {
+            traditional_diff.push(DiffPreviewLine {
+                kind: DiffPreviewKind::Meta,
+                text: format!("preview suppressed for {} files", total_files),
+            });
+        }
+        return FileOverview {
+            file: format!("{}/", folder.path),
+            state: folder_state,
+            added_lines: 0,
+            removed_lines: 0,
+            methods_added: Vec::new(),
+            methods_modified: Vec::new(),
+            methods_deleted: Vec::new(),
+            method_changes: Vec::new(),
+            traditional_diff,
+            use_traditional_overview: true,
+        };
+    }
     let mut total_added = 0usize;
     let mut total_removed = 0usize;
     let mut methods_added: HashSet<String> = HashSet::new();
@@ -2203,12 +2256,7 @@ fn build_folder_overview(
 
     FileOverview {
         file: format!("{}/", folder.path),
-        state: build_state_label(&FileEntry {
-            path: folder.path.clone(),
-            staged: folder.staged,
-            unstaged: folder.unstaged,
-            untracked: folder.untracked,
-        }),
+        state: folder_state,
         added_lines: total_added,
         removed_lines: total_removed,
         methods_added,
@@ -2234,10 +2282,22 @@ fn build_file_overview(file: &FileEntry, repo_path: Option<&str>) -> FileOvervie
         let file_path = repo_path
             .map(|base| Path::new(base).join(file.path.as_str()))
             .unwrap_or_else(|| PathBuf::from(file.path.as_str()));
-        let text = fs::read_to_string(file_path).unwrap_or_default();
-        added_lines = text.lines().count();
-        methods_added = sorted_from_set(collect_methods_from_content(&text, &file.path));
-        traditional_diff = preview_for_untracked(&text);
+        if should_skip_untracked_preview(&file.path) || is_probably_binary_path(&file.path) {
+            added_lines = 0;
+            methods_added = Vec::new();
+            let note = if is_probably_binary_path(&file.path) {
+                "(binary file; preview suppressed)"
+            } else {
+                "(preview suppressed)"
+            };
+            traditional_diff = preview_for_untracked(note);
+        } else {
+            let text = read_untracked_preview_text(file_path.as_path());
+            let line_count = text.lines().count();
+            added_lines = line_count;
+            methods_added = sorted_from_set(collect_methods_from_content(&text, &file.path));
+            traditional_diff = preview_for_untracked(&text);
+        }
     } else if let Some(diff) = git_output_in(
         repo_path,
         &[
@@ -2529,6 +2589,45 @@ fn preview_for_untracked(content: &str) -> Vec<DiffPreviewLine> {
         });
     }
     lines
+}
+
+fn read_untracked_preview_text(path: &Path) -> String {
+    let metadata = match fs::metadata(path) {
+        Ok(meta) => meta,
+        Err(_) => return String::new(),
+    };
+
+    if metadata.len() > 256 * 1024 {
+        return "(file preview capped at 256KB)".to_string();
+    }
+
+    let mut file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(_) => return String::new(),
+    };
+
+    let mut buffer = Vec::new();
+    if file.read_to_end(&mut buffer).is_err() {
+        return String::new();
+    }
+
+    let text = String::from_utf8_lossy(&buffer).to_string();
+    text
+}
+
+fn should_skip_untracked_preview(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    let has_segment =
+        |needle: &str| lower.starts_with(needle) || lower.contains(&format!("/{needle}"));
+
+    has_segment("node_modules/")
+        || has_segment(".pnpm/")
+        || has_segment(".yarn/")
+        || has_segment("target/")
+        || has_segment("dist/")
+        || has_segment("build/")
+        || has_segment(".next/")
+        || has_segment(".git/")
 }
 
 fn sorted_from_set(set: HashSet<String>) -> Vec<String> {

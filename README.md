@@ -142,6 +142,7 @@ Agent defaults, wsprompt templates, worktree orchestration controls, and optiona
 - Auto-detects `claude` and `opencode` on PATH
 - Worktrees are placed in `.<repo>-workspaces/` sibling directory
 - Startup now validates git context (inside a worktree, resolvable top-level, loadable `git worktree list`) and shows an explicit in-app error instead of an empty graph when checks fail
+- Large dependency folders (like `node_modules/`) are skipped for untracked previews to avoid startup stalls after `npm install`
 
 ## Current status
 

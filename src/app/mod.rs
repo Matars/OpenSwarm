@@ -916,7 +916,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     let mut app = App::new();
     run_startup_checks(&mut app);
-    refresh_status(&mut app);
+    start_status_refresh_task(&mut app);
     refresh_worktrees(&mut app);
 
     let ui_tick_rate_fast = Duration::from_millis(16);

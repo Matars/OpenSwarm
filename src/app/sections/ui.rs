@@ -4682,12 +4682,7 @@ fn build_tree_items(files: &[FileEntry], repo_path: Option<&str>) -> Vec<TreeIte
         file_status.insert(file.path.clone(), status);
 
         if file.untracked {
-            let file_path = repo_path
-                .map(|base| Path::new(base).join(file.path.as_str()))
-                .unwrap_or_else(|| PathBuf::from(file.path.as_str()));
-            let added = fs::read_to_string(file_path)
-                .map(|text| text.lines().count())
-                .unwrap_or(0);
+            let added = untracked_added_lines(repo_path, &file.path);
             file_delta
                 .entry(file.path.clone())
                 .and_modify(|d| d.added_lines = d.added_lines.max(added))
@@ -4915,6 +4910,64 @@ fn should_hide_internal_worktree_path(path: &str) -> bool {
     }
 
     path != format!("{}{}", prefix, ".parent-hints")
+}
+
+fn is_probably_binary_path(path: &str) -> bool {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_default();
+
+    matches!(
+        ext.as_str(),
+        "zip"
+            | "gz"
+            | "tgz"
+            | "bz2"
+            | "7z"
+            | "rar"
+            | "tar"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "webp"
+            | "bmp"
+            | "ico"
+            | "pdf"
+            | "jar"
+            | "war"
+            | "exe"
+            | "dll"
+            | "so"
+            | "dylib"
+            | "bin"
+            | "dat"
+            | "pack"
+            | "mp3"
+            | "mp4"
+            | "mov"
+            | "avi"
+            | "mkv"
+            | "woff"
+            | "woff2"
+            | "ttf"
+            | "otf"
+            | "wasm"
+    )
+}
+
+fn untracked_added_lines(repo_path: Option<&str>, path: &str) -> usize {
+    if is_probably_binary_path(path) {
+        return 0;
+    }
+
+    let file_path = repo_path
+        .map(|base| Path::new(base).join(path))
+        .unwrap_or_else(|| PathBuf::from(path));
+    let text = read_untracked_preview_text(file_path.as_path());
+    text.lines().count()
 }
 
 fn truncate_text(text: &str, max_chars: usize) -> String {

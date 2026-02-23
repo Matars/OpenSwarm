@@ -21,6 +21,10 @@ OpenSwarm uses standard git commands: `git worktree add/remove`, `git add`, `git
 
 Yes. OpenSwarm reads `git worktree list` on startup and displays whatever worktrees already exist. It will offer to migrate from the legacy `.gitfetch-worktrees/` layout if detected.
 
+## OpenSwarm opens to a black screen after `npm install`
+
+Large untracked trees (especially `node_modules`) can overwhelm the initial status scan. OpenSwarm now defers the first status refresh and skips previews for large dependency folders. If you still see a blank screen, add `node_modules/` to `.gitignore` or start OpenSwarm from a clean repo to confirm your terminal is rendering correctly.
+
 ## What are the key dependencies?
 
 - **ratatui** + **crossterm** -- TUI framework and terminal backend
