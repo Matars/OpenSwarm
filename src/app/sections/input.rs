@@ -2977,13 +2977,19 @@ fn launch_orchestrated_prompt_in_background(
     if app
         .agent_sessions
         .get(path)
-        .map(|session| session.state == AgentState::Running)
+        .map(|session| session.agent_kind.is_some() && session.state == AgentState::Running)
         .unwrap_or(false)
     {
         return Ok(LaunchPromptResult::SkippedAlreadyRunning);
     }
 
     wait_for_terminal_ready(app, path);
+
+    if let Some(session) = app.agent_sessions.get_mut(path) {
+        session
+            .parser
+            .process(b"\r\n[orchestrator launching background prompt]\r\n");
+    }
 
     if agent == ExternalAgent::Opencode {
         let launch = build_opencode_launch_command(path, Some(prompt), false);

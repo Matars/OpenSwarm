@@ -3,8 +3,8 @@
 QOL:
 
 * when staging cursor should stay in unstage where it where and not go down to staged and having to goback up
-* deleting wt should prompt for deleting child wt also
 * ability to set keybinds in config
+
 
 
 nown issues
