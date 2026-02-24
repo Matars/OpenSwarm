@@ -1,6 +1,6 @@
 # OpenSwarm
 
-![OpenSwarm demo](media/demo.gif)
+![OpenSwarm screenshot](img/screenshot.png)
 
 A keyboard-first Rust TUI for **parallel AI agent deployment across Git worktrees**.
 
