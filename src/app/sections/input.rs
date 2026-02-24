@@ -199,6 +199,9 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
             app.next_worktree_pane();
             app.show_panel_help = false;
         }
+        KeyCode::Char('h') => {
+            app.show_panel_help = !app.show_panel_help;
+        }
         KeyCode::Char('v') => {
             app.worktree_details_verbose = !app.worktree_details_verbose;
             app.status_line = if app.worktree_details_verbose {
@@ -208,7 +211,7 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
             };
         }
         KeyCode::Char('?') => {
-            app.show_panel_help = !app.show_panel_help;
+            open_worktree_keybinds_popup(app);
         }
         KeyCode::Left => move_worktree_selection(app, NavDirection::Left),
         KeyCode::Right => move_worktree_selection(app, NavDirection::Right),
@@ -221,7 +224,7 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
         KeyCode::Char('A') => pan_worktree_canvas(app, -1.0, 0.0),
         KeyCode::Char('S') => pan_worktree_canvas(app, 0.0, -1.0),
         KeyCode::Char('D') => pan_worktree_canvas(app, 1.0, 0.0),
-        KeyCode::Char('h') => move_worktree_level_siblings(app, false),
+        KeyCode::Char('H') => move_worktree_level_siblings(app, false),
         KeyCode::Char('l') => move_worktree_level_siblings(app, true),
         KeyCode::Char('L') => {
             open_worktree_git_log_popup(app)?;
@@ -2227,6 +2230,12 @@ fn open_worktree_git_log_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn open_worktree_keybinds_popup(app: &mut App) {
+    app.show_panel_help = false;
+    app.mode = Mode::WorktreeKeybindsPopup;
+    app.status_line = "Opened keybindings popup".to_string();
+}
+
 fn load_worktree_git_log(path: &str) -> Result<Vec<String>, Box<dyn Error>> {
     let output = Command::new("git")
         .args([
@@ -2294,6 +2303,16 @@ fn handle_worktree_git_log_mode_key(app: &mut App, code: KeyCode) {
         }
         KeyCode::End => {
             app.git_log_scroll = max_scroll;
+        }
+        _ => {}
+    }
+}
+
+fn handle_worktree_keybinds_mode_key(app: &mut App, code: KeyCode) {
+    match code {
+        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') | KeyCode::Char('?') => {
+            app.mode = Mode::Normal;
+            app.status_line = "Closed keybindings popup".to_string();
         }
         _ => {}
     }

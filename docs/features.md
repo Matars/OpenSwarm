@@ -32,6 +32,7 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 - `s` / `S` -- stash push / stash pop
 
 In worktrees view, the Actions panel groups shortcuts by category (`general`, `worktrees`, `git`, `view + help`, `canvas`) so command discovery is easier while navigating.
+Press `h` for contextual panel help, or `?` for a larger full keybindings popup.
 
 All git operations run in the background. If you trigger another operation while one is in flight, it gets queued and auto-executes when the current task finishes. The status bar shows `+N queued` so you always know how many tasks are pending. This means you can press `p` on three different worktrees back-to-back without waiting for each push to complete.
 
