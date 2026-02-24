@@ -366,7 +366,7 @@ fn reset_worktree_canvas_view(app: &mut App) {
 fn cycle_worktree_canvas_background(app: &mut App) {
     app.worktree_canvas_bg_mode = app.worktree_canvas_bg_mode.next();
     app.status_line = format!(
-        "Canvas background: {} (Ctrl+B to cycle)",
+        "Canvas background: {} (B to cycle)",
         app.worktree_canvas_bg_mode.short_label()
     );
 }

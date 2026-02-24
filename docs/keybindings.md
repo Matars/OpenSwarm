@@ -38,7 +38,7 @@ nav_order: 3
 | `0` | Reset zoom and pan |
 | `W` `A` `S` `D` | Pan up / left / down / right |
 | `M` | Toggle worktree art panel mode (config art / Spotify connector) |
-| `Ctrl+B` | Cycle canvas background mode (stars / crosshatch / rain) |
+| `B` | Cycle canvas background mode (stars / crosshatch / rain) |
 | `Ctrl+L` | Toggle frame-lag debug stats + hitch logging (system temp file) |
 
 ### Actions

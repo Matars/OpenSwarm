@@ -3485,7 +3485,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("  +/-     - zoom in/out"),
             Line::from("  0       - reset view"),
             Line::from("  Shift+WASD - pan"),
-            Line::from("  Ctrl+B  - cycle canvas background"),
+            Line::from("  B       - cycle canvas background"),
             Line::from("  M       - toggle config art / Spotify connector"),
             Line::from("  Ctrl+L  - toggle perf debugging + hitch log"),
             Line::from(""),
