@@ -235,6 +235,9 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
             app.status_line =
                 "Create worktree: choose base with ←/→, then type branch name".to_string();
         }
+        KeyCode::Char('b') => {
+            open_worktree_branch_switch_popup(app)?;
+        }
         KeyCode::Char('g') => {
             app.mode = Mode::WorktreeOrchestrateInput;
             app.orchestrator_requirement_input.clear();
@@ -1637,6 +1640,140 @@ fn handle_worktree_create_mode_key(app: &mut App, code: KeyCode) -> Result<(), B
         }
         KeyCode::Char(c) => {
             app.new_worktree_branch.push(c);
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn open_worktree_branch_switch_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) else {
+        app.status_line = "No worktree selected".to_string();
+        return Ok(());
+    };
+
+    let mut branches = match list_local_branches(path.as_str()) {
+        Ok(items) => items,
+        Err(err) => {
+            app.status_line = single_line(format!("Could not load branches: {}", err).as_str());
+            return Ok(());
+        }
+    };
+    branches.sort();
+    app.worktree_branch_candidates = branches;
+    app.worktree_branch_input.clear();
+    app.worktree_branch_selected = 0;
+    app.mode = Mode::WorktreeBranchSwitchPopup;
+    app.status_line = "Branch switch: type to filter, Enter to checkout or create".to_string();
+    Ok(())
+}
+
+fn filtered_worktree_branch_candidates(app: &App) -> Vec<String> {
+    let query = app.worktree_branch_input.trim().to_ascii_lowercase();
+    if query.is_empty() {
+        return app.worktree_branch_candidates.clone();
+    }
+
+    app.worktree_branch_candidates
+        .iter()
+        .filter(|branch| branch.to_ascii_lowercase().contains(query.as_str()))
+        .cloned()
+        .collect()
+}
+
+fn handle_worktree_branch_switch_mode_key(
+    app: &mut App,
+    code: KeyCode,
+) -> Result<(), Box<dyn Error>> {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.worktree_branch_input.clear();
+            app.worktree_branch_selected = 0;
+            app.worktree_branch_candidates.clear();
+            app.status_line = "Branch switch cancelled".to_string();
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            let filtered = filtered_worktree_branch_candidates(app);
+            if filtered.is_empty() {
+                app.worktree_branch_selected = 0;
+            } else if app.worktree_branch_selected == 0 {
+                app.worktree_branch_selected = filtered.len() - 1;
+            } else {
+                app.worktree_branch_selected -= 1;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            let filtered = filtered_worktree_branch_candidates(app);
+            if filtered.is_empty() {
+                app.worktree_branch_selected = 0;
+            } else {
+                app.worktree_branch_selected = (app.worktree_branch_selected + 1) % filtered.len();
+            }
+        }
+        KeyCode::PageUp => {
+            app.worktree_branch_selected = app.worktree_branch_selected.saturating_sub(8);
+        }
+        KeyCode::PageDown => {
+            let filtered = filtered_worktree_branch_candidates(app);
+            let max = filtered.len().saturating_sub(1);
+            app.worktree_branch_selected = (app.worktree_branch_selected + 8).min(max);
+        }
+        KeyCode::Backspace => {
+            app.worktree_branch_input.pop();
+            app.worktree_branch_selected = 0;
+        }
+        KeyCode::Char(c) => {
+            app.worktree_branch_input.push(c);
+            app.worktree_branch_selected = 0;
+        }
+        KeyCode::Enter => {
+            let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) else {
+                app.mode = Mode::Normal;
+                app.status_line = "No worktree selected".to_string();
+                return Ok(());
+            };
+
+            let filtered = filtered_worktree_branch_candidates(app);
+            if !filtered.is_empty() && app.worktree_branch_selected >= filtered.len() {
+                app.worktree_branch_selected = filtered.len() - 1;
+            }
+
+            let typed = app.worktree_branch_input.trim().to_string();
+            let picked = filtered.get(app.worktree_branch_selected).cloned();
+            let target = if typed.is_empty() {
+                picked.unwrap_or_default()
+            } else {
+                typed
+            };
+
+            if target.is_empty() {
+                app.status_line = "Type or select a branch name".to_string();
+                return Ok(());
+            }
+
+            let create_if_missing = !app
+                .worktree_branch_candidates
+                .iter()
+                .any(|branch| branch == target.as_str());
+            let label = if create_if_missing {
+                format!("Create + switch branch '{}'", target)
+            } else {
+                format!("Switch branch to '{}'", target)
+            };
+            start_git_task(app, label.as_str(), true, true, move || {
+                git_result_text(switch_worktree_branch_at(
+                    path.as_str(),
+                    target.as_str(),
+                    create_if_missing,
+                ))
+            });
+
+            app.mode = Mode::Normal;
+            app.worktree_branch_input.clear();
+            app.worktree_branch_selected = 0;
+            app.worktree_branch_candidates.clear();
         }
         _ => {}
     }

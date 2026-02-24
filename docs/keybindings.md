@@ -46,6 +46,7 @@ nav_order: 3
 | Key | Action |
 |-----|--------|
 | `a` | Create worktree (auto-select new node) |
+| `b` | Open branch switcher (type to filter, Enter to switch/create) |
 | `g` | Orchestrate worktrees from a feature requirement |
 | `o` | Open shell in worktree |
 | `O` | Open agent picker (or launch default agent; default OpenCode attempts session resume) |
@@ -151,6 +152,17 @@ Vim-style editor for `notes.md` (or conflict prompt templates).
 | `Left` / `Right` | Cycle base: Main, Selected, Selected+Changes |
 | Characters | Type branch name |
 | `Enter` | Create and auto-select new worktree |
+| `Esc` | Cancel |
+
+### Branch switch modal
+
+| Key | Action |
+|-----|--------|
+| Characters | Type branch filter (or a new branch name) |
+| `Backspace` | Delete backward |
+| `Up` / `Down` or `k` / `j` | Move selection |
+| `PageUp` / `PageDown` | Jump through branch list |
+| `Enter` | Switch to selected branch, or create+switch typed branch |
 | `Esc` | Cancel |
 
 ### Orchestrate worktrees modal
