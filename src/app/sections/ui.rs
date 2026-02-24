@@ -3301,6 +3301,8 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         lines.push(Line::from(""));
     }
 
+    let root_branch = current_session_branch(app);
+
     lines.extend(vec![
         Line::from(vec![
             Span::styled("w", Style::default().fg(Color::LightBlue)),
@@ -3333,7 +3335,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("f", Style::default().fg(Color::Cyan)),
-            Span::raw(" fetch + pull parent (or selected main head)"),
+            Span::raw(format!(
+                " fetch + pull parent (or selected {} head)",
+                root_branch
+            )),
         ]),
         Line::from(vec![
             Span::styled("F", Style::default().fg(Color::Cyan)),
@@ -3445,7 +3450,8 @@ fn draw_worktree_help_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     let popup = centered_rect(64, 42, frame.area());
     frame.render_widget(Clear, popup);
 
-    let lines = worktree_help_lines(app.worktree_focus);
+    let root_branch = current_session_branch(app);
+    let lines = worktree_help_lines(app.worktree_focus, root_branch.as_str());
     let panel = Paragraph::new(lines)
         .block(
             Block::default()
@@ -3459,7 +3465,7 @@ fn draw_worktree_help_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     frame.render_widget(panel, popup);
 }
 
-fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
+fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'static>> {
     match pane {
         WorktreePane::Canvas => vec![
             Line::from("Worktree Graph"),
@@ -3513,7 +3519,10 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- O: open agent picker for selected/conflicted parent"),
             Line::from("- c: selected worktree add+commit with message popup"),
             Line::from("- p: push selected worktree branch (sets upstream if needed)"),
-            Line::from("- f: fetch + pull connected parent node (or selected main head if behind)"),
+            Line::from(format!(
+                "- f: fetch + pull connected parent node (or selected {} head if behind)",
+                root_branch
+            )),
             Line::from("- F: rebase selected branch onto connected parent node"),
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- d: delete selected worktree (asks force-delete if dirty)"),
@@ -3620,7 +3629,10 @@ fn draw_worktree_create_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
         Paragraph::new(Line::from(vec![
             Span::styled("Base: ", Style::default().fg(Color::Gray)),
             Span::styled(
-                worktree_create_base_label(app.new_worktree_base),
+                worktree_create_base_label(
+                    app.new_worktree_base,
+                    current_session_branch(app).as_str(),
+                ),
                 Style::default().fg(Color::LightGreen),
             ),
             Span::raw("  (use ←/→)"),
@@ -4634,11 +4646,13 @@ fn draw_quit_with_sessions_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     );
 }
 
-fn worktree_create_base_label(base: WorktreeCreateBase) -> &'static str {
+fn worktree_create_base_label(base: WorktreeCreateBase, root_branch: &str) -> String {
     match base {
-        WorktreeCreateBase::Main => "main branch",
-        WorktreeCreateBase::Selected => "selected branch/worktree",
-        WorktreeCreateBase::SelectedWithChanges => "selected branch/worktree + uncommitted changes",
+        WorktreeCreateBase::Main => format!("{} branch", root_branch),
+        WorktreeCreateBase::Selected => "selected branch/worktree".to_string(),
+        WorktreeCreateBase::SelectedWithChanges => {
+            "selected branch/worktree + uncommitted changes".to_string()
+        }
     }
 }
 

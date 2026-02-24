@@ -24,7 +24,7 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 - `g` -- orchestrate a feature requirement, review/accept/refine per-leaf prompts, then execute accepted worktrees
 - `c` -- commit (stages all changes in worktree view, or staged changes in changes view)
 - `p` -- push (auto-sets upstream for new branches)
-- `f` -- fetch and pull parent branch (or selected main branch if behind head)
+- `f` -- fetch and pull parent branch (or selected root branch if behind head)
 - `F` -- rebase selected worktree branch onto parent branch
 - `m` -- merge worktree into parent
 - `d` -- delete worktree (with safety confirmations)

@@ -51,7 +51,7 @@ nav_order: 3
 | `O` | Open agent picker (or launch default agent; default OpenCode attempts session resume) |
 | `c` | Commit (`git add . && git commit`) for selected worktree |
 | `p` | Push selected worktree branch |
-| `f` | Fetch and pull parent branch (or selected main branch if behind head) |
+| `f` | Fetch and pull parent branch (or selected root branch if behind head) |
 | `F` | Rebase selected branch onto parent branch |
 | `m` | Merge selected worktree into parent |
 | `d` | Delete selected worktree |
