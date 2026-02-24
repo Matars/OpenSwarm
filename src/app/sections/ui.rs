@@ -2997,9 +2997,16 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
                 ]));
             }
             lines.push(Line::from(vec![
-                Span::styled("log:    ", Style::default().fg(Color::Gray)),
+                Span::styled("hlog:   ", Style::default().fg(Color::Gray)),
                 Span::styled(
                     app.perf_debug.hitch_log_path.display().to_string(),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("perf:   ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    app.perf_debug.perf_log_path.display().to_string(),
                     Style::default().fg(Color::DarkGray),
                 ),
             ]));
@@ -3468,7 +3475,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from("  Shift+WASD - pan"),
             Line::from("  B       - cycle canvas background"),
             Line::from("  M       - toggle config art / Spotify connector"),
-            Line::from("  Ctrl+L  - toggle perf debugging + hitch log"),
+            Line::from("  Ctrl+L  - toggle perf debugging + JSONL/hitch logs"),
             Line::from(""),
             Line::from("Flow: o/O launch shells or agents, c/p/m/d run git lifecycle"),
             Line::from(""),

@@ -39,7 +39,7 @@ nav_order: 3
 | `W` `A` `S` `D` | Pan up / left / down / right |
 | `M` | Toggle worktree art panel mode (config art / Spotify connector) |
 | `B` | Cycle canvas background mode (stars / crosshatch / rain) |
-| `Ctrl+L` | Toggle frame-lag debug stats + hitch logging (system temp file) |
+| `Ctrl+L` | Toggle frame-lag debug stats + hitch/JSONL perf logging (system temp files) |
 
 ### Actions
 

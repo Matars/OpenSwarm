@@ -56,3 +56,18 @@ Press `n` to open a vim-style markdown editor for `notes.md` in the repo root. S
 ## Git reflog viewer
 
 Press `L` on any worktree to see its recent reflog in a scrollable popup.
+
+## Performance instrumentation and regression checks
+
+Press `Ctrl+L` in Worktrees view to turn on perf debugging. OpenSwarm keeps the in-panel live metrics and also writes two temp logs:
+
+- `/tmp/openswarm-hitches.log` - human-readable hitch breakdown lines
+- `/tmp/openswarm-perf.jsonl` - structured snapshots (about once per second) with FPS, frame times, hitch count, and per-phase timing averages
+
+Use the comparator to verify changes are improving performance instead of regressing it:
+
+```bash
+make perf-compare BASELINE=/tmp/openswarm-perf-baseline.jsonl CANDIDATE=/tmp/openswarm-perf-candidate.jsonl
+```
+
+The compare command fails if p95 frame time, draw-phase cost, or hitches/min regress beyond thresholds (or if FPS drops materially).
