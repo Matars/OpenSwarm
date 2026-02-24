@@ -34,7 +34,7 @@ OpenSwarm replaces the terminal juggling with a single integrated TUI:
 
 | Task | Plain git + terminals | OpenSwarm |
 |---|---|---|
-| Create worktree | `git worktree add -b feat ../repo.feat && cd ../repo.feat` | Press `a`, type branch name |
+| Create worktree | `git worktree add -b feat ../repo.feat && cd ../repo.feat` | Press `a`, type branch name (auto-selected) |
 | Launch agent | Open new terminal, cd to worktree, run `claude` | Press `O` on the node |
 | Check all status | `cd` to each worktree, run `git status` | Visible on the graph -- dirty, ahead/behind, agent activity |
 | Stage + commit | `cd` to worktree, `git add`, `git commit` | Press `c`, type message |

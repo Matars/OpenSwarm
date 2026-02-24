@@ -26,9 +26,9 @@ make dev
    openswarm
    ```
 
-2. **Create a worktree** -- press `a`, select a base branch with left/right arrows, type a branch name, press Enter.
+2. **Create a worktree** -- press `a`, select a base branch with left/right arrows, type a branch name, press Enter. The new node is auto-selected.
 
-3. **Launch an agent** -- select the new node, press `O` to pick an agent (Claude, OpenCode) or `o` for a plain shell.
+3. **Launch an agent** -- press `O` to pick an agent (Claude, OpenCode) or `o` for a plain shell.
 
 4. **Work in parallel** -- create more worktrees, launch more agents. The graph shows all of them with live status.
 

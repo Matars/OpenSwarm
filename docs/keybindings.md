@@ -45,7 +45,7 @@ nav_order: 3
 
 | Key | Action |
 |-----|--------|
-| `a` | Create worktree |
+| `a` | Create worktree (auto-select new node) |
 | `g` | Orchestrate worktrees from a feature requirement |
 | `o` | Open shell in worktree |
 | `O` | Open agent picker (or launch default agent; default OpenCode attempts session resume) |
@@ -150,7 +150,7 @@ Vim-style editor for `notes.md` (or conflict prompt templates).
 |-----|--------|
 | `Left` / `Right` | Cycle base: Main, Selected, Selected+Changes |
 | Characters | Type branch name |
-| `Enter` | Create |
+| `Enter` | Create and auto-select new worktree |
 | `Esc` | Cancel |
 
 ### Orchestrate worktrees modal

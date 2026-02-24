@@ -34,7 +34,7 @@ openswarm
 ```
 
 Then:
-1. Press `a` to create a worktree
+1. Press `a` to create a worktree (it is auto-selected)
 2. Press `O` to launch an agent in it
 3. Repeat for parallel streams
 4. Press `c` to commit, `p` to push, `m` to merge back (with agent conflict solver if needed)
@@ -61,7 +61,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 
 | Key | Action |
 |-----|--------|
-| `a` | Create worktree |
+| `a` | Create worktree (auto-select new node) |
 | `g` | Orchestrate feature, review per-leaf prompts, execute accepted nodes |
 | `o` | Open shell |
 | `O` | Open agent picker |

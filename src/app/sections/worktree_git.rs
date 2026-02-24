@@ -1137,6 +1137,23 @@ fn move_worktree_level_vertical(app: &mut App, move_up: bool) {
     }
 }
 
+fn select_worktree_by_branch(app: &mut App, branch: &str) -> bool {
+    if branch.trim().is_empty() {
+        return false;
+    }
+
+    if let Some(idx) = app
+        .worktrees
+        .iter()
+        .position(|worktree| !worktree.detached && worktree.branch == branch)
+    {
+        app.selected_worktree = idx;
+        true
+    } else {
+        false
+    }
+}
+
 fn create_root_for_app(app: &App) -> String {
     app.selected_worktree()
         .and_then(|wt| repo_container_from_path(wt.path.as_str()))

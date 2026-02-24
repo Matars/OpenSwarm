@@ -1606,24 +1606,25 @@ fn handle_worktree_create_mode_key(app: &mut App, code: KeyCode) -> Result<(), B
             app.cycle_worktree_base_right();
         }
         KeyCode::Enter => {
-            let branch = app.new_worktree_branch.trim();
+            let branch = app.new_worktree_branch.trim().to_string();
             if branch.is_empty() {
                 app.status_line = "Branch name is required".to_string();
             } else {
                 let root = create_root_for_app(app);
-                if branch_exists(root.as_str(), branch) {
-                    app.pending_create_branch = branch.to_string();
+                if branch_exists(root.as_str(), branch.as_str()) {
+                    app.pending_create_branch = branch;
                     app.confirm_delete_branch_yes = false;
                     app.mode = Mode::WorktreeBranchConflictConfirm;
                     app.status_line = format!(
                         "Branch '{}' already exists. Confirm delete and recreate.",
-                        branch
+                        app.pending_create_branch
                     );
                     return Ok(());
                 }
 
-                app.status_line = create_worktree(app, branch)?;
+                app.status_line = create_worktree(app, branch.as_str())?;
                 refresh_worktrees(app);
+                let _ = select_worktree_by_branch(app, branch.as_str());
                 refresh_status(app);
             }
             app.mode = Mode::Normal;
@@ -1891,6 +1892,7 @@ fn handle_branch_conflict_confirm_mode_key(
                 app.status_line =
                     delete_branch_and_create_worktree(app, root.as_str(), branch.as_str())?;
                 refresh_worktrees(app);
+                let _ = select_worktree_by_branch(app, branch.as_str());
                 refresh_status(app);
             } else {
                 app.status_line = "Create worktree cancelled (kept existing branch)".to_string();
