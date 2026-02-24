@@ -2806,8 +2806,14 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     let idle_sessions = live_sessions.saturating_sub(active_sessions);
 
     let inner_width = area.width.saturating_sub(2) as usize;
+    let inner_height = area.height.saturating_sub(2) as usize;
+    let show_flags = app.worktree_details_verbose || inner_height >= 15;
+    let show_runtime_summary = app.worktree_details_verbose || inner_height >= 14;
+    let show_runtime_detail = app.worktree_details_verbose && inner_height >= 18;
+    let section_style = Style::default().fg(Color::DarkGray);
 
     if let Some(selected) = app.selected_worktree() {
+        lines.push(Line::from(vec![Span::styled("identity", section_style)]));
         add_wrapped_field(
             &mut lines,
             "branch: ",
@@ -2838,6 +2844,7 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         );
         lines.push(Line::from(""));
 
+        lines.push(Line::from(vec![Span::styled("sync", section_style)]));
         lines.push(Line::from(vec![
             Span::styled("dirty:  ", Style::default().fg(Color::Gray)),
             Span::styled(
@@ -2908,130 +2915,140 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             ]));
         }
 
-        lines.push(Line::from(vec![
-            Span::styled("flags:  ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                worktree_flags(selected),
-                Style::default().fg(Color::LightMagenta),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("pty:    ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                format!("{} live", live_sessions),
-                Style::default().fg(Color::LightCyan),
-            ),
-            Span::raw("  "),
-            Span::styled("active ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                active_sessions.to_string(),
-                Style::default().fg(Color::Green),
-            ),
-            Span::raw("  "),
-            Span::styled("idle ", Style::default().fg(Color::Gray)),
-            Span::styled(
-                idle_sessions.to_string(),
-                Style::default().fg(Color::Yellow),
-            ),
-        ]));
-        if let Some(session) = app.agent_sessions.get(selected.path.as_str()) {
-            let context_tokens = agent_session_context_tokens(session);
-            let output_tokens = agent_session_output_tokens(session);
-            let total_tokens = agent_session_total_tokens(session);
-            let context_rate = agent_session_context_tokens_per_second(session, now);
-            let output_rate = agent_session_output_tokens_per_second(session, now);
-            let token_label = if session.opencode_usage.is_some() {
-                "tokens:"
-            } else {
-                "tokens~:"
-            };
+        if show_flags {
             lines.push(Line::from(vec![
-                Span::styled(token_label, Style::default().fg(Color::Gray)),
+                Span::styled("flags:  ", Style::default().fg(Color::Gray)),
                 Span::styled(
-                    format!(
-                        "in {} ({}/s)",
-                        format_compact_metric(context_tokens),
-                        format_compact_metric(context_rate)
-                    ),
-                    Style::default().fg(Color::LightBlue),
+                    worktree_flags(selected),
+                    Style::default().fg(Color::LightMagenta),
                 ),
-                Span::raw("  "),
-                Span::styled(
-                    format!(
-                        "out {} ({}/s)",
-                        format_compact_metric(output_tokens),
-                        format_compact_metric(output_rate)
-                    ),
-                    Style::default().fg(Color::LightGreen),
-                ),
-                Span::raw("  "),
-                Span::styled(
-                    format!("total {}", format_compact_metric(total_tokens)),
-                    Style::default().fg(Color::LightCyan),
-                ),
-            ]));
-        } else {
-            lines.push(Line::from(vec![
-                Span::styled("tokens~:", Style::default().fg(Color::Gray)),
-                Span::styled("no pty session", Style::default().fg(Color::DarkGray)),
             ]));
         }
 
-        if app.perf_debug.enabled {
+        if show_runtime_summary {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled("runtime", section_style)]));
             lines.push(Line::from(vec![
-                Span::styled("perf:   ", Style::default().fg(Color::Gray)),
+                Span::styled("pty:    ", Style::default().fg(Color::Gray)),
                 Span::styled(
-                    format!(
-                        "fps {:.1}  avg {:.1}ms  p95 {:.1}ms  worst {:.1}ms",
-                        app.perf_debug.fps(),
-                        app.perf_debug.avg_frame_ms(),
-                        app.perf_debug.p95_frame_ms(),
-                        app.perf_debug.worst_frame_ms()
-                    ),
+                    format!("{} live", live_sessions),
                     Style::default().fg(Color::LightCyan),
                 ),
+                Span::raw("  "),
+                Span::styled("active ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    active_sessions.to_string(),
+                    Style::default().fg(Color::Green),
+                ),
+                Span::raw("  "),
+                Span::styled("idle ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    idle_sessions.to_string(),
+                    Style::default().fg(Color::Yellow),
+                ),
             ]));
-            if let Some(hitch) = app.perf_debug.last_hitch {
-                let measured_no_poll = hitch
-                    .phases
-                    .drain_agent_events
-                    .saturating_add(hitch.phases.drain_git_task_events)
-                    .saturating_add(hitch.phases.refresh_agent_sessions)
-                    .saturating_add(hitch.phases.refresh_opencode_usage)
-                    .saturating_add(hitch.phases.resize_popup)
-                    .saturating_add(hitch.phases.draw)
-                    .saturating_add(hitch.phases.event_handle)
-                    .saturating_add(hitch.phases.refresh_status)
-                    .saturating_add(hitch.phases.refresh_worktrees);
-                let blocking_adjusted = hitch
-                    .phases
-                    .total_loop
-                    .saturating_sub(hitch.phases.event_poll);
-                let unattributed = blocking_adjusted.saturating_sub(measured_no_poll);
+        }
+
+        if show_runtime_detail {
+            if let Some(session) = app.agent_sessions.get(selected.path.as_str()) {
+                let context_tokens = agent_session_context_tokens(session);
+                let output_tokens = agent_session_output_tokens(session);
+                let total_tokens = agent_session_total_tokens(session);
+                let context_rate = agent_session_context_tokens_per_second(session, now);
+                let output_rate = agent_session_output_tokens_per_second(session, now);
+                let token_label = if session.opencode_usage.is_some() {
+                    "tokens:"
+                } else {
+                    "tokens~:"
+                };
                 lines.push(Line::from(vec![
-                    Span::styled("hitch:  ", Style::default().fg(Color::Gray)),
+                    Span::styled(token_label, Style::default().fg(Color::Gray)),
                     Span::styled(
                         format!(
-                            "{:.1}ms total  draw {:.1}ms  opencode {:.1}ms  status {:.1}ms  trees {:.1}ms  unattributed {:.1}ms  ({:.1}s ago)",
-                            hitch.phases.total_loop.as_secs_f64() * 1000.0,
-                            hitch.phases.draw.as_secs_f64() * 1000.0,
-                            hitch.phases.refresh_opencode_usage.as_secs_f64() * 1000.0,
-                            hitch.phases.refresh_status.as_secs_f64() * 1000.0,
-                            hitch.phases.refresh_worktrees.as_secs_f64() * 1000.0,
-                            unattributed.as_secs_f64() * 1000.0,
-                            now.saturating_duration_since(hitch.at).as_secs_f64(),
+                            "in {} ({}/s)",
+                            format_compact_metric(context_tokens),
+                            format_compact_metric(context_rate)
                         ),
-                        Style::default().fg(Color::LightYellow),
+                        Style::default().fg(Color::LightBlue),
+                    ),
+                    Span::raw("  "),
+                    Span::styled(
+                        format!(
+                            "out {} ({}/s)",
+                            format_compact_metric(output_tokens),
+                            format_compact_metric(output_rate)
+                        ),
+                        Style::default().fg(Color::LightGreen),
+                    ),
+                    Span::raw("  "),
+                    Span::styled(
+                        format!("total {}", format_compact_metric(total_tokens)),
+                        Style::default().fg(Color::LightCyan),
+                    ),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled("tokens~:", Style::default().fg(Color::Gray)),
+                    Span::styled("no pty session", Style::default().fg(Color::DarkGray)),
+                ]));
+            }
+
+            if app.perf_debug.enabled {
+                lines.push(Line::from(vec![
+                    Span::styled("perf:   ", Style::default().fg(Color::Gray)),
+                    Span::styled(
+                        format!(
+                            "fps {:.1}  avg {:.1}ms  p95 {:.1}ms  worst {:.1}ms",
+                            app.perf_debug.fps(),
+                            app.perf_debug.avg_frame_ms(),
+                            app.perf_debug.p95_frame_ms(),
+                            app.perf_debug.worst_frame_ms()
+                        ),
+                        Style::default().fg(Color::LightCyan),
+                    ),
+                ]));
+                if let Some(hitch) = app.perf_debug.last_hitch {
+                    let measured_no_poll = hitch
+                        .phases
+                        .drain_agent_events
+                        .saturating_add(hitch.phases.drain_git_task_events)
+                        .saturating_add(hitch.phases.refresh_agent_sessions)
+                        .saturating_add(hitch.phases.refresh_opencode_usage)
+                        .saturating_add(hitch.phases.resize_popup)
+                        .saturating_add(hitch.phases.draw)
+                        .saturating_add(hitch.phases.event_handle)
+                        .saturating_add(hitch.phases.refresh_status)
+                        .saturating_add(hitch.phases.refresh_worktrees);
+                    let blocking_adjusted = hitch
+                        .phases
+                        .total_loop
+                        .saturating_sub(hitch.phases.event_poll);
+                    let unattributed = blocking_adjusted.saturating_sub(measured_no_poll);
+                    lines.push(Line::from(vec![
+                        Span::styled("hitch:  ", Style::default().fg(Color::Gray)),
+                        Span::styled(
+                            format!(
+                                "{:.1}ms total  draw {:.1}ms  opencode {:.1}ms  status {:.1}ms  trees {:.1}ms  unattributed {:.1}ms  ({:.1}s ago)",
+                                hitch.phases.total_loop.as_secs_f64() * 1000.0,
+                                hitch.phases.draw.as_secs_f64() * 1000.0,
+                                hitch.phases.refresh_opencode_usage.as_secs_f64() * 1000.0,
+                                hitch.phases.refresh_status.as_secs_f64() * 1000.0,
+                                hitch.phases.refresh_worktrees.as_secs_f64() * 1000.0,
+                                unattributed.as_secs_f64() * 1000.0,
+                                now.saturating_duration_since(hitch.at).as_secs_f64(),
+                            ),
+                            Style::default().fg(Color::LightYellow),
+                        ),
+                    ]));
+                }
+                lines.push(Line::from(vec![
+                    Span::styled("log:    ", Style::default().fg(Color::Gray)),
+                    Span::styled(
+                        app.perf_debug.hitch_log_path.display().to_string(),
+                        Style::default().fg(Color::DarkGray),
                     ),
                 ]));
             }
-            lines.push(Line::from(vec![
-                Span::styled("log:    ", Style::default().fg(Color::Gray)),
-                Span::styled(
-                    app.perf_debug.hitch_log_path.display().to_string(),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]));
         }
 
         lines.push(Line::from(""));
@@ -3048,12 +3065,8 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             );
             status_color = Color::LightYellow;
         }
-        let inner_height = area.height.saturating_sub(2) as usize;
         let status_max_lines = inner_height.saturating_sub(lines.len() + 1).max(1);
-        lines.push(Line::from(vec![Span::styled(
-            "status:",
-            Style::default().fg(Color::Gray),
-        )]));
+        lines.push(Line::from(vec![Span::styled("status", section_style)]));
         for wrapped in wrap_text_lines(status_text.as_str(), status_max.max(12), status_max_lines) {
             lines.push(Line::from(vec![Span::styled(
                 wrapped,
@@ -3070,10 +3083,16 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         Color::Gray
     };
 
+    let details_title = if app.worktree_details_verbose {
+        "details (verbose) [?]"
+    } else {
+        "details (compact) [?]"
+    };
+
     let panel = Paragraph::new(lines)
         .block(
             Block::default()
-                .title("details [?]")
+                .title(details_title)
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(border_color))
                 .style(Style::default().bg(Color::Black)),
@@ -3302,118 +3321,159 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     }
 
     let root_branch = current_session_branch(app);
+    let section_style = Style::default().fg(Color::DarkGray);
+    let key_style = Style::default().fg(Color::LightBlue);
+    let git_style = Style::default().fg(Color::Magenta);
 
-    lines.extend(vec![
-        Line::from(vec![
-            Span::styled("w", Style::default().fg(Color::LightBlue)),
-            Span::raw(" file changes view"),
-        ]),
-        Line::from(vec![
-            Span::styled("r", Style::default().fg(Color::Cyan)),
-            Span::raw(" refresh worktrees"),
-        ]),
-        Line::from(vec![
-            Span::styled("q", Style::default().fg(Color::Red)),
-            Span::raw(" quit"),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("a", Style::default().fg(Color::LightGreen)),
-            Span::raw(" create worktree"),
-        ]),
-        Line::from(vec![
-            Span::styled("g", Style::default().fg(Color::LightGreen)),
-            Span::raw(" orchestrate worktrees from feature requirement"),
-        ]),
-        Line::from(vec![
-            Span::styled("o", Style::default().fg(Color::LightBlue)),
-            Span::raw(" open terminal popup"),
-        ]),
-        Line::from(vec![
-            Span::styled("O", Style::default().fg(Color::LightBlue)),
-            Span::raw(" open agent picker"),
-        ]),
-        Line::from(vec![
-            Span::styled("f", Style::default().fg(Color::Cyan)),
-            Span::raw(format!(
-                " fetch + pull parent (or selected {} head)",
-                root_branch
-            )),
-        ]),
-        Line::from(vec![
-            Span::styled("F", Style::default().fg(Color::Cyan)),
-            Span::raw(" rebase selected onto parent"),
-        ]),
-        Line::from(vec![
-            Span::styled("c", Style::default().fg(Color::Magenta)),
-            Span::raw(" add+commit"),
-        ]),
-        Line::from(vec![
-            Span::styled("p", Style::default().fg(Color::Magenta)),
-            Span::raw(" push"),
-        ]),
-        Line::from(vec![
-            Span::styled("d", Style::default().fg(Color::LightRed)),
-            Span::raw(" delete selected (prompts if dirty)"),
-        ]),
-        Line::from(vec![
-            Span::styled("m", Style::default().fg(Color::LightGreen)),
-            Span::raw(" merge to parent"),
-        ]),
-        Line::from(vec![
-            Span::styled("n", Style::default().fg(Color::LightCyan)),
-            Span::raw(" notes (vim-style)"),
-        ]),
-        Line::from(vec![
-            Span::styled("x", Style::default().fg(Color::Yellow)),
-            Span::raw(" prune stale"),
-        ]),
-        Line::from(vec![
-            Span::styled("L", Style::default().fg(Color::LightCyan)),
-            Span::raw(" git command history popup"),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("tab", Style::default().fg(Color::LightBlue)),
-            Span::raw(" switch panel"),
-        ]),
-        Line::from(vec![
-            Span::styled("?", Style::default().fg(Color::Yellow)),
-            Span::raw(" panel help"),
-        ]),
-        Line::from(vec![
-            Span::styled("arrows", Style::default().fg(Color::LightBlue)),
-            Span::raw(" move on canvas"),
-        ]),
-        Line::from(vec![
-            Span::styled("+/-", Style::default().fg(Color::LightBlue)),
-            Span::raw(" zoom canvas"),
-        ]),
-        Line::from(vec![
-            Span::styled("0", Style::default().fg(Color::LightBlue)),
-            Span::raw(" reset camera"),
-        ]),
-        Line::from(vec![
-            Span::styled("Shift+WASD", Style::default().fg(Color::LightBlue)),
-            Span::raw(" pan camera"),
-        ]),
-        Line::from(vec![
-            Span::styled("h/l", Style::default().fg(Color::LightBlue)),
-            Span::raw(" left/right in level"),
-        ]),
-        Line::from(vec![
-            Span::styled("j/k", Style::default().fg(Color::LightBlue)),
-            Span::raw(" child/parent level"),
-        ]),
-        Line::from(vec![
-            Span::styled("Ctrl+K", Style::default().fg(Color::LightBlue)),
-            Span::raw(" next graph builder"),
-        ]),
-        Line::from(vec![
-            Span::styled("M", Style::default().fg(Color::LightBlue)),
-            Span::raw(" toggle art / spotify connector"),
-        ]),
-    ]);
+    let section = |lines: &mut Vec<Line<'_>>, title: &'static str| {
+        if !lines.is_empty() {
+            lines.push(Line::from(""));
+        }
+        lines.push(Line::from(vec![Span::styled(title, section_style)]));
+    };
+    let action = |lines: &mut Vec<Line<'_>>, key: &str, label: String, style: Style| {
+        lines.push(Line::from(vec![
+            Span::styled(key.to_string(), style),
+            Span::raw(format!(" {}", label)),
+        ]));
+    };
+
+    section(&mut lines, "general");
+    action(&mut lines, "w", "file changes view".to_string(), key_style);
+    action(
+        &mut lines,
+        "r",
+        "refresh worktrees".to_string(),
+        Style::default().fg(Color::Cyan),
+    );
+    action(
+        &mut lines,
+        "q",
+        "quit".to_string(),
+        Style::default().fg(Color::Red),
+    );
+
+    section(&mut lines, "worktrees");
+    action(
+        &mut lines,
+        "a",
+        "create worktree".to_string(),
+        Style::default().fg(Color::LightGreen),
+    );
+    action(
+        &mut lines,
+        "g",
+        "orchestrate worktrees from feature requirement".to_string(),
+        Style::default().fg(Color::LightGreen),
+    );
+    action(
+        &mut lines,
+        "o",
+        "open terminal popup".to_string(),
+        key_style,
+    );
+    action(&mut lines, "O", "open agent picker".to_string(), key_style);
+    action(
+        &mut lines,
+        "n",
+        "notes (vim-style)".to_string(),
+        Style::default().fg(Color::LightCyan),
+    );
+    action(
+        &mut lines,
+        "L",
+        "git command history popup".to_string(),
+        Style::default().fg(Color::LightCyan),
+    );
+    action(
+        &mut lines,
+        "x",
+        "prune stale".to_string(),
+        Style::default().fg(Color::Yellow),
+    );
+    action(
+        &mut lines,
+        "d",
+        "delete selected (prompts if dirty)".to_string(),
+        Style::default().fg(Color::LightRed),
+    );
+
+    section(&mut lines, "git");
+    action(&mut lines, "c", "add+commit".to_string(), git_style);
+    action(&mut lines, "p", "push".to_string(), git_style);
+    action(
+        &mut lines,
+        "f",
+        format!("fetch + pull parent (or selected {} head)", root_branch),
+        Style::default().fg(Color::Cyan),
+    );
+    action(
+        &mut lines,
+        "F",
+        "rebase selected onto parent".to_string(),
+        Style::default().fg(Color::Cyan),
+    );
+    action(
+        &mut lines,
+        "m",
+        "merge to parent".to_string(),
+        Style::default().fg(Color::LightGreen),
+    );
+
+    section(&mut lines, "view + help");
+    action(&mut lines, "Tab", "switch panel".to_string(), key_style);
+    action(
+        &mut lines,
+        "v",
+        "toggle compact/verbose details".to_string(),
+        key_style,
+    );
+    action(
+        &mut lines,
+        "?",
+        "panel help".to_string(),
+        Style::default().fg(Color::Yellow),
+    );
+
+    section(&mut lines, "canvas");
+    action(
+        &mut lines,
+        "arrows",
+        "move on canvas".to_string(),
+        key_style,
+    );
+    action(
+        &mut lines,
+        "h/l",
+        "left/right in level".to_string(),
+        key_style,
+    );
+    action(
+        &mut lines,
+        "j/k",
+        "child/parent level".to_string(),
+        key_style,
+    );
+    action(&mut lines, "+/-", "zoom canvas".to_string(), key_style);
+    action(&mut lines, "0", "reset camera".to_string(), key_style);
+    action(
+        &mut lines,
+        "Shift+WASD",
+        "pan camera".to_string(),
+        key_style,
+    );
+    action(
+        &mut lines,
+        "Ctrl+K",
+        "next graph builder".to_string(),
+        key_style,
+    );
+    action(
+        &mut lines,
+        "M",
+        "toggle art / spotify connector".to_string(),
+        key_style,
+    );
 
     let title = if app.git_task.is_some() {
         let queued = app.git_task_queue.len();
@@ -3502,17 +3562,20 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
         WorktreePane::Details => vec![
             Line::from("Details panel"),
             Line::from("- Reflects the selected graph node"),
-            Line::from("- Shows branch/path/HEAD and worktree flags"),
+            Line::from("- Default compact mode prioritizes branch/path/head + sync status"),
+            Line::from("- Press v to toggle verbose runtime telemetry"),
             Line::from("- Shows ahead/behind and dirty/locked state"),
-            Line::from("- Includes total PTY counts (live/active/idle)"),
-            Line::from("- Shows OpenCode exact token usage when available, else PTY estimates"),
+            Line::from("- Includes PTY totals (live/active/idle); verbose adds token rates"),
+            Line::from("- OpenCode sessions show exact tokens; others show PTY estimates"),
             Line::from("- Status section reports the latest command outcome"),
+            Line::from("- Tight layouts automatically hide lower-priority runtime rows"),
             Line::from("- Use this panel to validate readiness before push/merge"),
             Line::from("- Tab: move focus to next panel"),
             Line::from("- ?: close this help"),
         ],
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
+            Line::from("- Grouped by category: general, worktrees, git, view + help, canvas"),
             Line::from("- a: create worktree from branch name"),
             Line::from("- g: orchestrate feature, review prompts per leaf, then execute"),
             Line::from("- o: open/reopen terminal popup for selected node"),

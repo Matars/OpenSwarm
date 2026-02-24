@@ -51,6 +51,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | Arrow keys / `h` `j` `k` `l` | Move selection |
 | `Ctrl+K` | Cycle graph builder (top-down, layered, left-right, trunk, swimlanes, indented) |
 | `Tab` | Cycle panes |
+| `v` | Toggle details panel compact / verbose |
 | `+` / `-` / `0` | Zoom in / out / reset |
 | `W` `A` `S` `D` | Pan canvas |
 | `M` | Toggle worktree art panel mode (config art / Spotify connector) |

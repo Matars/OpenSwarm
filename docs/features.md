@@ -30,6 +30,8 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 - `d` -- delete worktree (with safety confirmations)
 - `s` / `S` -- stash push / stash pop
 
+In worktrees view, the Actions panel groups shortcuts by category (`general`, `worktrees`, `git`, `view + help`, `canvas`) so command discovery is easier while navigating.
+
 All git operations run in the background. If you trigger another operation while one is in flight, it gets queued and auto-executes when the current task finishes. The status bar shows `+N queued` so you always know how many tasks are pending. This means you can press `p` on three different worktrees back-to-back without waiting for each push to complete.
 
 ## Feature-to-worktree orchestration
@@ -46,7 +48,7 @@ When a merge produces conflicts, OpenSwarm shows the conflicted files and a cust
 
 Each graph node shows live status: a spinning indicator when the agent is actively writing, idle duration when quiet, and a done/failed badge when the process exits. You can see at a glance which of your 5-10 agents are still working.
 The worktree canvas also includes an animated top-right tok/s leaderboard with Unicode bars normalized to the busiest stream, while idle worktrees are grouped into a single compact `idle xN` row to save space.
-In the details panel, OpenCode sessions use exact token usage from OpenCode's session database (shown as `tokens:`). Non-OpenCode sessions fall back to PTY text-based estimates (shown as `tokens~`).
+The details panel defaults to a compact layout that prioritizes branch/path/head and sync health; press `v` to switch to verbose telemetry. In verbose mode, OpenCode sessions use exact token usage from OpenCode's session database (shown as `tokens:`), while non-OpenCode sessions fall back to PTY text-based estimates (shown as `tokens~`).
 
 ## Built-in notes editor
 
