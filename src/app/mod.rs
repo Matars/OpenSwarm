@@ -305,6 +305,9 @@ struct App {
     status_refresh_in_flight: bool,
     status_refresh_tx: Sender<StatusRefreshEvent>,
     status_refresh_rx: Receiver<StatusRefreshEvent>,
+    opencode_usage_refresh_in_flight: bool,
+    opencode_usage_refresh_tx: Sender<OpencodeUsageRefreshEvent>,
+    opencode_usage_refresh_rx: Receiver<OpencodeUsageRefreshEvent>,
     perf_debug: PerfDebugState,
 }
 
@@ -396,6 +399,12 @@ struct StatusSnapshot {
 struct StatusRefreshEvent {
     snapshot: Option<StatusSnapshot>,
     error: Option<String>,
+}
+
+struct OpencodeUsageRefreshEvent {
+    command_available: bool,
+    resolved_session_ids: BTreeMap<String, String>,
+    usage_by_session: BTreeMap<String, OpenCodeUsage>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -849,6 +858,7 @@ impl App {
         let (agent_tx, agent_rx) = mpsc::channel();
         let (git_task_tx, git_task_rx) = mpsc::channel();
         let (status_refresh_tx, status_refresh_rx) = mpsc::channel();
+        let (opencode_usage_refresh_tx, opencode_usage_refresh_rx) = mpsc::channel();
         let config = load_openswarm_config();
         let mut canvas_bg_effects = EffectManager::default();
         canvas_bg_effects.add_unique_effect("bg-polish", build_canvas_bg_effect());
@@ -950,6 +960,9 @@ impl App {
             status_refresh_in_flight: false,
             status_refresh_tx,
             status_refresh_rx,
+            opencode_usage_refresh_in_flight: false,
+            opencode_usage_refresh_tx,
+            opencode_usage_refresh_rx,
             perf_debug: PerfDebugState::new(),
         }
     }
@@ -1118,6 +1131,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         loop_phases.drain_git_task_events = phase_started.elapsed();
 
         drain_status_refresh_events(&mut app);
+        drain_opencode_usage_refresh_events(&mut app);
 
         let phase_started = Instant::now();
         refresh_agent_sessions(&mut app);
@@ -1127,7 +1141,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             && last_opencode_usage_tick.elapsed() >= opencode_usage_tick_rate;
         if can_refresh_opencode {
             let phase_started = Instant::now();
-            refresh_opencode_usage(&mut app);
+            start_opencode_usage_refresh_task(&mut app);
             loop_phases.refresh_opencode_usage = phase_started.elapsed();
             last_opencode_usage_tick = Instant::now();
         }
@@ -1277,7 +1291,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             refresh_git && matches!(app.mode, Mode::Normal) && app.view_mode == ViewMode::Worktrees;
         if refresh_worktree_state && last_worktree_tick.elapsed() >= worktree_tick_rate {
             let phase_started = Instant::now();
-            refresh_worktrees(&mut app);
+            refresh_worktrees_lightweight(&mut app);
             loop_phases.refresh_worktrees = phase_started.elapsed();
             last_worktree_tick = Instant::now();
         }

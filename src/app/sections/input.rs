@@ -905,25 +905,47 @@ impl OpenCodeLaunchCommand {
 }
 
 fn resolve_recent_opencode_session_id_for_worktree(worktree_path: &str) -> Option<String> {
+    resolve_recent_opencode_session_ids_for_worktrees(&[worktree_path.to_string()])
+        .remove(worktree_path)
+}
+
+fn resolve_recent_opencode_session_ids_for_worktrees(
+    worktree_paths: &[String],
+) -> BTreeMap<String, String> {
+    if worktree_paths.is_empty() {
+        return BTreeMap::new();
+    }
+
     let output = Command::new("opencode")
         .args(["session", "list", "--format", "json", "-n", "120"])
-        .output()
-        .ok()?;
+        .output();
+    let Ok(output) = output else {
+        return BTreeMap::new();
+    };
     if !output.status.success() {
-        return None;
+        return BTreeMap::new();
     }
 
     let json = String::from_utf8_lossy(&output.stdout);
     let sessions = parse_opencode_session_rows(json.as_ref());
     if sessions.is_empty() {
-        return None;
+        return BTreeMap::new();
     }
 
-    let target = normalize_path_for_session_match(worktree_path);
-    sessions
-        .into_iter()
-        .find(|(_, directory)| normalize_path_for_session_match(directory.as_str()) == target)
-        .map(|(id, _)| id)
+    let mut by_directory = BTreeMap::new();
+    for (id, directory) in sessions {
+        by_directory.insert(normalize_path_for_session_match(directory.as_str()), id);
+    }
+
+    let mut out = BTreeMap::new();
+    for path in worktree_paths {
+        let normalized = normalize_path_for_session_match(path.as_str());
+        if let Some(id) = by_directory.get(&normalized) {
+            out.insert(path.clone(), id.clone());
+        }
+    }
+
+    out
 }
 
 fn normalize_path_for_session_match(path: &str) -> String {
@@ -3089,22 +3111,26 @@ fn refresh_agent_sessions(app: &mut App) {
 
 const OPENCODE_USAGE_RATE_WINDOW_MS: u64 = 4000;
 
-fn refresh_opencode_usage(app: &mut App) {
-    let mut should_query = false;
-    for (path, session) in app.agent_sessions.iter_mut() {
-        let tracks_opencode = session.agent_kind == Some(ExternalAgent::Opencode)
-            || session.opencode_session_id.is_some();
-        if !tracks_opencode {
-            continue;
-        }
-        should_query = true;
-        if session.opencode_session_id.is_none() {
-            session.opencode_session_id =
-                resolve_recent_opencode_session_id_for_worktree(path.as_str());
-        }
+fn start_opencode_usage_refresh_task(app: &mut App) {
+    if app.opencode_usage_refresh_in_flight {
+        return;
     }
 
-    if !should_query || !command_exists_on_path("opencode") {
+    let tracked_paths = app
+        .agent_sessions
+        .iter()
+        .filter_map(|(path, session)| {
+            let tracks_opencode = session.agent_kind == Some(ExternalAgent::Opencode)
+                || session.opencode_session_id.is_some();
+            if tracks_opencode {
+                Some(path.clone())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if tracked_paths.is_empty() {
         for session in app.agent_sessions.values_mut() {
             if session.agent_kind == Some(ExternalAgent::Opencode)
                 || session.opencode_session_id.is_some()
@@ -3115,26 +3141,68 @@ fn refresh_opencode_usage(app: &mut App) {
         return;
     }
 
-    let mut ids = BTreeSet::new();
-    for session in app.agent_sessions.values() {
-        if let Some(session_id) = session.opencode_session_id.as_ref() {
-            ids.insert(session_id.clone());
+    app.opencode_usage_refresh_in_flight = true;
+    let tx = app.opencode_usage_refresh_tx.clone();
+    thread::spawn(move || {
+        let command_available = command_exists_on_path("opencode");
+        let mut resolved_session_ids = BTreeMap::new();
+        let mut usage_by_session = BTreeMap::new();
+
+        if command_available {
+            resolved_session_ids =
+                resolve_recent_opencode_session_ids_for_worktrees(tracked_paths.as_slice());
+
+            let session_ids = resolved_session_ids
+                .values()
+                .cloned()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            if let Ok(usage) = load_opencode_usage_for_sessions(session_ids.as_slice()) {
+                usage_by_session = usage;
+            }
+        }
+
+        let _ = tx.send(OpencodeUsageRefreshEvent {
+            command_available,
+            resolved_session_ids,
+            usage_by_session,
+        });
+    });
+}
+
+fn drain_opencode_usage_refresh_events(app: &mut App) {
+    let mut last_event: Option<OpencodeUsageRefreshEvent> = None;
+    while let Ok(event) = app.opencode_usage_refresh_rx.try_recv() {
+        last_event = Some(event);
+    }
+
+    let Some(event) = last_event else {
+        return;
+    };
+
+    app.opencode_usage_refresh_in_flight = false;
+
+    for (path, session_id) in &event.resolved_session_ids {
+        if let Some(session) = app.agent_sessions.get_mut(path.as_str()) {
+            if session.agent_kind == Some(ExternalAgent::Opencode)
+                || session.opencode_session_id.is_some()
+            {
+                session.opencode_session_id = Some(session_id.clone());
+            }
         }
     }
 
-    if ids.is_empty() {
+    if !event.command_available {
         for session in app.agent_sessions.values_mut() {
-            if session.agent_kind == Some(ExternalAgent::Opencode) {
+            if session.agent_kind == Some(ExternalAgent::Opencode)
+                || session.opencode_session_id.is_some()
+            {
                 session.opencode_usage = None;
             }
         }
         return;
     }
-
-    let session_ids = ids.into_iter().collect::<Vec<_>>();
-    let Ok(usage_by_session) = load_opencode_usage_for_sessions(session_ids.as_slice()) else {
-        return;
-    };
 
     for session in app.agent_sessions.values_mut() {
         let Some(session_id) = session.opencode_session_id.as_ref() else {
@@ -3144,7 +3212,7 @@ fn refresh_opencode_usage(app: &mut App) {
             continue;
         };
 
-        session.opencode_usage = usage_by_session.get(session_id).copied();
+        session.opencode_usage = event.usage_by_session.get(session_id).copied();
     }
 }
 
