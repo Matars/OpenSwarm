@@ -1206,7 +1206,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                             handle_worktree_create_mode_key(&mut app, key.code)?;
                         }
                         Mode::WorktreeBranchSwitchPopup => {
-                            handle_worktree_branch_switch_mode_key(&mut app, key.code)?;
+                            handle_worktree_branch_switch_mode_key(&mut app, key)?;
                         }
                         Mode::WorktreeOrchestrateInput => {
                             handle_worktree_orchestrate_mode_key(&mut app, key.code);

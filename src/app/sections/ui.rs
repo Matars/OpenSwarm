@@ -3862,7 +3862,9 @@ fn draw_worktree_branch_switch_modal(frame: &mut ratatui::Frame<'_>, app: &App) 
     );
 
     frame.render_widget(
-        Paragraph::new("Up/Down or j/k scroll, PgUp/PgDn jump, Enter switch/create, Esc cancel")
+        Paragraph::new(
+            "Up/Down or j/k scroll, PgUp/PgDn jump, Enter switch selected, Shift+Enter create typed, Esc cancel",
+        )
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Gray)),
         layout[3],

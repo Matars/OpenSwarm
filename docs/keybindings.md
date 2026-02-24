@@ -165,7 +165,8 @@ Vim-style editor for `notes.md` (or conflict prompt templates).
 | `Backspace` | Delete backward |
 | `Up` / `Down` or `k` / `j` | Move selection |
 | `PageUp` / `PageDown` | Jump through branch list |
-| `Enter` | Switch to selected branch, or create+switch typed branch |
+| `Enter` | Switch to the selected filtered branch; if no matches, create+switch typed branch |
+| `Shift+Enter` | Always create+switch the typed branch |
 | `Esc` | Cancel |
 
 ### Orchestrate worktrees modal

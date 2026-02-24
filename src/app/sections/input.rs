@@ -1701,8 +1701,9 @@ fn filtered_worktree_branch_candidates(app: &App) -> Vec<String> {
 
 fn handle_worktree_branch_switch_mode_key(
     app: &mut App,
-    code: KeyCode,
+    key: KeyEvent,
 ) -> Result<(), Box<dyn Error>> {
+    let code = key.code;
     match code {
         KeyCode::Esc => {
             app.mode = Mode::Normal;
@@ -1758,22 +1759,24 @@ fn handle_worktree_branch_switch_mode_key(
             }
 
             let typed = app.worktree_branch_input.trim().to_string();
-            let picked = filtered.get(app.worktree_branch_selected).cloned();
-            let target = if typed.is_empty() {
-                picked.unwrap_or_default()
-            } else {
-                typed
-            };
+            let selected_branch = filtered.get(app.worktree_branch_selected).cloned();
+            let shift_create = key.modifiers.contains(KeyModifiers::SHIFT);
 
-            if target.is_empty() {
+            let (target, create_if_missing) = if shift_create {
+                if typed.is_empty() {
+                    app.status_line = "Type a branch name to create".to_string();
+                    return Ok(());
+                }
+                (typed, true)
+            } else if let Some(selected) = selected_branch {
+                (selected, false)
+            } else if !typed.is_empty() {
+                (typed, true)
+            } else {
                 app.status_line = "Type or select a branch name".to_string();
                 return Ok(());
-            }
+            };
 
-            let create_if_missing = !app
-                .worktree_branch_candidates
-                .iter()
-                .any(|branch| branch == target.as_str());
             let label = if create_if_missing {
                 format!("Create + switch branch '{}'", target)
             } else {
