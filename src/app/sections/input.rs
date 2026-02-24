@@ -278,8 +278,10 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
                         git_result_text(update_worktree_head_at(path.as_str(), branch.as_str()))
                     });
                 } else if is_main_branch_name(selected.branch.as_str()) && selected.has_upstream {
-                    app.status_line =
-                        "Selected main branch is already in sync with head".to_string();
+                    app.status_line = format!(
+                        "Selected {} branch is already in sync with head",
+                        selected.branch
+                    );
                 } else {
                     app.status_line =
                         "No connected parent node found for selected worktree".to_string();
