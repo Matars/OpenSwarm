@@ -1976,39 +1976,6 @@ fn estimate_tokens(bytes: u64) -> u64 {
     bytes.saturating_add(3) / 4
 }
 
-fn agent_session_output_text_bytes(session: &AgentSession) -> u64 {
-    let screen = session.parser.screen();
-    let (rows, cols) = screen.size();
-    let mut bytes = 0u64;
-
-    for row in 0..rows {
-        let mut line = String::new();
-        for col in 0..cols {
-            let Some(cell) = screen.cell(row, col) else {
-                continue;
-            };
-            if cell.is_wide_continuation() {
-                continue;
-            }
-            let mut text = cell.contents();
-            if text.is_empty() {
-                text.push(' ');
-            }
-            line.push_str(text.as_str());
-        }
-
-        let trimmed = line.trim_end_matches(' ');
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        bytes = bytes.saturating_add(trimmed.len() as u64);
-        bytes = bytes.saturating_add(1);
-    }
-
-    bytes
-}
-
 fn agent_session_context_tokens(session: &AgentSession) -> u64 {
     if let Some(usage) = session.opencode_usage {
         return usage.input_tokens;
@@ -2020,7 +1987,7 @@ fn agent_session_output_tokens(session: &AgentSession) -> u64 {
     if let Some(usage) = session.opencode_usage {
         return usage.output_tokens;
     }
-    estimate_tokens(agent_session_output_text_bytes(session))
+    estimate_tokens(session.bytes_from_agent)
 }
 
 fn agent_session_total_tokens(session: &AgentSession) -> u64 {
