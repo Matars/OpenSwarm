@@ -1014,8 +1014,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
                     if matches!(app.mode, Mode::Normal)
                         && app.view_mode == ViewMode::Worktrees
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                        && key.code == KeyCode::Char('b')
+                        && key.code == KeyCode::Char('B')
                     {
                         cycle_worktree_canvas_background(&mut app);
                         continue;
