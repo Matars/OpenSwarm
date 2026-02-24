@@ -50,6 +50,7 @@ enum Mode {
     WorktreeConflictResolveConfirm,
     WorktreeRemoveDirtyConfirm,
     WorktreeGitLogPopup,
+    WorktreeKeybindsPopup,
     LegacyWorkspaceMigrateConfirm,
     QuitWithSessionsConfirm,
     AgentSelectPopup,
@@ -1055,6 +1056,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::WorktreeGitLogPopup => {
                             handle_worktree_git_log_mode_key(&mut app, key.code);
+                        }
+                        Mode::WorktreeKeybindsPopup => {
+                            handle_worktree_keybinds_mode_key(&mut app, key.code);
                         }
                         Mode::LegacyWorkspaceMigrateConfirm => {
                             handle_legacy_workspace_migrate_mode_key(&mut app, key.code)?;

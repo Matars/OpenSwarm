@@ -94,6 +94,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         draw_worktree_git_log_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::WorktreeKeybindsPopup) {
+        draw_worktree_keybinds_modal(frame);
+    }
+
     if matches!(app.mode, Mode::QuitWithSessionsConfirm) {
         draw_quit_with_sessions_modal(frame, app);
     }
@@ -3430,9 +3434,15 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     );
     action(
         &mut lines,
-        "?",
+        "h",
         "panel help".to_string(),
         Style::default().fg(Color::Yellow),
+    );
+    action(
+        &mut lines,
+        "?",
+        "open keybindings".to_string(),
+        Style::default().fg(Color::LightCyan),
     );
 
     section(&mut lines, "canvas");
@@ -3444,7 +3454,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     );
     action(
         &mut lines,
-        "h/l",
+        "H/l",
         "left/right in level".to_string(),
         key_style,
     );
@@ -3525,6 +3535,71 @@ fn draw_worktree_help_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     frame.render_widget(panel, popup);
 }
 
+fn draw_worktree_keybinds_modal(frame: &mut ratatui::Frame<'_>) {
+    let popup = centered_rect(88, 86, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let panel = Block::default()
+        .title("Keybindings")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::LightCyan))
+        .style(Style::default().bg(Color::Black));
+    frame.render_widget(panel, popup);
+
+    let lines = vec![
+        Line::from("WORKTREES"),
+        Line::from("  general"),
+        Line::from("    w      changes view"),
+        Line::from("    r      refresh worktrees"),
+        Line::from("    q      quit"),
+        Line::from("    h      panel help"),
+        Line::from("    ?      open this keybindings view"),
+        Line::from(""),
+        Line::from("  worktrees"),
+        Line::from("    a      create worktree"),
+        Line::from("    g      orchestrate worktrees from feature requirement"),
+        Line::from("    o / O  open terminal popup / open agent picker"),
+        Line::from("    n      notes editor"),
+        Line::from("    L      git command history popup"),
+        Line::from("    x / d  prune stale / delete selected"),
+        Line::from(""),
+        Line::from("  git"),
+        Line::from("    c / p  add+commit / push"),
+        Line::from("    f      fetch + pull parent (or selected root head)"),
+        Line::from("    F / m  rebase onto parent / merge to parent"),
+        Line::from(""),
+        Line::from("  canvas"),
+        Line::from("    arrows directional graph navigation"),
+        Line::from("    H / l  move between siblings"),
+        Line::from("    j / k  child / parent levels"),
+        Line::from("    +/-/0  zoom in/out/reset"),
+        Line::from("    Shift+WASD pan camera"),
+        Line::from("    Ctrl+K next graph builder"),
+        Line::from("    M / B  toggle art mode / cycle background"),
+        Line::from("    v      toggle compact/verbose details"),
+        Line::from(""),
+        Line::from("CHANGES"),
+        Line::from("  h/l or Left/Right focus files/overview"),
+        Line::from("  j/k or Up/Down move selection/scroll"),
+        Line::from("  a smart stage/unstage, u unstage"),
+        Line::from("  A/U stage all/unstage all"),
+        Line::from("  c commit, p push, s/S stash push/pop"),
+        Line::from(""),
+        Line::from("GLOBAL"),
+        Line::from("  Ctrl+L toggle perf debug stats + hitch logging"),
+        Line::from(""),
+        Line::from("close: Esc, Enter, q, or ?"),
+    ];
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().borders(Borders::NONE))
+            .style(Style::default().fg(Color::White))
+            .alignment(Alignment::Left),
+        popup.inner(Margin::new(1, 1)),
+    );
+}
+
 fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'static>> {
     match pane {
         WorktreePane::Canvas => vec![
@@ -3541,7 +3616,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from(""),
             Line::from("Navigation:"),
             Line::from("  arrows  - move by graph direction"),
-            Line::from("  h/l     - move between siblings"),
+            Line::from("  H/l     - move between siblings"),
             Line::from("  j/k     - move child/parent levels"),
             Line::from("  Ctrl+K  - cycle graph builder (6 layouts)"),
             Line::from("  Tab     - cycle graph/details/actions panels"),
@@ -3557,7 +3632,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from(""),
             Line::from("Flow: o/O launch shells or agents, c/p/m/d run git lifecycle"),
             Line::from(""),
-            Line::from("  ?: close this help"),
+            Line::from("  h: close this help, ?: open keybindings"),
         ],
         WorktreePane::Details => vec![
             Line::from("Details panel"),
@@ -3571,7 +3646,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from("- Tight layouts automatically hide lower-priority runtime rows"),
             Line::from("- Use this panel to validate readiness before push/merge"),
             Line::from("- Tab: move focus to next panel"),
-            Line::from("- ?: close this help"),
+            Line::from("- h: close this help, ?: open keybindings"),
         ],
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
@@ -3595,7 +3670,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from(
                 "- Agent defaults/prompts live in ~/.config/openswarm (%USERPROFILE%\\.config\\openswarm on Windows)",
             ),
-            Line::from("- ?: close this help"),
+            Line::from("- h: close this help, ?: open keybindings"),
         ],
     }
 }
