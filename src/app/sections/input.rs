@@ -600,14 +600,20 @@ fn fetch_spotify_now_playing_macos() -> Result<Option<SpotifyNowPlaying>, String
 }
 
 fn toggle_perf_debug(app: &mut App) {
-    app.perf_debug.enabled = !app.perf_debug.enabled;
     if app.perf_debug.enabled {
+        app.perf_debug.disable();
         app.status_line = format!(
-            "Perf debug enabled (Ctrl+L to toggle). Hitch log: {}",
-            app.perf_debug.hitch_log_path.display()
+            "Perf debug disabled (Ctrl+L). Logs: hitch={} perf={}",
+            app.perf_debug.hitch_log_path.display(),
+            app.perf_debug.perf_log_path.display(),
         );
     } else {
-        app.status_line = "Perf debug disabled (Ctrl+L to toggle)".to_string();
+        app.perf_debug.enable();
+        app.status_line = format!(
+            "Perf debug enabled (Ctrl+L). Logs: hitch={} perf={}",
+            app.perf_debug.hitch_log_path.display(),
+            app.perf_debug.perf_log_path.display(),
+        );
     }
 }
 

@@ -55,7 +55,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | `W` `A` `S` `D` | Pan canvas |
 | `M` | Toggle worktree art panel mode (config art / Spotify connector) |
 | `B` | Cycle canvas background effect |
-| `Ctrl+L` | Toggle frame-lag debug stats + hitch logging |
+| `Ctrl+L` | Toggle frame-lag debug stats + hitch/JSONL perf logging |
 
 ### Worktree actions
 
@@ -143,6 +143,23 @@ Agent defaults, wsprompt templates, worktree orchestration controls, and optiona
 - Worktrees are placed in `.<repo>-workspaces/` sibling directory
 - Startup now validates git context (inside a worktree, resolvable top-level, loadable `git worktree list`) and shows an explicit in-app error instead of an empty graph when checks fail
 - Large dependency folders (like `node_modules/`) are skipped for untracked previews to avoid startup stalls after `npm install`
+
+## Performance tracking workflow
+
+Use `Ctrl+L` in Worktrees view to enable perf debugging. OpenSwarm writes:
+
+- Hitch breakdown log: `/tmp/openswarm-hitches.log`
+- Structured perf snapshots (JSONL, ~1 sample/sec): `/tmp/openswarm-perf.jsonl`
+
+Each JSONL snapshot includes FPS, avg/p95/worst frame time, hitch counts, and average phase timings (`draw`, `event_poll`, `event_handle`, `refresh_status`, `refresh_worktrees`, and agent drains) for the latest interval.
+
+To compare a candidate run against a baseline run:
+
+```bash
+make perf-compare BASELINE=/tmp/openswarm-perf-baseline.jsonl CANDIDATE=/tmp/openswarm-perf-candidate.jsonl
+```
+
+The comparator checks common regressions (p95 frame time, draw phase time, hitches/min, and FPS drop) and exits non-zero on failure.
 
 ## Current status
 
