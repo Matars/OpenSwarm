@@ -27,6 +27,7 @@ nav_order: 3
 | `j` / `k` | Move to child / parent levels |
 | `Ctrl+K` | Cycle graph builder (top-down balanced / layered / left-right / trunk / swimlanes / indented) |
 | `Tab` | Cycle focus: Canvas, Details, Actions |
+| `v` | Toggle details panel compact / verbose |
 | `?` | Toggle help modal |
 
 ### Canvas

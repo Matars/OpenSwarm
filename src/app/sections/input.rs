@@ -199,6 +199,14 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
             app.next_worktree_pane();
             app.show_panel_help = false;
         }
+        KeyCode::Char('v') => {
+            app.worktree_details_verbose = !app.worktree_details_verbose;
+            app.status_line = if app.worktree_details_verbose {
+                "Details panel: verbose".to_string()
+            } else {
+                "Details panel: compact".to_string()
+            };
+        }
         KeyCode::Char('?') => {
             app.show_panel_help = !app.show_panel_help;
         }
