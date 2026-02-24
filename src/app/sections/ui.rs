@@ -3374,8 +3374,8 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     );
     action(
         &mut lines,
-        "d",
-        "delete selected (prompts if dirty)".to_string(),
+        "d/dd",
+        "delete selected (confirm / instant force-delete)".to_string(),
         Style::default().fg(Color::LightRed),
     );
 
@@ -3607,7 +3607,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from("  M       - toggle config art / Spotify connector"),
             Line::from("  Ctrl+L  - toggle perf debugging + JSONL/hitch logs"),
             Line::from(""),
-            Line::from("Flow: o/O launch shells or agents, c/p/m/d run git lifecycle"),
+            Line::from("Flow: o/O launch shells or agents, c/p/m/d/dd run git lifecycle"),
             Line::from(""),
             Line::from("  h: close this help, ?: open keybindings"),
         ],
@@ -3641,7 +3641,8 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             )),
             Line::from("- F: rebase selected branch onto connected parent node"),
             Line::from("- m: merge selected branch into connected parent node"),
-            Line::from("- d: delete selected worktree (asks force-delete if dirty)"),
+            Line::from("- d: open delete confirmation for selected worktree"),
+            Line::from("- dd: delete selected worktree immediately (force)"),
             Line::from("- x: prune stale worktrees"),
             Line::from("- n: open notes.md (vim-style editor), L: git command history"),
             Line::from("- Terminal popup: ':' control mode, Ctrl+G toggles input/control"),
@@ -4432,7 +4433,7 @@ fn draw_worktree_remove_dirty_confirm_modal(frame: &mut ratatui::Frame<'_>, app:
     frame.render_widget(Clear, popup);
 
     let border = Block::default()
-        .title("Dirty Worktree")
+        .title("Delete Worktree")
         .borders(Borders::ALL)
         .style(Style::default().bg(Color::Black))
         .border_style(Style::default().fg(Color::LightRed));
@@ -4455,20 +4456,30 @@ fn draw_worktree_remove_dirty_confirm_modal(frame: &mut ratatui::Frame<'_>, app:
         app.pending_remove_worktree_path.as_str()
     };
 
+    let is_dirty = app
+        .worktrees
+        .iter()
+        .find(|worktree| worktree.path == target)
+        .map(|worktree| worktree.dirty)
+        .unwrap_or(false);
+
     frame.render_widget(
         Paragraph::new(format!(
-            "Worktree '{}' has uncommitted changes. Force delete anyway?",
+            "Are you sure you want to delete worktree '{}'?",
             target
         ))
         .style(Style::default().fg(Color::White)),
         layout[0],
     );
 
+    let detail = if is_dirty {
+        "This worktree has uncommitted changes. Enter uses force delete, or press d again for instant force delete."
+    } else {
+        "Enter removes the worktree. Press d again to force delete instantly."
+    };
+
     frame.render_widget(
-        Paragraph::new(
-            "Yes runs `git worktree remove --force` and discards uncommitted changes in that worktree.",
-        )
-        .style(Style::default().fg(Color::Gray)),
+        Paragraph::new(detail).style(Style::default().fg(Color::Gray)),
         layout[1],
     );
 
@@ -4485,7 +4496,7 @@ fn draw_worktree_remove_dirty_confirm_modal(frame: &mut ratatui::Frame<'_>, app:
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("[ Yes: force delete ]", yes_style),
+            Span::styled("[ Yes: delete ]", yes_style),
             Span::raw("   "),
             Span::styled("[ No: keep worktree ]", no_style),
         ]))
