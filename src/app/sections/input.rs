@@ -2109,15 +2109,11 @@ fn request_remove_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>>
         return Ok(());
     }
 
-    if selected.dirty {
-        app.pending_remove_worktree_path = selected.path;
-        app.confirm_remove_worktree_yes = false;
-        app.mode = Mode::WorktreeRemoveDirtyConfirm;
-        app.status_line = "Selected worktree has uncommitted changes".to_string();
-        return Ok(());
-    }
-
-    start_remove_worktree_task(app, selected.path, false);
+    app.pending_remove_worktree_path = selected.path;
+    app.confirm_remove_worktree_yes = false;
+    app.mode = Mode::WorktreeRemoveDirtyConfirm;
+    app.status_line =
+        "Press Enter to confirm delete, or press d again to force delete instantly".to_string();
     Ok(())
 }
 
@@ -2137,13 +2133,31 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
         }
         KeyCode::Char('y') => app.confirm_remove_worktree_yes = true,
         KeyCode::Char('n') => app.confirm_remove_worktree_yes = false,
+        KeyCode::Char('d') => {
+            let path = app.pending_remove_worktree_path.clone();
+            if path.is_empty() {
+                app.status_line = "Delete cancelled (missing worktree path)".to_string();
+            } else {
+                start_remove_worktree_task(app, path, true);
+            }
+
+            app.mode = Mode::Normal;
+            app.confirm_remove_worktree_yes = false;
+            app.pending_remove_worktree_path.clear();
+        }
         KeyCode::Enter => {
             if app.confirm_remove_worktree_yes {
                 let path = app.pending_remove_worktree_path.clone();
                 if path.is_empty() {
                     app.status_line = "Delete cancelled (missing worktree path)".to_string();
                 } else {
-                    start_remove_worktree_task(app, path, true);
+                    let force = app
+                        .worktrees
+                        .iter()
+                        .find(|worktree| worktree.path == path)
+                        .map(|worktree| worktree.dirty)
+                        .unwrap_or(false);
+                    start_remove_worktree_task(app, path, force);
                 }
             } else {
                 app.status_line = "Delete cancelled".to_string();

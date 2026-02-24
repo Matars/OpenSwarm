@@ -28,7 +28,8 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 - `f` -- fetch and pull parent branch (or selected root branch if behind head)
 - `F` -- rebase selected worktree branch onto parent branch
 - `m` -- merge worktree into parent
-- `d` -- delete worktree (with safety confirmations)
+- `d` -- open delete confirmation for selected worktree
+- `dd` -- instantly force-delete selected worktree
 - `s` / `S` -- stash push / stash pop
 
 In worktrees view, the Actions panel groups shortcuts by category (`general`, `worktrees`, `git`, `view + help`, `canvas`) so command discovery is easier while navigating.
