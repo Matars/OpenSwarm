@@ -66,6 +66,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         draw_worktree_create_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::WorktreeBranchSwitchPopup) {
+        draw_worktree_branch_switch_modal(frame, app);
+    }
+
     if matches!(app.mode, Mode::WorktreeOrchestrateInput) {
         draw_worktree_orchestrate_modal(frame, app);
     }
@@ -3322,6 +3326,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" create worktree"),
         ]),
         Line::from(vec![
+            Span::styled("b", Style::default().fg(Color::LightGreen)),
+            Span::raw(" switch/create branch"),
+        ]),
+        Line::from(vec![
             Span::styled("g", Style::default().fg(Color::LightGreen)),
             Span::raw(" orchestrate worktrees from feature requirement"),
         ]),
@@ -3514,6 +3522,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
             Line::from("- a: create worktree from branch name"),
+            Line::from("- b: open branch switcher (type to filter, Enter switch/create)"),
             Line::from("- g: orchestrate feature, review prompts per leaf, then execute"),
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- O: open agent picker for selected/conflicted parent"),
@@ -3651,6 +3660,101 @@ fn draw_worktree_create_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
 
     frame.render_widget(
         Paragraph::new("Esc cancels")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
+    );
+}
+
+fn draw_worktree_branch_switch_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(74, 56, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Switch Branch")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightGreen));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(3),
+            Constraint::Min(8),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    frame.render_widget(
+        Paragraph::new(
+            "Type a branch name to filter. Enter switches to selection, or creates the typed branch if missing.",
+        )
+        .style(Style::default().fg(Color::Gray)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(app.worktree_branch_input.as_str())
+            .block(Block::default().title("Branch input").borders(Borders::ALL))
+            .style(Style::default().fg(Color::Cyan)),
+        layout[1],
+    );
+
+    let query = app.worktree_branch_input.trim().to_ascii_lowercase();
+    let filtered = if query.is_empty() {
+        app.worktree_branch_candidates.clone()
+    } else {
+        app.worktree_branch_candidates
+            .iter()
+            .filter(|branch| branch.to_ascii_lowercase().contains(query.as_str()))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+
+    let selected = if filtered.is_empty() {
+        None
+    } else {
+        Some(
+            app.worktree_branch_selected
+                .min(filtered.len().saturating_sub(1)),
+        )
+    };
+    let rows: Vec<ListItem<'_>> = if filtered.is_empty() {
+        vec![ListItem::new(Span::styled(
+            "No matching branches (Enter creates typed branch)",
+            Style::default().fg(Color::DarkGray),
+        ))]
+    } else {
+        filtered
+            .iter()
+            .map(|branch| ListItem::new(Line::from(branch.as_str())))
+            .collect()
+    };
+    let mut state = ListState::default();
+    state.select(selected);
+    frame.render_stateful_widget(
+        List::new(rows)
+            .block(
+                Block::default()
+                    .title("Available branches")
+                    .borders(Borders::ALL),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .style(Style::default().fg(Color::White)),
+        layout[2],
+        &mut state,
+    );
+
+    frame.render_widget(
+        Paragraph::new("Up/Down or j/k scroll, PgUp/PgDn jump, Enter switch/create, Esc cancel")
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Gray)),
         layout[3],

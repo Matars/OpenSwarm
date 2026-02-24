@@ -43,6 +43,7 @@ enum Mode {
     CommitInput,
     WorktreeCommitPushInput,
     WorktreeCreateInput,
+    WorktreeBranchSwitchPopup,
     WorktreeOrchestrateInput,
     WorktreeOrchestratePreview,
     WorktreeOrchestratePromptEdit,
@@ -251,6 +252,9 @@ struct App {
     show_panel_help: bool,
     new_worktree_branch: String,
     new_worktree_base: WorktreeCreateBase,
+    worktree_branch_input: String,
+    worktree_branch_selected: usize,
+    worktree_branch_candidates: Vec<String>,
     pending_create_branch: String,
     orchestrator_requirement_input: String,
     orchestrator_planned_requirement: String,
@@ -730,6 +734,9 @@ impl App {
             show_panel_help: false,
             new_worktree_branch: String::new(),
             new_worktree_base: WorktreeCreateBase::Selected,
+            worktree_branch_input: String::new(),
+            worktree_branch_selected: 0,
+            worktree_branch_candidates: Vec::new(),
             pending_create_branch: String::new(),
             orchestrator_requirement_input: String::new(),
             orchestrator_planned_requirement: String::new(),
@@ -1032,6 +1039,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::WorktreeCreateInput => {
                             handle_worktree_create_mode_key(&mut app, key.code)?;
+                        }
+                        Mode::WorktreeBranchSwitchPopup => {
+                            handle_worktree_branch_switch_mode_key(&mut app, key.code)?;
                         }
                         Mode::WorktreeOrchestrateInput => {
                             handle_worktree_orchestrate_mode_key(&mut app, key.code);

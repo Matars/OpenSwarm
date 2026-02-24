@@ -21,6 +21,7 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 ## One-key git operations
 
 - `a` -- create worktree (choose base branch, type name, auto-select new node)
+- `b` -- open branch switcher (scrollable local branches + live filter, Enter switches or creates typed branch)
 - `g` -- orchestrate a feature requirement, review/accept/refine per-leaf prompts, then execute accepted worktrees
 - `c` -- commit (stages all changes in worktree view, or staged changes in changes view)
 - `p` -- push (auto-sets upstream for new branches)

@@ -1177,6 +1177,92 @@ fn branch_exists(root: &str, branch: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn list_local_branches(path: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let output = Command::new("git")
+        .args([
+            "-C",
+            path,
+            "for-each-ref",
+            "refs/heads",
+            "--format=%(refname:short)",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+            .trim()
+            .to_string();
+        let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+            .trim()
+            .to_string();
+        let reason = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(std::io::Error::other(format!("Failed to list branches: {}", reason)).into());
+    }
+
+    let mut branches = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_string())
+        .collect::<Vec<_>>();
+    branches.sort();
+    branches.dedup();
+    Ok(branches)
+}
+
+fn switch_worktree_branch_at(
+    worktree_path: &str,
+    target_branch: &str,
+    create_if_missing: bool,
+) -> Result<String, Box<dyn Error>> {
+    let target = target_branch.trim();
+    if target.is_empty() {
+        return Ok("Branch name is required".to_string());
+    }
+
+    let args = if create_if_missing {
+        vec!["-C", worktree_path, "checkout", "-b", target]
+    } else {
+        vec!["-C", worktree_path, "checkout", target]
+    };
+
+    let output = Command::new("git").args(args).output()?;
+    let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+        .trim()
+        .to_string();
+    let stderr = sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+        .trim()
+        .to_string();
+
+    if output.status.success() {
+        let line = if !stdout.is_empty() {
+            single_line(stdout.as_str())
+        } else if !stderr.is_empty() {
+            single_line(stderr.as_str())
+        } else if create_if_missing {
+            format!("Switched to new branch '{}'", target)
+        } else {
+            format!("Switched to branch '{}'", target)
+        };
+        Ok(line)
+    } else {
+        let reason = if !stderr.is_empty() { stderr } else { stdout };
+        if create_if_missing {
+            Ok(format!(
+                "Failed creating + switching to branch '{}': {}",
+                target,
+                single_line(reason.as_str())
+            ))
+        } else {
+            Ok(format!(
+                "Failed switching to branch '{}': {}",
+                target,
+                single_line(reason.as_str())
+            ))
+        }
+    }
+}
+
 fn delete_branch_and_create_worktree(
     app: &App,
     root: &str,

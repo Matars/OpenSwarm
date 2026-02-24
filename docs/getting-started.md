@@ -32,13 +32,15 @@ make dev
 
 4. **Work in parallel** -- create more worktrees, launch more agents. The graph shows all of them with live status.
 
-5. **Commit and push** -- select a worktree, press `c` to commit, `p` to push.
+5. **Switch branches quickly when needed** -- press `b`, type to filter the branch list, then Enter to switch (or create a new branch from your typed name).
 
-6. **Merge back** -- select a child worktree, press `m` to merge into its parent. If there are conflicts, OpenSwarm offers to launch OpenCode with a prefilled conflict-resolution prompt (or you can launch another agent via `O`).
+6. **Commit and push** -- select a worktree, press `c` to commit, `p` to push.
 
-7. **Clean up** -- press `d` to delete a worktree, `x` to prune stale entries.
+7. **Merge back** -- select a child worktree, press `m` to merge into its parent. If there are conflicts, OpenSwarm offers to launch OpenCode with a prefilled conflict-resolution prompt (or you can launch another agent via `O`).
 
-8. **Reconnect context later** -- if you close and reopen OpenSwarm, pressing `O` on the same worktree can reconnect the recent OpenCode session for that node (when OpenCode is your default agent).
+8. **Clean up** -- press `d` to delete a worktree, `x` to prune stale entries.
+
+9. **Reconnect context later** -- if you close and reopen OpenSwarm, pressing `O` on the same worktree can reconnect the recent OpenCode session for that node (when OpenCode is your default agent).
 
 ## Requirements
 
