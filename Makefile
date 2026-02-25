@@ -1,4 +1,4 @@
-.PHONY: dev docs docs-deps docs-venv docs-serve docs-build
+.PHONY: dev docs docs-deps docs-venv docs-serve docs-build perf-compare
 
 DOCS_BUNDLE_STAMP := .bundle/.docs-deps.stamp
 SASS_SILENCE_DEPRECATIONS ?= import,global-builtin,color-functions
@@ -37,3 +37,10 @@ docs-serve:
 
 docs-build: docs-deps
 	@SASS_SILENCE_DEPRECATIONS=$(SASS_SILENCE_DEPRECATIONS) $(BUNDLE) exec jekyll build --source docs --destination site
+
+perf-compare:
+	@if [ -z "$(BASELINE)" ] || [ -z "$(CANDIDATE)" ]; then \
+		echo "Usage: make perf-compare BASELINE=/tmp/openswarm-perf-baseline.jsonl CANDIDATE=/tmp/openswarm-perf-candidate.jsonl"; \
+		exit 1; \
+	fi
+	@python3 scripts/perf_compare.py --baseline "$(BASELINE)" --candidate "$(CANDIDATE)"

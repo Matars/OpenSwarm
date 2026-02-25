@@ -192,7 +192,21 @@ fn run_startup_checks(app: &mut App) {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WorktreeRefreshMode {
+    Full,
+    Lightweight,
+}
+
 fn refresh_worktrees(app: &mut App) {
+    refresh_worktrees_with_mode(app, WorktreeRefreshMode::Full);
+}
+
+fn refresh_worktrees_lightweight(app: &mut App) {
+    refresh_worktrees_with_mode(app, WorktreeRefreshMode::Lightweight);
+}
+
+fn refresh_worktrees_with_mode(app: &mut App, mode: WorktreeRefreshMode) {
     let output = match git_output_with_error(&["worktree", "list", "--porcelain"]) {
         Ok(text) => {
             app.worktree_load_error = None;
@@ -212,6 +226,12 @@ fn refresh_worktrees(app: &mut App) {
         .map(|path| normalize_path(path.to_string_lossy().as_ref()));
     let root = create_root_for_app(app);
     let parent_hints = load_parent_hint_map(root.as_str());
+    let previous_by_path: BTreeMap<String, WorktreeEntry> = app
+        .worktrees
+        .iter()
+        .cloned()
+        .map(|entry| (entry.path.clone(), entry))
+        .collect();
 
     let mut entries: Vec<WorktreeEntry> = Vec::new();
     let mut current = WorktreeEntry::default();
@@ -220,10 +240,13 @@ fn refresh_worktrees(app: &mut App) {
     for line in output.lines() {
         if line.trim().is_empty() {
             if in_block {
+                let previous = previous_by_path.get(current.path.as_str()).cloned();
                 hydrate_worktree_runtime_state(
                     &mut current,
                     current_path.as_deref(),
                     &parent_hints,
+                    mode,
+                    previous.as_ref(),
                 );
                 entries.push(current.clone());
                 current = WorktreeEntry::default();
@@ -234,10 +257,13 @@ fn refresh_worktrees(app: &mut App) {
 
         if let Some(path) = line.strip_prefix("worktree ") {
             if in_block {
+                let previous = previous_by_path.get(current.path.as_str()).cloned();
                 hydrate_worktree_runtime_state(
                     &mut current,
                     current_path.as_deref(),
                     &parent_hints,
+                    mode,
+                    previous.as_ref(),
                 );
                 entries.push(current.clone());
                 current = WorktreeEntry::default();
@@ -286,7 +312,14 @@ fn refresh_worktrees(app: &mut App) {
     }
 
     if in_block {
-        hydrate_worktree_runtime_state(&mut current, current_path.as_deref(), &parent_hints);
+        let previous = previous_by_path.get(current.path.as_str()).cloned();
+        hydrate_worktree_runtime_state(
+            &mut current,
+            current_path.as_deref(),
+            &parent_hints,
+            mode,
+            previous.as_ref(),
+        );
         entries.push(current);
     }
 
@@ -301,8 +334,10 @@ fn refresh_worktrees(app: &mut App) {
     app.sync_worktree_animations(&new_paths);
 
     app.worktrees = entries;
-    let root_branch = current_session_branch(app);
-    update_worktree_merged_with_parent(&mut app.worktrees, root_branch.as_str());
+    if mode == WorktreeRefreshMode::Full {
+        let root_branch = current_session_branch(app);
+        update_worktree_merged_with_parent(&mut app.worktrees, root_branch.as_str());
+    }
     if let Some(target_path) = app.changes_worktree_path.as_deref() {
         let exists = app.worktrees.iter().any(|entry| entry.path == target_path);
         if !exists {
@@ -315,7 +350,9 @@ fn refresh_worktrees(app: &mut App) {
         app.selected_worktree = app.worktrees.len() - 1;
     }
 
-    maybe_prompt_legacy_workspace_migration(app, root.as_str());
+    if mode == WorktreeRefreshMode::Full {
+        maybe_prompt_legacy_workspace_migration(app, root.as_str());
+    }
 }
 
 fn update_worktree_merged_with_parent(entries: &mut [WorktreeEntry], root_branch: &str) {
@@ -519,6 +556,8 @@ fn hydrate_worktree_runtime_state(
     entry: &mut WorktreeEntry,
     current_path: Option<&str>,
     parent_hints: &BTreeMap<String, String>,
+    mode: WorktreeRefreshMode,
+    previous: Option<&WorktreeEntry>,
 ) {
     let normalized = normalize_path(entry.path.as_str());
     entry.is_current = current_path
@@ -529,11 +568,21 @@ fn hydrate_worktree_runtime_state(
         entry.branch = "detached".to_string();
     }
 
-    let (dirty, ahead, behind, has_upstream) = worktree_branch_state(entry.path.as_str());
-    entry.dirty = dirty;
-    entry.ahead = ahead;
-    entry.behind = behind;
-    entry.has_upstream = has_upstream;
+    if mode == WorktreeRefreshMode::Full {
+        let (dirty, ahead, behind, has_upstream) = worktree_branch_state(entry.path.as_str());
+        entry.dirty = dirty;
+        entry.ahead = ahead;
+        entry.behind = behind;
+        entry.has_upstream = has_upstream;
+    } else if let Some(previous) = previous {
+        entry.dirty = previous.dirty;
+        entry.ahead = previous.ahead;
+        entry.behind = previous.behind;
+        entry.has_upstream = previous.has_upstream;
+        entry.merged_with_parent = previous.merged_with_parent;
+        entry.behind_parent = previous.behind_parent;
+    }
+
     entry.parent_hint = parent_hints.get(entry.branch.as_str()).cloned();
 }
 
@@ -1137,6 +1186,23 @@ fn move_worktree_level_vertical(app: &mut App, move_up: bool) {
     }
 }
 
+fn select_worktree_by_branch(app: &mut App, branch: &str) -> bool {
+    if branch.trim().is_empty() {
+        return false;
+    }
+
+    if let Some(idx) = app
+        .worktrees
+        .iter()
+        .position(|worktree| !worktree.detached && worktree.branch == branch)
+    {
+        app.selected_worktree = idx;
+        true
+    } else {
+        false
+    }
+}
+
 fn create_root_for_app(app: &App) -> String {
     app.selected_worktree()
         .and_then(|wt| repo_container_from_path(wt.path.as_str()))
@@ -1158,6 +1224,92 @@ fn branch_exists(root: &str, branch: &str) -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+fn list_local_branches(path: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let output = Command::new("git")
+        .args([
+            "-C",
+            path,
+            "for-each-ref",
+            "refs/heads",
+            "--format=%(refname:short)",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+            .trim()
+            .to_string();
+        let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+            .trim()
+            .to_string();
+        let reason = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(std::io::Error::other(format!("Failed to list branches: {}", reason)).into());
+    }
+
+    let mut branches = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_string())
+        .collect::<Vec<_>>();
+    branches.sort();
+    branches.dedup();
+    Ok(branches)
+}
+
+fn switch_worktree_branch_at(
+    worktree_path: &str,
+    target_branch: &str,
+    create_if_missing: bool,
+) -> Result<String, Box<dyn Error>> {
+    let target = target_branch.trim();
+    if target.is_empty() {
+        return Ok("Branch name is required".to_string());
+    }
+
+    let args = if create_if_missing {
+        vec!["-C", worktree_path, "checkout", "-b", target]
+    } else {
+        vec!["-C", worktree_path, "checkout", target]
+    };
+
+    let output = Command::new("git").args(args).output()?;
+    let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+        .trim()
+        .to_string();
+    let stderr = sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+        .trim()
+        .to_string();
+
+    if output.status.success() {
+        let line = if !stdout.is_empty() {
+            single_line(stdout.as_str())
+        } else if !stderr.is_empty() {
+            single_line(stderr.as_str())
+        } else if create_if_missing {
+            format!("Switched to new branch '{}'", target)
+        } else {
+            format!("Switched to branch '{}'", target)
+        };
+        Ok(line)
+    } else {
+        let reason = if !stderr.is_empty() { stderr } else { stdout };
+        if create_if_missing {
+            Ok(format!(
+                "Failed creating + switching to branch '{}': {}",
+                target,
+                single_line(reason.as_str())
+            ))
+        } else {
+            Ok(format!(
+                "Failed switching to branch '{}': {}",
+                target,
+                single_line(reason.as_str())
+            ))
+        }
+    }
 }
 
 fn delete_branch_and_create_worktree(

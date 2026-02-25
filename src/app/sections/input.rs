@@ -199,8 +199,19 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
             app.next_worktree_pane();
             app.show_panel_help = false;
         }
-        KeyCode::Char('?') => {
+        KeyCode::Char('H') => {
             app.show_panel_help = !app.show_panel_help;
+        }
+        KeyCode::Char('v') => {
+            app.worktree_details_verbose = !app.worktree_details_verbose;
+            app.status_line = if app.worktree_details_verbose {
+                "Details panel: verbose".to_string()
+            } else {
+                "Details panel: compact".to_string()
+            };
+        }
+        KeyCode::Char('?') => {
+            open_worktree_keybinds_popup(app);
         }
         KeyCode::Left => move_worktree_selection(app, NavDirection::Left),
         KeyCode::Right => move_worktree_selection(app, NavDirection::Right),
@@ -234,6 +245,9 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
             app.new_worktree_base = WorktreeCreateBase::Selected;
             app.status_line =
                 "Create worktree: choose base with ←/→, then type branch name".to_string();
+        }
+        KeyCode::Char('b') => {
+            open_worktree_branch_switch_popup(app)?;
         }
         KeyCode::Char('g') => {
             app.mode = Mode::WorktreeOrchestrateInput;
@@ -278,8 +292,10 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
                         git_result_text(update_worktree_head_at(path.as_str(), branch.as_str()))
                     });
                 } else if is_main_branch_name(selected.branch.as_str()) && selected.has_upstream {
-                    app.status_line =
-                        "Selected main branch is already in sync with head".to_string();
+                    app.status_line = format!(
+                        "Selected {} branch is already in sync with head",
+                        selected.branch
+                    );
                 } else {
                     app.status_line =
                         "No connected parent node found for selected worktree".to_string();
@@ -366,7 +382,7 @@ fn reset_worktree_canvas_view(app: &mut App) {
 fn cycle_worktree_canvas_background(app: &mut App) {
     app.worktree_canvas_bg_mode = app.worktree_canvas_bg_mode.next();
     app.status_line = format!(
-        "Canvas background: {} (Ctrl+B to cycle)",
+        "Canvas background: {} (B to cycle)",
         app.worktree_canvas_bg_mode.short_label()
     );
 }
@@ -598,14 +614,20 @@ fn fetch_spotify_now_playing_macos() -> Result<Option<SpotifyNowPlaying>, String
 }
 
 fn toggle_perf_debug(app: &mut App) {
-    app.perf_debug.enabled = !app.perf_debug.enabled;
     if app.perf_debug.enabled {
+        app.perf_debug.disable();
         app.status_line = format!(
-            "Perf debug enabled (Ctrl+L to toggle). Hitch log: {}",
-            app.perf_debug.hitch_log_path.display()
+            "Perf debug disabled (Ctrl+L). Logs: hitch={} perf={}",
+            app.perf_debug.hitch_log_path.display(),
+            app.perf_debug.perf_log_path.display(),
         );
     } else {
-        app.status_line = "Perf debug disabled (Ctrl+L to toggle)".to_string();
+        app.perf_debug.enable();
+        app.status_line = format!(
+            "Perf debug enabled (Ctrl+L). Logs: hitch={} perf={}",
+            app.perf_debug.hitch_log_path.display(),
+            app.perf_debug.perf_log_path.display(),
+        );
     }
 }
 
@@ -883,25 +905,47 @@ impl OpenCodeLaunchCommand {
 }
 
 fn resolve_recent_opencode_session_id_for_worktree(worktree_path: &str) -> Option<String> {
+    resolve_recent_opencode_session_ids_for_worktrees(&[worktree_path.to_string()])
+        .remove(worktree_path)
+}
+
+fn resolve_recent_opencode_session_ids_for_worktrees(
+    worktree_paths: &[String],
+) -> BTreeMap<String, String> {
+    if worktree_paths.is_empty() {
+        return BTreeMap::new();
+    }
+
     let output = Command::new("opencode")
         .args(["session", "list", "--format", "json", "-n", "120"])
-        .output()
-        .ok()?;
+        .output();
+    let Ok(output) = output else {
+        return BTreeMap::new();
+    };
     if !output.status.success() {
-        return None;
+        return BTreeMap::new();
     }
 
     let json = String::from_utf8_lossy(&output.stdout);
     let sessions = parse_opencode_session_rows(json.as_ref());
     if sessions.is_empty() {
-        return None;
+        return BTreeMap::new();
     }
 
-    let target = normalize_path_for_session_match(worktree_path);
-    sessions
-        .into_iter()
-        .find(|(_, directory)| normalize_path_for_session_match(directory.as_str()) == target)
-        .map(|(id, _)| id)
+    let mut by_directory = BTreeMap::new();
+    for (id, directory) in sessions {
+        by_directory.insert(normalize_path_for_session_match(directory.as_str()), id);
+    }
+
+    let mut out = BTreeMap::new();
+    for path in worktree_paths {
+        let normalized = normalize_path_for_session_match(path.as_str());
+        if let Some(id) = by_directory.get(&normalized) {
+            out.insert(path.clone(), id.clone());
+        }
+    }
+
+    out
 }
 
 fn normalize_path_for_session_match(path: &str) -> String {
@@ -1606,24 +1650,25 @@ fn handle_worktree_create_mode_key(app: &mut App, code: KeyCode) -> Result<(), B
             app.cycle_worktree_base_right();
         }
         KeyCode::Enter => {
-            let branch = app.new_worktree_branch.trim();
+            let branch = app.new_worktree_branch.trim().to_string();
             if branch.is_empty() {
                 app.status_line = "Branch name is required".to_string();
             } else {
                 let root = create_root_for_app(app);
-                if branch_exists(root.as_str(), branch) {
-                    app.pending_create_branch = branch.to_string();
+                if branch_exists(root.as_str(), branch.as_str()) {
+                    app.pending_create_branch = branch;
                     app.confirm_delete_branch_yes = false;
                     app.mode = Mode::WorktreeBranchConflictConfirm;
                     app.status_line = format!(
                         "Branch '{}' already exists. Confirm delete and recreate.",
-                        branch
+                        app.pending_create_branch
                     );
                     return Ok(());
                 }
 
-                app.status_line = create_worktree(app, branch)?;
+                app.status_line = create_worktree(app, branch.as_str())?;
                 refresh_worktrees(app);
+                let _ = select_worktree_by_branch(app, branch.as_str());
                 refresh_status(app);
             }
             app.mode = Mode::Normal;
@@ -1634,6 +1679,143 @@ fn handle_worktree_create_mode_key(app: &mut App, code: KeyCode) -> Result<(), B
         }
         KeyCode::Char(c) => {
             app.new_worktree_branch.push(c);
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn open_worktree_branch_switch_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) else {
+        app.status_line = "No worktree selected".to_string();
+        return Ok(());
+    };
+
+    let mut branches = match list_local_branches(path.as_str()) {
+        Ok(items) => items,
+        Err(err) => {
+            app.status_line = single_line(format!("Could not load branches: {}", err).as_str());
+            return Ok(());
+        }
+    };
+    branches.sort();
+    app.worktree_branch_candidates = branches;
+    app.worktree_branch_input.clear();
+    app.worktree_branch_selected = 0;
+    app.mode = Mode::WorktreeBranchSwitchPopup;
+    app.status_line = "Branch switch: type to filter, Enter to checkout or create".to_string();
+    Ok(())
+}
+
+fn filtered_worktree_branch_candidates(app: &App) -> Vec<String> {
+    let query = app.worktree_branch_input.trim().to_ascii_lowercase();
+    if query.is_empty() {
+        return app.worktree_branch_candidates.clone();
+    }
+
+    app.worktree_branch_candidates
+        .iter()
+        .filter(|branch| branch.to_ascii_lowercase().contains(query.as_str()))
+        .cloned()
+        .collect()
+}
+
+fn handle_worktree_branch_switch_mode_key(
+    app: &mut App,
+    key: KeyEvent,
+) -> Result<(), Box<dyn Error>> {
+    let code = key.code;
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.worktree_branch_input.clear();
+            app.worktree_branch_selected = 0;
+            app.worktree_branch_candidates.clear();
+            app.status_line = "Branch switch cancelled".to_string();
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            let filtered = filtered_worktree_branch_candidates(app);
+            if filtered.is_empty() {
+                app.worktree_branch_selected = 0;
+            } else if app.worktree_branch_selected == 0 {
+                app.worktree_branch_selected = filtered.len() - 1;
+            } else {
+                app.worktree_branch_selected -= 1;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            let filtered = filtered_worktree_branch_candidates(app);
+            if filtered.is_empty() {
+                app.worktree_branch_selected = 0;
+            } else {
+                app.worktree_branch_selected = (app.worktree_branch_selected + 1) % filtered.len();
+            }
+        }
+        KeyCode::PageUp => {
+            app.worktree_branch_selected = app.worktree_branch_selected.saturating_sub(8);
+        }
+        KeyCode::PageDown => {
+            let filtered = filtered_worktree_branch_candidates(app);
+            let max = filtered.len().saturating_sub(1);
+            app.worktree_branch_selected = (app.worktree_branch_selected + 8).min(max);
+        }
+        KeyCode::Backspace => {
+            app.worktree_branch_input.pop();
+            app.worktree_branch_selected = 0;
+        }
+        KeyCode::Char(c) => {
+            app.worktree_branch_input.push(c);
+            app.worktree_branch_selected = 0;
+        }
+        KeyCode::Enter => {
+            let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) else {
+                app.mode = Mode::Normal;
+                app.status_line = "No worktree selected".to_string();
+                return Ok(());
+            };
+
+            let filtered = filtered_worktree_branch_candidates(app);
+            if !filtered.is_empty() && app.worktree_branch_selected >= filtered.len() {
+                app.worktree_branch_selected = filtered.len() - 1;
+            }
+
+            let typed = app.worktree_branch_input.trim().to_string();
+            let selected_branch = filtered.get(app.worktree_branch_selected).cloned();
+            let shift_create = key.modifiers.contains(KeyModifiers::SHIFT);
+
+            let (target, create_if_missing) = if shift_create {
+                if typed.is_empty() {
+                    app.status_line = "Type a branch name to create".to_string();
+                    return Ok(());
+                }
+                (typed, true)
+            } else if let Some(selected) = selected_branch {
+                (selected, false)
+            } else if !typed.is_empty() {
+                (typed, true)
+            } else {
+                app.status_line = "Type or select a branch name".to_string();
+                return Ok(());
+            };
+
+            let label = if create_if_missing {
+                format!("Create + switch branch '{}'", target)
+            } else {
+                format!("Switch branch to '{}'", target)
+            };
+            start_git_task(app, label.as_str(), true, true, move || {
+                git_result_text(switch_worktree_branch_at(
+                    path.as_str(),
+                    target.as_str(),
+                    create_if_missing,
+                ))
+            });
+
+            app.mode = Mode::Normal;
+            app.worktree_branch_input.clear();
+            app.worktree_branch_selected = 0;
+            app.worktree_branch_candidates.clear();
         }
         _ => {}
     }
@@ -1891,6 +2073,7 @@ fn handle_branch_conflict_confirm_mode_key(
                 app.status_line =
                     delete_branch_and_create_worktree(app, root.as_str(), branch.as_str())?;
                 refresh_worktrees(app);
+                let _ = select_worktree_by_branch(app, branch.as_str());
                 refresh_status(app);
             } else {
                 app.status_line = "Create worktree cancelled (kept existing branch)".to_string();
@@ -1954,15 +2137,11 @@ fn request_remove_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>>
         return Ok(());
     }
 
-    if selected.dirty {
-        app.pending_remove_worktree_path = selected.path;
-        app.confirm_remove_worktree_yes = false;
-        app.mode = Mode::WorktreeRemoveDirtyConfirm;
-        app.status_line = "Selected worktree has uncommitted changes".to_string();
-        return Ok(());
-    }
-
-    start_remove_worktree_task(app, selected.path, false);
+    app.pending_remove_worktree_path = selected.path;
+    app.confirm_remove_worktree_yes = false;
+    app.mode = Mode::WorktreeRemoveDirtyConfirm;
+    app.status_line =
+        "Press Enter to confirm delete, or press d again to force delete instantly".to_string();
     Ok(())
 }
 
@@ -1982,13 +2161,31 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
         }
         KeyCode::Char('y') => app.confirm_remove_worktree_yes = true,
         KeyCode::Char('n') => app.confirm_remove_worktree_yes = false,
+        KeyCode::Char('d') => {
+            let path = app.pending_remove_worktree_path.clone();
+            if path.is_empty() {
+                app.status_line = "Delete cancelled (missing worktree path)".to_string();
+            } else {
+                start_remove_worktree_task(app, path, true);
+            }
+
+            app.mode = Mode::Normal;
+            app.confirm_remove_worktree_yes = false;
+            app.pending_remove_worktree_path.clear();
+        }
         KeyCode::Enter => {
             if app.confirm_remove_worktree_yes {
                 let path = app.pending_remove_worktree_path.clone();
                 if path.is_empty() {
                     app.status_line = "Delete cancelled (missing worktree path)".to_string();
                 } else {
-                    start_remove_worktree_task(app, path, true);
+                    let force = app
+                        .worktrees
+                        .iter()
+                        .find(|worktree| worktree.path == path)
+                        .map(|worktree| worktree.dirty)
+                        .unwrap_or(false);
+                    start_remove_worktree_task(app, path, force);
                 }
             } else {
                 app.status_line = "Delete cancelled".to_string();
@@ -2072,6 +2269,12 @@ fn open_worktree_git_log_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn open_worktree_keybinds_popup(app: &mut App) {
+    app.show_panel_help = false;
+    app.mode = Mode::WorktreeKeybindsPopup;
+    app.status_line = "Opened keybindings popup".to_string();
+}
+
 fn load_worktree_git_log(path: &str) -> Result<Vec<String>, Box<dyn Error>> {
     let output = Command::new("git")
         .args([
@@ -2139,6 +2342,16 @@ fn handle_worktree_git_log_mode_key(app: &mut App, code: KeyCode) {
         }
         KeyCode::End => {
             app.git_log_scroll = max_scroll;
+        }
+        _ => {}
+    }
+}
+
+fn handle_worktree_keybinds_mode_key(app: &mut App, code: KeyCode) {
+    match code {
+        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') | KeyCode::Char('?') => {
+            app.mode = Mode::Normal;
+            app.status_line = "Closed keybindings popup".to_string();
         }
         _ => {}
     }
@@ -2898,22 +3111,26 @@ fn refresh_agent_sessions(app: &mut App) {
 
 const OPENCODE_USAGE_RATE_WINDOW_MS: u64 = 4000;
 
-fn refresh_opencode_usage(app: &mut App) {
-    let mut should_query = false;
-    for (path, session) in app.agent_sessions.iter_mut() {
-        let tracks_opencode = session.agent_kind == Some(ExternalAgent::Opencode)
-            || session.opencode_session_id.is_some();
-        if !tracks_opencode {
-            continue;
-        }
-        should_query = true;
-        if session.opencode_session_id.is_none() {
-            session.opencode_session_id =
-                resolve_recent_opencode_session_id_for_worktree(path.as_str());
-        }
+fn start_opencode_usage_refresh_task(app: &mut App) {
+    if app.opencode_usage_refresh_in_flight {
+        return;
     }
 
-    if !should_query || !command_exists_on_path("opencode") {
+    let tracked_paths = app
+        .agent_sessions
+        .iter()
+        .filter_map(|(path, session)| {
+            let tracks_opencode = session.agent_kind == Some(ExternalAgent::Opencode)
+                || session.opencode_session_id.is_some();
+            if tracks_opencode {
+                Some(path.clone())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if tracked_paths.is_empty() {
         for session in app.agent_sessions.values_mut() {
             if session.agent_kind == Some(ExternalAgent::Opencode)
                 || session.opencode_session_id.is_some()
@@ -2924,26 +3141,68 @@ fn refresh_opencode_usage(app: &mut App) {
         return;
     }
 
-    let mut ids = BTreeSet::new();
-    for session in app.agent_sessions.values() {
-        if let Some(session_id) = session.opencode_session_id.as_ref() {
-            ids.insert(session_id.clone());
+    app.opencode_usage_refresh_in_flight = true;
+    let tx = app.opencode_usage_refresh_tx.clone();
+    thread::spawn(move || {
+        let command_available = command_exists_on_path("opencode");
+        let mut resolved_session_ids = BTreeMap::new();
+        let mut usage_by_session = BTreeMap::new();
+
+        if command_available {
+            resolved_session_ids =
+                resolve_recent_opencode_session_ids_for_worktrees(tracked_paths.as_slice());
+
+            let session_ids = resolved_session_ids
+                .values()
+                .cloned()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            if let Ok(usage) = load_opencode_usage_for_sessions(session_ids.as_slice()) {
+                usage_by_session = usage;
+            }
+        }
+
+        let _ = tx.send(OpencodeUsageRefreshEvent {
+            command_available,
+            resolved_session_ids,
+            usage_by_session,
+        });
+    });
+}
+
+fn drain_opencode_usage_refresh_events(app: &mut App) {
+    let mut last_event: Option<OpencodeUsageRefreshEvent> = None;
+    while let Ok(event) = app.opencode_usage_refresh_rx.try_recv() {
+        last_event = Some(event);
+    }
+
+    let Some(event) = last_event else {
+        return;
+    };
+
+    app.opencode_usage_refresh_in_flight = false;
+
+    for (path, session_id) in &event.resolved_session_ids {
+        if let Some(session) = app.agent_sessions.get_mut(path.as_str()) {
+            if session.agent_kind == Some(ExternalAgent::Opencode)
+                || session.opencode_session_id.is_some()
+            {
+                session.opencode_session_id = Some(session_id.clone());
+            }
         }
     }
 
-    if ids.is_empty() {
+    if !event.command_available {
         for session in app.agent_sessions.values_mut() {
-            if session.agent_kind == Some(ExternalAgent::Opencode) {
+            if session.agent_kind == Some(ExternalAgent::Opencode)
+                || session.opencode_session_id.is_some()
+            {
                 session.opencode_usage = None;
             }
         }
         return;
     }
-
-    let session_ids = ids.into_iter().collect::<Vec<_>>();
-    let Ok(usage_by_session) = load_opencode_usage_for_sessions(session_ids.as_slice()) else {
-        return;
-    };
 
     for session in app.agent_sessions.values_mut() {
         let Some(session_id) = session.opencode_session_id.as_ref() else {
@@ -2953,7 +3212,7 @@ fn refresh_opencode_usage(app: &mut App) {
             continue;
         };
 
-        session.opencode_usage = usage_by_session.get(session_id).copied();
+        session.opencode_usage = event.usage_by_session.get(session_id).copied();
     }
 }
 

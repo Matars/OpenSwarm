@@ -1,6 +1,6 @@
 # OpenSwarm
 
-![OpenSwarm demo](media/demo.gif)
+![OpenSwarm screenshot](img/screenshot.png)
 
 A keyboard-first Rust TUI for **parallel AI agent deployment across Git worktrees**.
 
@@ -15,7 +15,7 @@ OpenSwarm gives you one screen:
 - **Worktree graph** -- see all worktrees as an interactive graph with parent-child relationships, dirty/behind-parent-or-head/committed/local-only/pushed/merged-with-parent badges, ahead/behind counts, live agent activity, and token telemetry (exact OpenCode session usage when available, PTY-based fallback otherwise) plus an animated top-right tok/s leaderboard with Unicode bars normalized to the busiest worktree and idle worktrees collapsed into one compact row
 - **Embedded terminals + per-node session memory** -- launch shells and agents in PTY sessions directly inside the TUI; sessions persist in the background, and default OpenCode launches reconnect to the most recent session for that same worktree node after restarting OpenSwarm
 - **Inline diffs** -- switch to changes view for file staging with method-level diff analysis (Python, Rust, JS/TS, Go)
-- **One-key git operations** -- create worktrees (`a`), commit (`c`), push (`p`), merge (`m`), delete (`d`) without leaving the TUI
+- **One-key git operations** -- create worktrees (`a`), switch/create branches (`b`), commit (`c`), push (`p`), merge (`m`), and safer delete flows (`d` confirm, `dd` instant force-delete) without leaving the TUI
 - **Music-aware art panel** -- press `M` in worktrees view to toggle between configured ASCII art and a Spotify now-playing card (album art, song, artist)
 - **Feature-to-worktree orchestration** -- press `g`, describe the feature, review suggested per-leaf execution prompts (accept/refine each node), then execute accepted worktree creation (OpenCode planner with heuristic fallback)
 - **Agent-powered merge conflict solver** -- when merges conflict, OpenSwarm can launch OpenCode with a prefilled conflict-resolution prompt in the parent worktree, so the agent resolves/stages while you keep orchestration in one place
@@ -34,7 +34,7 @@ openswarm
 ```
 
 Then:
-1. Press `a` to create a worktree
+1. Press `a` to create a worktree (it is auto-selected)
 2. Press `O` to launch an agent in it
 3. Repeat for parallel streams
 4. Press `c` to commit, `p` to push, `m` to merge back (with agent conflict solver if needed)
@@ -48,29 +48,32 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | Key | Action |
 |-----|--------|
 | `w` | Toggle Changes / Worktrees views |
-| Arrow keys / `h` `j` `k` `l` | Move selection |
+| Arrow keys / `h` `j` `k` `l` | Move selection (`h/l` for sibling step) |
 | `Ctrl+K` | Cycle graph builder (top-down, layered, left-right, trunk, swimlanes, indented) |
 | `Tab` | Cycle panes |
+| `H` / `?` | Panel help / full keybindings popup |
+| `v` | Toggle details panel compact / verbose |
 | `+` / `-` / `0` | Zoom in / out / reset |
 | `W` `A` `S` `D` | Pan canvas |
 | `M` | Toggle worktree art panel mode (config art / Spotify connector) |
-| `Ctrl+B` | Cycle canvas background effect |
-| `Ctrl+L` | Toggle frame-lag debug stats + hitch logging |
+| `B` | Cycle canvas background effect |
+| `Ctrl+L` | Toggle frame-lag debug stats + hitch/JSONL perf logging |
 
 ### Worktree actions
 
 | Key | Action |
 |-----|--------|
-| `a` | Create worktree |
+| `a` | Create worktree (auto-select new node) |
+| `b` | Open branch switcher (type to filter, Enter to switch/create) |
 | `g` | Orchestrate feature, review per-leaf prompts, execute accepted nodes |
 | `o` | Open shell |
 | `O` | Open agent picker |
 | `c` | Commit |
 | `p` | Push |
-| `f` | Fetch/pull parent (or selected main branch if behind head) |
+| `f` | Fetch/pull parent (or selected root branch if behind head) |
 | `F` | Rebase selected onto parent |
 | `m` | Merge into parent |
-| `d` | Delete worktree |
+| `d` / `dd` | Delete worktree (confirm / instant force-delete) |
 
 ### Changes view
 
@@ -143,6 +146,23 @@ Agent defaults, wsprompt templates, worktree orchestration controls, and optiona
 - Worktrees are placed in `.<repo>-workspaces/` sibling directory
 - Startup now validates git context (inside a worktree, resolvable top-level, loadable `git worktree list`) and shows an explicit in-app error instead of an empty graph when checks fail
 - Large dependency folders (like `node_modules/`) are skipped for untracked previews to avoid startup stalls after `npm install`
+
+## Performance tracking workflow
+
+Use `Ctrl+L` in Worktrees view to enable perf debugging. OpenSwarm writes:
+
+- Hitch breakdown log: `/tmp/openswarm-hitches.log`
+- Structured perf snapshots (JSONL, ~1 sample/sec): `/tmp/openswarm-perf.jsonl`
+
+Each JSONL snapshot includes FPS, avg/p95/worst frame time, hitch counts, and average phase timings (`draw`, `event_poll`, `event_handle`, `refresh_status`, `refresh_worktrees`, and agent drains) for the latest interval.
+
+To compare a candidate run against a baseline run:
+
+```bash
+make perf-compare BASELINE=/tmp/openswarm-perf-baseline.jsonl CANDIDATE=/tmp/openswarm-perf-candidate.jsonl
+```
+
+The comparator checks common regressions (p95 frame time, draw phase time, hitches/min, and FPS drop) and exits non-zero on failure.
 
 ## Current status
 

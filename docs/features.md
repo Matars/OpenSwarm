@@ -20,15 +20,20 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 
 ## One-key git operations
 
-- `a` -- create worktree (choose base branch, type name)
+- `a` -- create worktree (choose base branch, type name, auto-select new node)
+- `b` -- open branch switcher (scrollable local branches + live filter, Enter switches or creates typed branch)
 - `g` -- orchestrate a feature requirement, review/accept/refine per-leaf prompts, then execute accepted worktrees
 - `c` -- commit (stages all changes in worktree view, or staged changes in changes view)
 - `p` -- push (auto-sets upstream for new branches)
-- `f` -- fetch and pull parent branch (or selected main branch if behind head)
+- `f` -- fetch and pull parent branch (or selected root branch if behind head)
 - `F` -- rebase selected worktree branch onto parent branch
 - `m` -- merge worktree into parent
-- `d` -- delete worktree (with safety confirmations)
+- `d` -- open delete confirmation for selected worktree
+- `dd` -- instantly force-delete selected worktree
 - `s` / `S` -- stash push / stash pop
+
+In worktrees view, the Actions panel groups shortcuts by category (`general`, `worktrees`, `git`, `view + help`, `canvas`) so command discovery is easier while navigating.
+Press `H` for contextual panel help, or `?` for a larger full keybindings popup.
 
 All git operations run in the background. If you trigger another operation while one is in flight, it gets queued and auto-executes when the current task finishes. The status bar shows `+N queued` so you always know how many tasks are pending. This means you can press `p` on three different worktrees back-to-back without waiting for each push to complete.
 
@@ -46,7 +51,7 @@ When a merge produces conflicts, OpenSwarm shows the conflicted files and a cust
 
 Each graph node shows live status: a spinning indicator when the agent is actively writing, idle duration when quiet, and a done/failed badge when the process exits. You can see at a glance which of your 5-10 agents are still working.
 The worktree canvas also includes an animated top-right tok/s leaderboard with Unicode bars normalized to the busiest stream, while idle worktrees are grouped into a single compact `idle xN` row to save space.
-In the details panel, OpenCode sessions use exact token usage from OpenCode's session database (shown as `tokens:`). Non-OpenCode sessions fall back to PTY text-based estimates (shown as `tokens~`).
+The details panel defaults to a compact layout that prioritizes branch/path/head and sync health; press `v` to switch to verbose telemetry. In verbose mode, OpenCode sessions use exact token usage from OpenCode's session database (shown as `tokens:`), while non-OpenCode sessions fall back to PTY text-based estimates (shown as `tokens~`).
 
 ## Built-in notes editor
 
@@ -55,3 +60,18 @@ Press `n` to open a vim-style markdown editor for `notes.md` in the repo root. S
 ## Git reflog viewer
 
 Press `L` on any worktree to see its recent reflog in a scrollable popup.
+
+## Performance instrumentation and regression checks
+
+Press `Ctrl+L` in Worktrees view to turn on perf debugging. OpenSwarm keeps the in-panel live metrics and also writes two temp logs:
+
+- `/tmp/openswarm-hitches.log` - human-readable hitch breakdown lines
+- `/tmp/openswarm-perf.jsonl` - structured snapshots (about once per second) with FPS, frame times, hitch count, and per-phase timing averages
+
+Use the comparator to verify changes are improving performance instead of regressing it:
+
+```bash
+make perf-compare BASELINE=/tmp/openswarm-perf-baseline.jsonl CANDIDATE=/tmp/openswarm-perf-candidate.jsonl
+```
+
+The compare command fails if p95 frame time, draw-phase cost, or hitches/min regress beyond thresholds (or if FPS drops materially).

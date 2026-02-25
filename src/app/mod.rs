@@ -43,6 +43,7 @@ enum Mode {
     CommitInput,
     WorktreeCommitPushInput,
     WorktreeCreateInput,
+    WorktreeBranchSwitchPopup,
     WorktreeOrchestrateInput,
     WorktreeOrchestratePreview,
     WorktreeOrchestratePromptEdit,
@@ -50,6 +51,7 @@ enum Mode {
     WorktreeConflictResolveConfirm,
     WorktreeRemoveDirtyConfirm,
     WorktreeGitLogPopup,
+    WorktreeKeybindsPopup,
     LegacyWorkspaceMigrateConfirm,
     QuitWithSessionsConfirm,
     AgentSelectPopup,
@@ -230,6 +232,7 @@ struct App {
     worktrees: Vec<WorktreeEntry>,
     selected_worktree: usize,
     worktree_focus: WorktreePane,
+    worktree_details_verbose: bool,
     worktree_canvas_zoom: f64,
     worktree_canvas_pan_x: f64,
     worktree_canvas_pan_y: f64,
@@ -251,6 +254,9 @@ struct App {
     show_panel_help: bool,
     new_worktree_branch: String,
     new_worktree_base: WorktreeCreateBase,
+    worktree_branch_input: String,
+    worktree_branch_selected: usize,
+    worktree_branch_candidates: Vec<String>,
     pending_create_branch: String,
     orchestrator_requirement_input: String,
     orchestrator_planned_requirement: String,
@@ -299,6 +305,9 @@ struct App {
     status_refresh_in_flight: bool,
     status_refresh_tx: Sender<StatusRefreshEvent>,
     status_refresh_rx: Receiver<StatusRefreshEvent>,
+    opencode_usage_refresh_in_flight: bool,
+    opencode_usage_refresh_tx: Sender<OpencodeUsageRefreshEvent>,
+    opencode_usage_refresh_rx: Receiver<OpencodeUsageRefreshEvent>,
     perf_debug: PerfDebugState,
 }
 
@@ -392,6 +401,12 @@ struct StatusRefreshEvent {
     error: Option<String>,
 }
 
+struct OpencodeUsageRefreshEvent {
+    command_available: bool,
+    resolved_session_ids: BTreeMap<String, String>,
+    usage_by_session: BTreeMap<String, OpenCodeUsage>,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct FramePhaseDurations {
     drain_agent_events: Duration,
@@ -420,6 +435,14 @@ struct PerfDebugState {
     last_frame_at: Instant,
     last_hitch: Option<FrameHitch>,
     hitch_log_path: PathBuf,
+    perf_log_path: PathBuf,
+    git_sha: String,
+    session_id: u64,
+    last_snapshot_log_at: Instant,
+    snapshot_frames: usize,
+    snapshot_hitches: usize,
+    total_hitches: usize,
+    snapshot_phase_totals: FramePhaseDurations,
 }
 
 impl PerfDebugState {
@@ -434,7 +457,38 @@ impl PerfDebugState {
             last_frame_at: Instant::now(),
             last_hitch: None,
             hitch_log_path: std::env::temp_dir().join("openswarm-hitches.log"),
+            perf_log_path: std::env::temp_dir().join("openswarm-perf.jsonl"),
+            git_sha: current_git_sha(),
+            session_id: 0,
+            last_snapshot_log_at: Instant::now(),
+            snapshot_frames: 0,
+            snapshot_hitches: 0,
+            total_hitches: 0,
+            snapshot_phase_totals: FramePhaseDurations::default(),
         }
+    }
+
+    fn enable(&mut self) {
+        self.enabled = true;
+        self.session_id = unix_epoch_secs();
+        self.last_frame_at = Instant::now();
+        self.last_snapshot_log_at = Instant::now();
+        self.frame_intervals.clear();
+        self.worst_frame = Duration::ZERO;
+        self.last_hitch = None;
+        self.snapshot_frames = 0;
+        self.snapshot_hitches = 0;
+        self.total_hitches = 0;
+        self.snapshot_phase_totals = FramePhaseDurations::default();
+        self.log_perf_event("session_start");
+    }
+
+    fn disable(&mut self) {
+        if self.enabled {
+            self.flush_snapshot("session_end");
+            self.log_perf_event("session_end");
+        }
+        self.enabled = false;
     }
 
     fn record_frame_interval(&mut self, frame_interval: Duration) {
@@ -488,6 +542,9 @@ impl PerfDebugState {
             return;
         }
 
+        self.total_hitches = self.total_hitches.saturating_add(1);
+        self.snapshot_hitches = self.snapshot_hitches.saturating_add(1);
+
         let hitch = FrameHitch {
             at: Instant::now(),
             phases,
@@ -495,6 +552,80 @@ impl PerfDebugState {
         self.last_hitch = Some(hitch);
         if self.enabled {
             self.log_hitch(hitch);
+        }
+    }
+
+    fn maybe_log_snapshot(&mut self, phases: FramePhaseDurations) {
+        if !self.enabled {
+            return;
+        }
+
+        self.snapshot_frames = self.snapshot_frames.saturating_add(1);
+        add_phase_totals(&mut self.snapshot_phase_totals, phases);
+
+        if self.last_snapshot_log_at.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+
+        self.flush_snapshot("snapshot");
+    }
+
+    fn flush_snapshot(&mut self, kind: &str) {
+        if self.snapshot_frames == 0 {
+            self.last_snapshot_log_at = Instant::now();
+            return;
+        }
+
+        let frames = self.snapshot_frames.max(1) as f64;
+        let line = format!(
+            "{{\"kind\":\"{}\",\"ts\":{},\"session_id\":{},\"pid\":{},\"git_sha\":\"{}\",\"frames\":{},\"fps\":{:.2},\"avg_frame_ms\":{:.3},\"p95_frame_ms\":{:.3},\"worst_frame_ms\":{:.3},\"hitches\":{},\"hitches_total\":{},\"draw_ms_avg\":{:.3},\"event_poll_ms_avg\":{:.3},\"event_handle_ms_avg\":{:.3},\"status_ms_avg\":{:.3},\"worktrees_ms_avg\":{:.3},\"agent_drain_ms_avg\":{:.3},\"opencode_ms_avg\":{:.3}}}\n",
+            kind,
+            unix_epoch_secs(),
+            self.session_id,
+            std::process::id(),
+            json_escape(self.git_sha.as_str()),
+            self.snapshot_frames,
+            self.fps(),
+            self.avg_frame_ms(),
+            self.p95_frame_ms(),
+            self.worst_frame_ms(),
+            self.snapshot_hitches,
+            self.total_hitches,
+            (self.snapshot_phase_totals.draw.as_secs_f64() * 1000.0) / frames,
+            (self.snapshot_phase_totals.event_poll.as_secs_f64() * 1000.0) / frames,
+            (self.snapshot_phase_totals.event_handle.as_secs_f64() * 1000.0) / frames,
+            (self.snapshot_phase_totals.refresh_status.as_secs_f64() * 1000.0) / frames,
+            (self.snapshot_phase_totals.refresh_worktrees.as_secs_f64() * 1000.0) / frames,
+            (self.snapshot_phase_totals.drain_agent_events.as_secs_f64() * 1000.0) / frames,
+            (self.snapshot_phase_totals.refresh_opencode_usage.as_secs_f64() * 1000.0) / frames,
+        );
+        self.append_perf_log(line.as_str());
+
+        self.snapshot_frames = 0;
+        self.snapshot_hitches = 0;
+        self.snapshot_phase_totals = FramePhaseDurations::default();
+        self.last_snapshot_log_at = Instant::now();
+    }
+
+    fn log_perf_event(&self, kind: &str) {
+        let line = format!(
+            "{{\"kind\":\"{}\",\"ts\":{},\"session_id\":{},\"pid\":{},\"git_sha\":\"{}\"}}\n",
+            kind,
+            unix_epoch_secs(),
+            self.session_id,
+            std::process::id(),
+            json_escape(self.git_sha.as_str())
+        );
+        self.append_perf_log(line.as_str());
+    }
+
+    fn append_perf_log(&self, line: &str) {
+        if let Ok(mut file) = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.perf_log_path)
+        {
+            let _ = file.write_all(line.as_bytes());
         }
     }
 
@@ -543,6 +674,52 @@ impl PerfDebugState {
             let _ = file.write_all(line.as_bytes());
         }
     }
+}
+
+fn add_phase_totals(total: &mut FramePhaseDurations, sample: FramePhaseDurations) {
+    total.drain_agent_events = total
+        .drain_agent_events
+        .saturating_add(sample.drain_agent_events);
+    total.drain_git_task_events = total
+        .drain_git_task_events
+        .saturating_add(sample.drain_git_task_events);
+    total.refresh_agent_sessions = total
+        .refresh_agent_sessions
+        .saturating_add(sample.refresh_agent_sessions);
+    total.refresh_opencode_usage = total
+        .refresh_opencode_usage
+        .saturating_add(sample.refresh_opencode_usage);
+    total.resize_popup = total.resize_popup.saturating_add(sample.resize_popup);
+    total.draw = total.draw.saturating_add(sample.draw);
+    total.event_poll = total.event_poll.saturating_add(sample.event_poll);
+    total.event_handle = total.event_handle.saturating_add(sample.event_handle);
+    total.refresh_status = total.refresh_status.saturating_add(sample.refresh_status);
+    total.refresh_worktrees = total
+        .refresh_worktrees
+        .saturating_add(sample.refresh_worktrees);
+    total.total_loop = total.total_loop.saturating_add(sample.total_loop);
+}
+
+fn unix_epoch_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn json_escape(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn current_git_sha() -> String {
+    Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|sha| !sha.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -681,6 +858,7 @@ impl App {
         let (agent_tx, agent_rx) = mpsc::channel();
         let (git_task_tx, git_task_rx) = mpsc::channel();
         let (status_refresh_tx, status_refresh_rx) = mpsc::channel();
+        let (opencode_usage_refresh_tx, opencode_usage_refresh_rx) = mpsc::channel();
         let config = load_openswarm_config();
         let mut canvas_bg_effects = EffectManager::default();
         canvas_bg_effects.add_unique_effect("bg-polish", build_canvas_bg_effect());
@@ -709,6 +887,7 @@ impl App {
             worktrees: Vec::new(),
             selected_worktree: 0,
             worktree_focus: WorktreePane::Canvas,
+            worktree_details_verbose: false,
             worktree_canvas_zoom: 1.0,
             worktree_canvas_pan_x: 0.0,
             worktree_canvas_pan_y: 0.0,
@@ -730,6 +909,9 @@ impl App {
             show_panel_help: false,
             new_worktree_branch: String::new(),
             new_worktree_base: WorktreeCreateBase::Selected,
+            worktree_branch_input: String::new(),
+            worktree_branch_selected: 0,
+            worktree_branch_candidates: Vec::new(),
             pending_create_branch: String::new(),
             orchestrator_requirement_input: String::new(),
             orchestrator_planned_requirement: String::new(),
@@ -778,6 +960,9 @@ impl App {
             status_refresh_in_flight: false,
             status_refresh_tx,
             status_refresh_rx,
+            opencode_usage_refresh_in_flight: false,
+            opencode_usage_refresh_tx,
+            opencode_usage_refresh_rx,
             perf_debug: PerfDebugState::new(),
         }
     }
@@ -946,6 +1131,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         loop_phases.drain_git_task_events = phase_started.elapsed();
 
         drain_status_refresh_events(&mut app);
+        drain_opencode_usage_refresh_events(&mut app);
 
         let phase_started = Instant::now();
         refresh_agent_sessions(&mut app);
@@ -955,7 +1141,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             && last_opencode_usage_tick.elapsed() >= opencode_usage_tick_rate;
         if can_refresh_opencode {
             let phase_started = Instant::now();
-            refresh_opencode_usage(&mut app);
+            start_opencode_usage_refresh_task(&mut app);
             loop_phases.refresh_opencode_usage = phase_started.elapsed();
             last_opencode_usage_tick = Instant::now();
         }
@@ -1014,8 +1200,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
                     if matches!(app.mode, Mode::Normal)
                         && app.view_mode == ViewMode::Worktrees
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                        && key.code == KeyCode::Char('b')
+                        && key.code == KeyCode::Char('B')
                     {
                         cycle_worktree_canvas_background(&mut app);
                         continue;
@@ -1033,6 +1218,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::WorktreeCreateInput => {
                             handle_worktree_create_mode_key(&mut app, key.code)?;
+                        }
+                        Mode::WorktreeBranchSwitchPopup => {
+                            handle_worktree_branch_switch_mode_key(&mut app, key)?;
                         }
                         Mode::WorktreeOrchestrateInput => {
                             handle_worktree_orchestrate_mode_key(&mut app, key.code);
@@ -1054,6 +1242,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::WorktreeGitLogPopup => {
                             handle_worktree_git_log_mode_key(&mut app, key.code);
+                        }
+                        Mode::WorktreeKeybindsPopup => {
+                            handle_worktree_keybinds_mode_key(&mut app, key.code);
                         }
                         Mode::LegacyWorkspaceMigrateConfirm => {
                             handle_legacy_workspace_migrate_mode_key(&mut app, key.code)?;
@@ -1100,13 +1291,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             refresh_git && matches!(app.mode, Mode::Normal) && app.view_mode == ViewMode::Worktrees;
         if refresh_worktree_state && last_worktree_tick.elapsed() >= worktree_tick_rate {
             let phase_started = Instant::now();
-            refresh_worktrees(&mut app);
+            refresh_worktrees_lightweight(&mut app);
             loop_phases.refresh_worktrees = phase_started.elapsed();
             last_worktree_tick = Instant::now();
         }
 
         loop_phases.total_loop = loop_started.elapsed();
         app.perf_debug.record_loop_phases(loop_phases);
+        app.perf_debug.maybe_log_snapshot(loop_phases);
     }
 
     terminal.show_cursor()?;

@@ -27,7 +27,9 @@ nav_order: 3
 | `j` / `k` | Move to child / parent levels |
 | `Ctrl+K` | Cycle graph builder (top-down balanced / layered / left-right / trunk / swimlanes / indented) |
 | `Tab` | Cycle focus: Canvas, Details, Actions |
-| `?` | Toggle help modal |
+| `H` | Toggle panel help modal |
+| `v` | Toggle details panel compact / verbose |
+| `?` | Open full keybindings popup |
 
 ### Canvas
 
@@ -38,23 +40,25 @@ nav_order: 3
 | `0` | Reset zoom and pan |
 | `W` `A` `S` `D` | Pan up / left / down / right |
 | `M` | Toggle worktree art panel mode (config art / Spotify connector) |
-| `Ctrl+B` | Cycle canvas background mode (stars / crosshatch / rain) |
-| `Ctrl+L` | Toggle frame-lag debug stats + hitch logging (system temp file) |
+| `B` | Cycle canvas background mode (stars / crosshatch / rain) |
+| `Ctrl+L` | Toggle frame-lag debug stats + hitch/JSONL perf logging (system temp files) |
 
 ### Actions
 
 | Key | Action |
 |-----|--------|
-| `a` | Create worktree |
+| `a` | Create worktree (auto-select new node) |
+| `b` | Open branch switcher (type to filter, Enter to switch/create) |
 | `g` | Orchestrate worktrees from a feature requirement |
 | `o` | Open shell in worktree |
 | `O` | Open agent picker (or launch default agent; default OpenCode attempts session resume) |
 | `c` | Commit (`git add . && git commit`) for selected worktree |
 | `p` | Push selected worktree branch |
-| `f` | Fetch and pull parent branch (or selected main branch if behind head) |
+| `f` | Fetch and pull parent branch (or selected root branch if behind head) |
 | `F` | Rebase selected branch onto parent branch |
 | `m` | Merge selected worktree into parent |
-| `d` | Delete selected worktree |
+| `d` | Open delete confirmation for selected worktree |
+| `dd` | Instantly force-delete selected worktree |
 | `x` | Prune stale worktrees |
 | `L` | Open git reflog popup |
 | `r` | Refresh worktree list |
@@ -150,7 +154,19 @@ Vim-style editor for `notes.md` (or conflict prompt templates).
 |-----|--------|
 | `Left` / `Right` | Cycle base: Main, Selected, Selected+Changes |
 | Characters | Type branch name |
-| `Enter` | Create |
+| `Enter` | Create and auto-select new worktree |
+| `Esc` | Cancel |
+
+### Branch switch modal
+
+| Key | Action |
+|-----|--------|
+| Characters | Type branch filter (or a new branch name) |
+| `Backspace` | Delete backward |
+| `Up` / `Down` or `k` / `j` | Move selection |
+| `PageUp` / `PageDown` | Jump through branch list |
+| `Enter` | Switch to the selected filtered branch; if no matches, create+switch typed branch |
+| `Shift+Enter` | Always create+switch the typed branch |
 | `Esc` | Cancel |
 
 ### Orchestrate worktrees modal
@@ -200,7 +216,7 @@ Vim-style editor for `notes.md` (or conflict prompt templates).
 
 ### Confirmation dialogs
 
-All confirmation dialogs (delete dirty worktree, quit with sessions, branch conflict, merge conflict):
+All confirmation dialogs (worktree delete, quit with sessions, branch conflict, merge conflict):
 
 | Key | Action |
 |-----|--------|
