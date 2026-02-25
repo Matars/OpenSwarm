@@ -3411,7 +3411,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     );
     action(
         &mut lines,
-        "h",
+        "H",
         "panel help".to_string(),
         Style::default().fg(Color::Yellow),
     );
@@ -3431,7 +3431,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     );
     action(
         &mut lines,
-        "H/l",
+        "h/l",
         "left/right in level".to_string(),
         key_style,
     );
@@ -3529,7 +3529,7 @@ fn draw_worktree_keybinds_modal(frame: &mut ratatui::Frame<'_>) {
         Line::from("    w      changes view"),
         Line::from("    r      refresh worktrees"),
         Line::from("    q      quit"),
-        Line::from("    h      panel help"),
+        Line::from("    H      panel help"),
         Line::from("    ?      open this keybindings view"),
         Line::from(""),
         Line::from("  worktrees"),
@@ -3547,7 +3547,7 @@ fn draw_worktree_keybinds_modal(frame: &mut ratatui::Frame<'_>) {
         Line::from(""),
         Line::from("  canvas"),
         Line::from("    arrows directional graph navigation"),
-        Line::from("    H / l  move between siblings"),
+        Line::from("    h / l  move between siblings"),
         Line::from("    j / k  child / parent levels"),
         Line::from("    +/-/0  zoom in/out/reset"),
         Line::from("    Shift+WASD pan camera"),
@@ -3593,7 +3593,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from(""),
             Line::from("Navigation:"),
             Line::from("  arrows  - move by graph direction"),
-            Line::from("  H/l     - move between siblings"),
+            Line::from("  h/l     - move between siblings"),
             Line::from("  j/k     - move child/parent levels"),
             Line::from("  Ctrl+K  - cycle graph builder (6 layouts)"),
             Line::from("  Tab     - cycle graph/details/actions panels"),
@@ -3609,7 +3609,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from(""),
             Line::from("Flow: o/O launch shells or agents, c/p/m/d/dd run git lifecycle"),
             Line::from(""),
-            Line::from("  h: close this help, ?: open keybindings"),
+            Line::from("  H: close this help, ?: open keybindings"),
         ],
         WorktreePane::Details => vec![
             Line::from("Details panel"),
@@ -3623,7 +3623,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from("- Tight layouts automatically hide lower-priority runtime rows"),
             Line::from("- Use this panel to validate readiness before push/merge"),
             Line::from("- Tab: move focus to next panel"),
-            Line::from("- h: close this help, ?: open keybindings"),
+            Line::from("- H: close this help, ?: open keybindings"),
         ],
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
@@ -3649,7 +3649,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from(
                 "- Agent defaults/prompts live in ~/.config/openswarm (%USERPROFILE%\\.config\\openswarm on Windows)",
             ),
-            Line::from("- h: close this help, ?: open keybindings"),
+            Line::from("- H: close this help, ?: open keybindings"),
         ],
     }
 }

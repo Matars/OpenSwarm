@@ -48,10 +48,10 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | Key | Action |
 |-----|--------|
 | `w` | Toggle Changes / Worktrees views |
-| Arrow keys / `j` `k` `l` / `H` | Move selection (`H/l` for sibling step) |
+| Arrow keys / `h` `j` `k` `l` | Move selection (`h/l` for sibling step) |
 | `Ctrl+K` | Cycle graph builder (top-down, layered, left-right, trunk, swimlanes, indented) |
 | `Tab` | Cycle panes |
-| `h` / `?` | Panel help / full keybindings popup |
+| `H` / `?` | Panel help / full keybindings popup |
 | `v` | Toggle details panel compact / verbose |
 | `+` / `-` / `0` | Zoom in / out / reset |
 | `W` `A` `S` `D` | Pan canvas |

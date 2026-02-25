@@ -199,7 +199,7 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
             app.next_worktree_pane();
             app.show_panel_help = false;
         }
-        KeyCode::Char('h') => {
+        KeyCode::Char('H') => {
             app.show_panel_help = !app.show_panel_help;
         }
         KeyCode::Char('v') => {
@@ -224,7 +224,7 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
         KeyCode::Char('A') => pan_worktree_canvas(app, -1.0, 0.0),
         KeyCode::Char('S') => pan_worktree_canvas(app, 0.0, -1.0),
         KeyCode::Char('D') => pan_worktree_canvas(app, 1.0, 0.0),
-        KeyCode::Char('H') => move_worktree_level_siblings(app, false),
+        KeyCode::Char('h') => move_worktree_level_siblings(app, false),
         KeyCode::Char('l') => move_worktree_level_siblings(app, true),
         KeyCode::Char('L') => {
             open_worktree_git_log_popup(app)?;
