@@ -1,5 +1,7 @@
 # OpenSwarm
 
+[![Docs](https://img.shields.io/badge/docs-matars.github.io%2FOpenSwarm-blue)](https://matars.github.io/OpenSwarm/)
+
 ![OpenSwarm screenshot](img/screenshot.png)
 
 A keyboard-first Rust TUI for **parallel AI agent deployment across Git worktrees**.
