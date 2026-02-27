@@ -15,7 +15,7 @@ OpenSwarm gives you one screen:
 - **Worktree graph** -- see all worktrees as an interactive graph with parent-child relationships, dirty/behind-parent-or-head/committed/local-only/pushed/merged-with-parent badges, ahead/behind counts, live agent activity, and token telemetry (exact OpenCode session usage when available, PTY-based fallback otherwise) plus an animated top-right tok/s leaderboard with Unicode bars normalized to the busiest worktree and idle worktrees collapsed into one compact row
 - **Embedded terminals + per-node session memory** -- launch shells and agents in PTY sessions directly inside the TUI; sessions persist in the background, and default OpenCode launches reconnect to the most recent session for that same worktree node after restarting OpenSwarm
 - **Inline diffs** -- switch to changes view for file staging with method-level diff analysis (Python, Rust, JS/TS, Go)
-- **One-key git operations** -- create worktrees (`a`), switch/create branches (`b`), commit (`c`), push (`p`), merge (`m`), and safer delete flows (`d` confirm, `dd` instant force-delete) without leaving the TUI
+- **One-key git operations** -- create worktrees (`a`), switch/create branches (`b`), commit (`c`), push (`p`), merge (`m`), and safer delete flows (`d` confirm with `yes`/`no`, `dd` instant force-delete) without leaving the TUI
 - **Music-aware art panel** -- press `M` in worktrees view to toggle between configured ASCII art and a Spotify now-playing card (album art, song, artist)
 - **Feature-to-worktree orchestration** -- press `g`, describe the feature, review suggested per-leaf execution prompts (accept/refine each node), then execute accepted worktree creation (OpenCode planner with heuristic fallback)
 - **Agent-powered merge conflict solver** -- when merges conflict, OpenSwarm can launch OpenCode with a prefilled conflict-resolution prompt in the parent worktree, so the agent resolves/stages while you keep orchestration in one place
@@ -73,7 +73,7 @@ If you close OpenSwarm and reopen it later, default OpenCode launches can reconn
 | `f` | Fetch/pull parent (or selected root branch if behind head) |
 | `F` | Rebase selected onto parent |
 | `m` | Merge into parent |
-| `d` / `dd` | Delete worktree (confirm / instant force-delete) |
+| `d` / `dd` | Delete worktree (type `yes`/`no` confirm / instant force-delete) |
 
 ### Changes view
 

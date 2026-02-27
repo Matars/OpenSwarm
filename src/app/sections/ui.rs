@@ -3375,7 +3375,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     action(
         &mut lines,
         "d/dd",
-        "delete selected (confirm / instant force-delete)".to_string(),
+        "delete selected (type yes/no confirm / instant force-delete)".to_string(),
         Style::default().fg(Color::LightRed),
     );
 
@@ -3538,7 +3538,7 @@ fn draw_worktree_keybinds_modal(frame: &mut ratatui::Frame<'_>) {
         Line::from("    o / O  open terminal popup / open agent picker"),
         Line::from("    n      notes editor"),
         Line::from("    L      git command history popup"),
-        Line::from("    x / d  prune stale / delete selected"),
+        Line::from("    x / d  prune stale / delete selected (yes/no prompt)"),
         Line::from(""),
         Line::from("  git"),
         Line::from("    c / p  add+commit / push"),
@@ -3641,7 +3641,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             )),
             Line::from("- F: rebase selected branch onto connected parent node"),
             Line::from("- m: merge selected branch into connected parent node"),
-            Line::from("- d: open delete confirmation for selected worktree"),
+            Line::from("- d: open delete confirmation (type yes/y or no/n)"),
             Line::from("- dd: delete selected worktree immediately (force)"),
             Line::from("- x: prune stale worktrees"),
             Line::from("- n: open notes.md (vim-style editor), L: git command history"),
@@ -4447,6 +4447,7 @@ fn draw_worktree_remove_dirty_confirm_modal(frame: &mut ratatui::Frame<'_>, app:
         .constraints([
             Constraint::Length(2),
             Constraint::Length(2),
+            Constraint::Length(2),
             Constraint::Length(3),
             Constraint::Length(1),
         ])
@@ -4485,6 +4486,17 @@ fn draw_worktree_remove_dirty_confirm_modal(frame: &mut ratatui::Frame<'_>, app:
         layout[1],
     );
 
+    let input_text = if app.remove_worktree_confirm_input.is_empty() {
+        "[type yes/y or no/n]".to_string()
+    } else {
+        app.remove_worktree_confirm_input.clone()
+    };
+    frame.render_widget(
+        Paragraph::new(format!("Confirmation input: {}", input_text))
+            .style(Style::default().fg(Color::LightCyan)),
+        layout[2],
+    );
+
     let yes_style = if app.confirm_remove_worktree_yes {
         Style::default().fg(Color::Black).bg(Color::LightRed)
     } else {
@@ -4503,14 +4515,14 @@ fn draw_worktree_remove_dirty_confirm_modal(frame: &mut ratatui::Frame<'_>, app:
             Span::styled("[ No: keep worktree ]", no_style),
         ]))
         .alignment(Alignment::Center),
-        layout[2],
+        layout[3],
     );
 
     frame.render_widget(
-        Paragraph::new("No is selected by default")
+        Paragraph::new("No is default. Enter confirms, d force-deletes, Esc cancels.")
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Gray)),
-        layout[3],
+        layout[4],
     );
 }
 
