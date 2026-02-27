@@ -5,14 +5,18 @@ nav_order: 3
 
 # Keybindings
 
+Most main-view keybinds are configurable in `~/.config/openswarm/config.toml` under `[keybinds]`.
+Use `?` in worktree view to open the categorized popup and see your active bindings.
+Set a binding to `""` to unbind it.
+
 ## Global
 
 | Key | Action |
 |-----|--------|
-| `q` | Quit (confirms if terminal sessions are active) |
+| `q` (default) | Quit (confirms if terminal sessions are active) |
 | `Ctrl+C` | Force quit |
-| `w` | Toggle between Changes and Worktrees views |
-| `n` | Open notes editor |
+| `w` (default) | Toggle between Changes and Worktrees views |
+| `n` (default) | Open notes editor |
 
 ---
 
@@ -58,7 +62,7 @@ nav_order: 3
 | `F` | Rebase selected branch onto parent branch |
 | `m` | Merge selected worktree into parent |
 | `d` | Open delete confirmation for selected worktree (type `yes`/`y` or `no`/`n`) |
-| `dd` | Instantly force-delete selected worktree |
+| `dd` | Instantly force-delete selected worktree (fixed; stays as `dd`) |
 | `x` | Prune stale worktrees |
 | `L` | Open git reflog popup |
 | `r` | Refresh worktree list |

@@ -14,6 +14,7 @@ Instead of juggling terminal tabs and manual worktree commands, you get one visu
 - **One screen for everything**: worktree graph, agent sessions, diffs, and git actions
 - **Built for parallel flow**: run multiple isolated streams without context thrash
 - **Fast keyboard loop**: create, commit, push, merge, and clean up without leaving the TUI
+- **Configurable keybinds**: remap most Worktrees/Changes actions in `~/.config/openswarm/config.toml`
 
 ## Quick start
 

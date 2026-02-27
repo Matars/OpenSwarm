@@ -211,6 +211,193 @@ struct SpotifyCoverArt {
     image: StatefulProtocol,
 }
 
+/// A single keybind: either bound to a key (with optional Ctrl modifier) or unbound.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Keybind {
+    Key(char),
+    CtrlKey(char),
+    None,
+}
+
+impl Keybind {
+    fn matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        match self {
+            Keybind::Key(c) => {
+                !modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char(*c)
+            }
+            Keybind::CtrlKey(c) => {
+                modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char(*c)
+            }
+            Keybind::None => false,
+        }
+    }
+
+    fn display(&self) -> String {
+        match self {
+            Keybind::Key(c) => c.to_string(),
+            Keybind::CtrlKey(c) => format!("Ctrl+{}", c.to_ascii_uppercase()),
+            Keybind::None => String::new(),
+        }
+    }
+
+    fn config_string(&self) -> String {
+        match self {
+            Keybind::Key(c) => format!("\"{}\"", c),
+            Keybind::CtrlKey(c) => format!("\"ctrl+{}\"", c),
+            Keybind::None => "\"\"".to_string(),
+        }
+    }
+
+    fn from_config(s: &str) -> Self {
+        let s = s.trim();
+        if s.is_empty() {
+            return Keybind::None;
+        }
+        if let Some(rest) = s.strip_prefix("ctrl+").or_else(|| s.strip_prefix("Ctrl+")) {
+            if let Some(c) = rest.chars().next() {
+                return Keybind::CtrlKey(c.to_ascii_lowercase());
+            }
+        }
+        if let Some(c) = s.chars().next() {
+            if s.len() == c.len_utf8() {
+                return Keybind::Key(c);
+            }
+        }
+        Keybind::None
+    }
+}
+
+/// All configurable keybind actions. Each variant has a config key name, a display label,
+/// a category, and a default binding.
+macro_rules! define_keybinds {
+    (
+        $(
+            category $cat:expr => {
+                $( $field:ident : $config_key:expr, $label:expr, $default:expr ; )*
+            }
+        )*
+    ) => {
+        #[derive(Clone, Debug)]
+        struct KeybindMap {
+            $( $( $field: Keybind, )* )*
+        }
+
+        impl KeybindMap {
+            fn defaults() -> Self {
+                Self {
+                    $( $( $field: $default, )* )*
+                }
+            }
+
+            fn config_entries() -> &'static [(&'static str, &'static str, &'static str)] {
+                &[
+                    $( $( ($config_key, $label, $cat), )* )*
+                ]
+            }
+
+            fn get_by_config_key(&self, key: &str) -> Option<&Keybind> {
+                match key {
+                    $( $( $config_key => Some(&self.$field), )* )*
+                    _ => None,
+                }
+            }
+
+            fn set_by_config_key(&mut self, key: &str, bind: Keybind) -> bool {
+                match key {
+                    $( $(
+                        $config_key => { self.$field = bind; true }
+                    )* )*
+                    _ => false,
+                }
+            }
+
+            /// Returns categorized entries for UI display: Vec<(category, Vec<(display_key, label)>)>
+            fn categorized_display(&self) -> Vec<(&'static str, Vec<(String, &'static str)>)> {
+                let mut categories: Vec<(&'static str, Vec<(String, &'static str)>)> = Vec::new();
+                $(
+                    {
+                        let mut entries = Vec::new();
+                        $(
+                            entries.push((self.$field.display(), $label));
+                        )*
+                        categories.push(($cat, entries));
+                    }
+                )*
+                categories
+            }
+        }
+    };
+}
+
+define_keybinds! {
+    category "general" => {
+        kb_quit: "quit", "quit", Keybind::Key('q');
+        kb_changes_view: "changes_view", "file changes view", Keybind::Key('w');
+        kb_refresh: "refresh", "refresh worktrees + config", Keybind::Key('r');
+        kb_panel_help: "panel_help", "panel help", Keybind::Key('H');
+        kb_keybinds_popup: "keybinds_popup", "open keybindings", Keybind::Key('?');
+        kb_toggle_verbose: "toggle_verbose", "toggle compact/verbose details", Keybind::Key('v');
+    }
+
+    category "worktrees" => {
+        kb_create_worktree: "create_worktree", "create worktree", Keybind::Key('a');
+        kb_branch_switch: "branch_switch", "switch/create branch", Keybind::Key('b');
+        kb_orchestrate: "orchestrate", "orchestrate worktrees from requirement", Keybind::Key('g');
+        kb_open_terminal: "open_terminal", "open terminal popup", Keybind::Key('o');
+        kb_open_agent_picker: "open_agent_picker", "open agent picker", Keybind::Key('O');
+        kb_notes: "notes", "notes editor (vim-style)", Keybind::Key('n');
+        kb_git_log: "git_log", "git command history popup", Keybind::Key('L');
+        kb_prune: "prune", "prune stale worktrees", Keybind::Key('x');
+        kb_delete: "delete", "delete selected (yes/no prompt)", Keybind::Key('d');
+    }
+
+    category "git" => {
+        kb_commit: "commit", "add + commit", Keybind::Key('c');
+        kb_push: "push", "push", Keybind::Key('p');
+        kb_fetch_pull: "fetch_pull", "fetch + pull parent", Keybind::Key('f');
+        kb_rebase: "rebase", "rebase selected onto parent", Keybind::Key('F');
+        kb_merge: "merge", "merge to parent", Keybind::Key('m');
+    }
+
+    category "canvas" => {
+        kb_sibling_left: "sibling_left", "move left in level", Keybind::Key('h');
+        kb_sibling_right: "sibling_right", "move right in level", Keybind::Key('l');
+        kb_level_child: "level_child", "move to child level", Keybind::Key('j');
+        kb_level_parent: "level_parent", "move to parent level", Keybind::Key('k');
+        kb_zoom_in: "zoom_in", "zoom in", Keybind::Key('+');
+        kb_zoom_out: "zoom_out", "zoom out", Keybind::Key('-');
+        kb_zoom_reset: "zoom_reset", "reset camera", Keybind::Key('0');
+        kb_pan_up: "pan_up", "pan up", Keybind::Key('W');
+        kb_pan_left: "pan_left", "pan left", Keybind::Key('A');
+        kb_pan_down: "pan_down", "pan down", Keybind::Key('S');
+        kb_pan_right: "pan_right", "pan right", Keybind::Key('D');
+        kb_cycle_graph: "cycle_graph", "next graph builder", Keybind::CtrlKey('k');
+        kb_toggle_art: "toggle_art", "toggle art / spotify", Keybind::Key('M');
+        kb_cycle_bg: "cycle_bg", "cycle canvas background", Keybind::Key('B');
+    }
+
+    category "changes" => {
+        kb_ch_focus_left: "ch_focus_left", "focus files", Keybind::Key('h');
+        kb_ch_focus_right: "ch_focus_right", "focus overview", Keybind::Key('l');
+        kb_ch_move_down: "ch_move_down", "move selection down", Keybind::Key('j');
+        kb_ch_move_up: "ch_move_up", "move selection up", Keybind::Key('k');
+        kb_ch_scroll_down: "ch_scroll_down", "scroll overview down", Keybind::Key('J');
+        kb_ch_scroll_up: "ch_scroll_up", "scroll overview up", Keybind::Key('K');
+        kb_ch_stage: "ch_stage", "smart stage / unstage", Keybind::Key('a');
+        kb_ch_unstage: "ch_unstage", "unstage selected", Keybind::Key('u');
+        kb_ch_stage_all: "ch_stage_all", "stage all", Keybind::Key('A');
+        kb_ch_unstage_all: "ch_unstage_all", "unstage all", Keybind::Key('U');
+        kb_ch_commit: "ch_commit", "commit", Keybind::Key('c');
+        kb_ch_push: "ch_push", "push", Keybind::Key('p');
+        kb_ch_notes: "ch_notes", "notes editor (vim-style)", Keybind::Key('n');
+        kb_ch_stash_push: "ch_stash_push", "stash changes", Keybind::Key('s');
+        kb_ch_stash_pop: "ch_stash_pop", "stash pop", Keybind::Key('S');
+        kb_ch_refresh: "ch_refresh", "refresh", Keybind::Key('r');
+        kb_ch_quit: "ch_quit", "quit", Keybind::Key('q');
+        kb_ch_worktree_view: "ch_worktree_view", "worktree canvas", Keybind::Key('w');
+    }
+}
+
 struct App {
     branch: String,
     ahead: usize,
@@ -287,6 +474,8 @@ struct App {
     agent_select_path: Option<String>,
     pending_conflict_context: Option<ConflictResolveContext>,
     config: OpenSwarmConfig,
+    keybinds: KeybindMap,
+    keybinds_scroll: u16,
     agent_popup_path: Option<String>,
     terminal_popup_mode: TerminalPopupMode,
     notes_path: String,
@@ -860,7 +1049,7 @@ impl App {
         let (git_task_tx, git_task_rx) = mpsc::channel();
         let (status_refresh_tx, status_refresh_rx) = mpsc::channel();
         let (opencode_usage_refresh_tx, opencode_usage_refresh_rx) = mpsc::channel();
-        let config = load_openswarm_config();
+        let (config, keybinds) = load_openswarm_config_and_keybinds();
         let mut canvas_bg_effects = EffectManager::default();
         canvas_bg_effects.add_unique_effect("bg-polish", build_canvas_bg_effect());
         let mut canvas_selected_border_effects = EffectManager::default();
@@ -943,6 +1132,8 @@ impl App {
             agent_select_path: None,
             pending_conflict_context: None,
             config,
+            keybinds,
+            keybinds_scroll: 0,
             agent_popup_path: None,
             terminal_popup_mode: TerminalPopupMode::Input,
             notes_path: String::new(),
@@ -1197,14 +1388,6 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         && key.code == KeyCode::Char('l')
                     {
                         toggle_perf_debug(&mut app);
-                        continue;
-                    }
-
-                    if matches!(app.mode, Mode::Normal)
-                        && app.view_mode == ViewMode::Worktrees
-                        && key.code == KeyCode::Char('B')
-                    {
-                        cycle_worktree_canvas_background(&mut app);
                         continue;
                     }
 

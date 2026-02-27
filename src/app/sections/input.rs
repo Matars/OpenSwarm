@@ -1,20 +1,130 @@
 fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn Error>> {
     let code = key.code;
+    let mods = key.modifiers;
     if app.view_mode == ViewMode::Worktrees {
         return handle_worktree_mode_key(app, key);
     }
 
-    match code {
-        KeyCode::Char('q') => return Ok(request_quit(app)),
-        KeyCode::Char('w') => {
-            app.view_mode = ViewMode::Worktrees;
-            app.worktree_focus = WorktreePane::Canvas;
-            app.show_panel_help = false;
-            app.status_line = "Switched to worktree navigator".to_string();
-            refresh_worktrees(app);
+    let kb = &app.keybinds.clone();
+
+    // --- configurable keybinds ---
+    if kb.kb_ch_quit.matches(code, mods) {
+        return Ok(request_quit(app));
+    }
+
+    if kb.kb_ch_worktree_view.matches(code, mods) {
+        app.view_mode = ViewMode::Worktrees;
+        app.worktree_focus = WorktreePane::Canvas;
+        app.show_panel_help = false;
+        app.status_line = "Switched to worktree navigator".to_string();
+        refresh_worktrees(app);
+        return Ok(false);
+    }
+
+    if kb.kb_ch_focus_left.matches(code, mods) {
+        app.focus_left();
+        return Ok(false);
+    }
+    if kb.kb_ch_focus_right.matches(code, mods) {
+        app.focus_right();
+        return Ok(false);
+    }
+
+    if kb.kb_ch_move_down.matches(code, mods) {
+        match app.active_pane {
+            ActivePane::Files => {
+                app.select_next();
+                app.overview_scroll = 0;
+                refresh_selected_overview(app);
+            }
+            ActivePane::Overview => move_overview_method(app, true),
         }
-        KeyCode::Left | KeyCode::Char('h') => app.focus_left(),
-        KeyCode::Right | KeyCode::Char('l') => app.focus_right(),
+        return Ok(false);
+    }
+    if kb.kb_ch_move_up.matches(code, mods) {
+        match app.active_pane {
+            ActivePane::Files => {
+                app.select_prev();
+                app.overview_scroll = 0;
+                refresh_selected_overview(app);
+            }
+            ActivePane::Overview => move_overview_method(app, false),
+        }
+        return Ok(false);
+    }
+    if kb.kb_ch_scroll_down.matches(code, mods) {
+        if app.active_pane == ActivePane::Overview {
+            app.overview_scroll = app.overview_scroll.saturating_add(1);
+        }
+        return Ok(false);
+    }
+    if kb.kb_ch_scroll_up.matches(code, mods) {
+        if app.active_pane == ActivePane::Overview {
+            app.overview_scroll = app.overview_scroll.saturating_sub(1);
+        }
+        return Ok(false);
+    }
+    if kb.kb_ch_refresh.matches(code, mods) {
+        refresh_status(app);
+        return Ok(false);
+    }
+    if kb.kb_ch_stage.matches(code, mods) {
+        toggle_stage(app)?;
+        refresh_status(app);
+        return Ok(false);
+    }
+    if kb.kb_ch_unstage.matches(code, mods) {
+        unstage_selected(app)?;
+        refresh_status(app);
+        return Ok(false);
+    }
+    if kb.kb_ch_stage_all.matches(code, mods) {
+        stage_all_changes(app)?;
+        refresh_status(app);
+        return Ok(false);
+    }
+    if kb.kb_ch_unstage_all.matches(code, mods) {
+        unstage_all_changes(app)?;
+        refresh_status(app);
+        return Ok(false);
+    }
+    if kb.kb_ch_commit.matches(code, mods) {
+        app.mode = Mode::CommitInput;
+        app.commit_input.clear();
+        app.status_line = "Commit mode: type a message and press Enter".to_string();
+        return Ok(false);
+    }
+    if kb.kb_ch_notes.matches(code, mods) {
+        open_notes_popup(app)?;
+        return Ok(false);
+    }
+    if kb.kb_ch_push.matches(code, mods) {
+        if let Some(path) = app.changes_worktree_path.clone() {
+            start_git_task(app, "Push (changes view)", false, true, move || {
+                git_result_text(push_with_upstream_at(path.as_str()))
+            });
+        } else {
+            start_git_task(app, "Push (changes view)", false, true, || {
+                git_result_text(push_with_upstream())
+            });
+        }
+        return Ok(false);
+    }
+    if kb.kb_ch_stash_push.matches(code, mods) {
+        stash_push_changes(app)?;
+        refresh_status(app);
+        return Ok(false);
+    }
+    if kb.kb_ch_stash_pop.matches(code, mods) {
+        stash_pop_changes(app)?;
+        refresh_status(app);
+        return Ok(false);
+    }
+
+    // --- fixed keybinds (arrows, Enter, Space) ---
+    match code {
+        KeyCode::Left => app.focus_left(),
+        KeyCode::Right => app.focus_right(),
         KeyCode::Down => match app.active_pane {
             ActivePane::Files => {
                 app.select_next();
@@ -35,87 +145,11 @@ fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn 
                 app.overview_scroll = app.overview_scroll.saturating_sub(1);
             }
         },
-        KeyCode::Char('j') => match app.active_pane {
-            ActivePane::Files => {
-                app.select_next();
-                app.overview_scroll = 0;
-                refresh_selected_overview(app);
-            }
-            ActivePane::Overview => move_overview_method(app, true),
-        },
-        KeyCode::Char('k') => match app.active_pane {
-            ActivePane::Files => {
-                app.select_prev();
-                app.overview_scroll = 0;
-                refresh_selected_overview(app);
-            }
-            ActivePane::Overview => move_overview_method(app, false),
-        },
-        KeyCode::Char('J') => {
-            if app.active_pane == ActivePane::Overview {
-                app.overview_scroll = app.overview_scroll.saturating_add(1);
-            }
-        }
-        KeyCode::Char('K') => {
-            if app.active_pane == ActivePane::Overview {
-                app.overview_scroll = app.overview_scroll.saturating_sub(1);
-            }
-        }
-        KeyCode::Char('r') => refresh_status(app),
-        KeyCode::Enter => {
+        KeyCode::Enter | KeyCode::Char(' ') => {
             if !toggle_overview_method_expanded(app) {
                 toggle_stage(app)?;
                 refresh_status(app);
             }
-        }
-        KeyCode::Char(' ') => {
-            if !toggle_overview_method_expanded(app) {
-                toggle_stage(app)?;
-                refresh_status(app);
-            }
-        }
-        KeyCode::Char('a') => {
-            toggle_stage(app)?;
-            refresh_status(app);
-        }
-        KeyCode::Char('u') => {
-            unstage_selected(app)?;
-            refresh_status(app);
-        }
-        KeyCode::Char('A') => {
-            stage_all_changes(app)?;
-            refresh_status(app);
-        }
-        KeyCode::Char('U') => {
-            unstage_all_changes(app)?;
-            refresh_status(app);
-        }
-        KeyCode::Char('c') => {
-            app.mode = Mode::CommitInput;
-            app.commit_input.clear();
-            app.status_line = "Commit mode: type a message and press Enter".to_string();
-        }
-        KeyCode::Char('n') => {
-            open_notes_popup(app)?;
-        }
-        KeyCode::Char('p') => {
-            if let Some(path) = app.changes_worktree_path.clone() {
-                start_git_task(app, "Push (changes view)", false, true, move || {
-                    git_result_text(push_with_upstream_at(path.as_str()))
-                });
-            } else {
-                start_git_task(app, "Push (changes view)", false, true, || {
-                    git_result_text(push_with_upstream())
-                });
-            }
-        }
-        KeyCode::Char('s') => {
-            stash_push_changes(app)?;
-            refresh_status(app);
-        }
-        KeyCode::Char('S') => {
-            stash_pop_changes(app)?;
-            refresh_status(app);
         }
         _ => {}
     }
@@ -172,176 +206,250 @@ fn toggle_overview_method_expanded(app: &mut App) -> bool {
 }
 
 fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn Error>> {
-    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('k') {
+    let code = key.code;
+    let mods = key.modifiers;
+    let kb = &app.keybinds.clone();
+
+    // --- configurable keybinds (checked first so overrides work) ---
+
+    if kb.kb_cycle_graph.matches(code, mods) {
         app.cycle_worktree_graph_builder();
         app.status_line = format!("Graph builder: {}", app.worktree_graph_builder.label());
         return Ok(false);
     }
 
-    let code = key.code;
+    if kb.kb_quit.matches(code, mods) {
+        return Ok(request_quit(app));
+    }
 
-    match code {
-        KeyCode::Char('q') => return Ok(request_quit(app)),
-        KeyCode::Char('w') => {
-            app.changes_worktree_path = app
-                .selected_worktree()
-                .map(|worktree| worktree.path.clone());
-            app.view_mode = ViewMode::Changes;
-            app.show_panel_help = false;
-            if let Some(path) = app.changes_worktree_path.as_deref() {
-                app.status_line = format!("Switched to changed files view for {}", path);
-            } else {
-                app.status_line = "Switched to changed files view".to_string();
-            }
-            refresh_status(app);
+    if kb.kb_changes_view.matches(code, mods) {
+        app.changes_worktree_path = app
+            .selected_worktree()
+            .map(|worktree| worktree.path.clone());
+        app.view_mode = ViewMode::Changes;
+        app.show_panel_help = false;
+        if let Some(path) = app.changes_worktree_path.as_deref() {
+            app.status_line = format!("Switched to changed files view for {}", path);
+        } else {
+            app.status_line = "Switched to changed files view".to_string();
         }
+        refresh_status(app);
+        return Ok(false);
+    }
+
+    if kb.kb_panel_help.matches(code, mods) {
+        app.show_panel_help = !app.show_panel_help;
+        return Ok(false);
+    }
+
+    if kb.kb_toggle_verbose.matches(code, mods) {
+        app.worktree_details_verbose = !app.worktree_details_verbose;
+        app.status_line = if app.worktree_details_verbose {
+            "Details panel: verbose".to_string()
+        } else {
+            "Details panel: compact".to_string()
+        };
+        return Ok(false);
+    }
+
+    if kb.kb_keybinds_popup.matches(code, mods) {
+        open_worktree_keybinds_popup(app);
+        return Ok(false);
+    }
+
+    if kb.kb_refresh.matches(code, mods) {
+        refresh_runtime_settings(app);
+        refresh_worktrees(app);
+        app.status_line = "Refreshed worktree list + config".to_string();
+        return Ok(false);
+    }
+
+    // --- canvas navigation ---
+    if kb.kb_zoom_in.matches(code, mods) || code == KeyCode::Char('=') {
+        zoom_worktree_canvas(app, true);
+        return Ok(false);
+    }
+    if kb.kb_zoom_out.matches(code, mods) {
+        zoom_worktree_canvas(app, false);
+        return Ok(false);
+    }
+    if kb.kb_zoom_reset.matches(code, mods) {
+        reset_worktree_canvas_view(app);
+        return Ok(false);
+    }
+    if kb.kb_pan_up.matches(code, mods) {
+        pan_worktree_canvas(app, 0.0, 1.0);
+        return Ok(false);
+    }
+    if kb.kb_pan_left.matches(code, mods) {
+        pan_worktree_canvas(app, -1.0, 0.0);
+        return Ok(false);
+    }
+    if kb.kb_pan_down.matches(code, mods) {
+        pan_worktree_canvas(app, 0.0, -1.0);
+        return Ok(false);
+    }
+    if kb.kb_pan_right.matches(code, mods) {
+        pan_worktree_canvas(app, 1.0, 0.0);
+        return Ok(false);
+    }
+    if kb.kb_sibling_left.matches(code, mods) {
+        move_worktree_level_siblings(app, false);
+        return Ok(false);
+    }
+    if kb.kb_sibling_right.matches(code, mods) {
+        move_worktree_level_siblings(app, true);
+        return Ok(false);
+    }
+    if kb.kb_level_child.matches(code, mods) {
+        move_worktree_level_vertical(app, false);
+        return Ok(false);
+    }
+    if kb.kb_level_parent.matches(code, mods) {
+        move_worktree_level_vertical(app, true);
+        return Ok(false);
+    }
+    if kb.kb_toggle_art.matches(code, mods) {
+        toggle_worktree_art_mode(app);
+        return Ok(false);
+    }
+    if kb.kb_cycle_bg.matches(code, mods) {
+        cycle_worktree_canvas_background(app);
+        return Ok(false);
+    }
+
+    // --- worktree actions ---
+    if kb.kb_create_worktree.matches(code, mods) {
+        app.mode = Mode::WorktreeCreateInput;
+        app.new_worktree_branch.clear();
+        app.new_worktree_base = WorktreeCreateBase::Selected;
+        app.status_line =
+            "Create worktree: choose base with Left/Right, then type branch name".to_string();
+        return Ok(false);
+    }
+    if kb.kb_branch_switch.matches(code, mods) {
+        open_worktree_branch_switch_popup(app)?;
+        return Ok(false);
+    }
+    if kb.kb_orchestrate.matches(code, mods) {
+        app.mode = Mode::WorktreeOrchestrateInput;
+        app.orchestrator_requirement_input.clear();
+        app.status_line =
+            "Orchestrate worktrees: describe the feature, Enter to preview prompts".to_string();
+        return Ok(false);
+    }
+    if kb.kb_open_terminal.matches(code, mods) {
+        open_terminal_popup_for_selected_worktree(app)?;
+        return Ok(false);
+    }
+    if kb.kb_open_agent_picker.matches(code, mods) {
+        open_agent_selector_for_selected_worktree(app, true)?;
+        return Ok(false);
+    }
+    if kb.kb_notes.matches(code, mods) {
+        open_notes_popup(app)?;
+        return Ok(false);
+    }
+    if kb.kb_git_log.matches(code, mods) {
+        open_worktree_git_log_popup(app)?;
+        return Ok(false);
+    }
+    if kb.kb_prune.matches(code, mods) {
+        start_git_task(app, "Prune stale worktrees", true, false, || {
+            git_result_text(run_git(&["worktree", "prune"]))
+        });
+        return Ok(false);
+    }
+    if kb.kb_delete.matches(code, mods) {
+        request_remove_selected_worktree(app)?;
+        return Ok(false);
+    }
+
+    // --- git actions ---
+    if kb.kb_commit.matches(code, mods) {
+        if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
+            app.mode = Mode::WorktreeCommitPushInput;
+            app.worktree_commit_input.clear();
+            app.worktree_commit_path = Some(path);
+            app.status_line =
+                "Worktree commit mode: commit message, Enter to add/commit".to_string();
+        }
+        return Ok(false);
+    }
+    if kb.kb_push.matches(code, mods) {
+        if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
+            start_git_task(app, "Push selected worktree", false, true, move || {
+                git_result_text(push_with_upstream_at(path.as_str()))
+            });
+        }
+        return Ok(false);
+    }
+    if kb.kb_fetch_pull.matches(code, mods) {
+        if let Some(parent) = connected_parent_worktree(app) {
+            let path = parent.path;
+            let branch = parent.branch;
+            start_git_task(app, "Fetch + pull parent", false, true, move || {
+                git_result_text(update_parent_at(path.as_str(), branch.as_str()))
+            });
+        } else if let Some(selected) = app.selected_worktree().cloned() {
+            if worktree_is_main_behind_head(&selected) {
+                let path = selected.path;
+                let branch = selected.branch;
+                start_git_task(app, "Fetch + pull selected head", false, true, move || {
+                    git_result_text(update_worktree_head_at(path.as_str(), branch.as_str()))
+                });
+            } else if is_main_branch_name(selected.branch.as_str()) && selected.has_upstream {
+                app.status_line = format!(
+                    "Selected {} branch is already in sync with head",
+                    selected.branch
+                );
+            } else {
+                app.status_line =
+                    "No connected parent node found for selected worktree".to_string();
+            }
+        } else {
+            app.status_line = "No connected parent node found for selected worktree".to_string();
+        }
+        return Ok(false);
+    }
+    if kb.kb_rebase.matches(code, mods) {
+        let selected = app.selected_worktree().cloned();
+        let parent = connected_parent_worktree(app);
+        if let (Some(selected), Some(parent)) = (selected, parent) {
+            let child_path = selected.path;
+            let child_branch = selected.branch;
+            let parent_path = parent.path;
+            let parent_branch = parent.branch;
+            start_git_task(app, "Rebase selected onto parent", false, true, move || {
+                git_result_text(rebase_onto_parent_at(
+                    child_path.as_str(),
+                    child_branch.as_str(),
+                    parent_path.as_str(),
+                    parent_branch.as_str(),
+                ))
+            });
+        } else {
+            app.status_line = "No connected parent node found for selected worktree".to_string();
+        }
+        return Ok(false);
+    }
+    if kb.kb_merge.matches(code, mods) {
+        app.status_line = merge_selected_into_parent(app)?;
+        refresh_worktrees(app);
+        refresh_status(app);
+        return Ok(false);
+    }
+
+    // --- fixed keybinds (arrows, Tab) ---
+    match code {
         KeyCode::Tab => {
             app.next_worktree_pane();
             app.show_panel_help = false;
-        }
-        KeyCode::Char('H') => {
-            app.show_panel_help = !app.show_panel_help;
-        }
-        KeyCode::Char('v') => {
-            app.worktree_details_verbose = !app.worktree_details_verbose;
-            app.status_line = if app.worktree_details_verbose {
-                "Details panel: verbose".to_string()
-            } else {
-                "Details panel: compact".to_string()
-            };
-        }
-        KeyCode::Char('?') => {
-            open_worktree_keybinds_popup(app);
         }
         KeyCode::Left => move_worktree_selection(app, NavDirection::Left),
         KeyCode::Right => move_worktree_selection(app, NavDirection::Right),
         KeyCode::Up => move_worktree_selection(app, NavDirection::Up),
         KeyCode::Down => move_worktree_selection(app, NavDirection::Down),
-        KeyCode::Char('+') | KeyCode::Char('=') => zoom_worktree_canvas(app, true),
-        KeyCode::Char('-') => zoom_worktree_canvas(app, false),
-        KeyCode::Char('0') => reset_worktree_canvas_view(app),
-        KeyCode::Char('W') => pan_worktree_canvas(app, 0.0, 1.0),
-        KeyCode::Char('A') => pan_worktree_canvas(app, -1.0, 0.0),
-        KeyCode::Char('S') => pan_worktree_canvas(app, 0.0, -1.0),
-        KeyCode::Char('D') => pan_worktree_canvas(app, 1.0, 0.0),
-        KeyCode::Char('h') => move_worktree_level_siblings(app, false),
-        KeyCode::Char('l') => move_worktree_level_siblings(app, true),
-        KeyCode::Char('L') => {
-            open_worktree_git_log_popup(app)?;
-        }
-        KeyCode::Char('j') => move_worktree_level_vertical(app, false),
-        KeyCode::Char('k') => move_worktree_level_vertical(app, true),
-        KeyCode::Char('r') => {
-            refresh_runtime_settings(app);
-            refresh_worktrees(app);
-            app.status_line = "Refreshed worktree list + config".to_string();
-        }
-        KeyCode::Char('M') => {
-            toggle_worktree_art_mode(app);
-        }
-        KeyCode::Char('a') => {
-            app.mode = Mode::WorktreeCreateInput;
-            app.new_worktree_branch.clear();
-            app.new_worktree_base = WorktreeCreateBase::Selected;
-            app.status_line =
-                "Create worktree: choose base with ←/→, then type branch name".to_string();
-        }
-        KeyCode::Char('b') => {
-            open_worktree_branch_switch_popup(app)?;
-        }
-        KeyCode::Char('g') => {
-            app.mode = Mode::WorktreeOrchestrateInput;
-            app.orchestrator_requirement_input.clear();
-            app.status_line =
-                "Orchestrate worktrees: describe the feature, Enter to preview prompts".to_string();
-        }
-        KeyCode::Char('o') => {
-            open_terminal_popup_for_selected_worktree(app)?;
-        }
-        KeyCode::Char('O') => {
-            open_agent_selector_for_selected_worktree(app, true)?;
-        }
-        KeyCode::Char('c') => {
-            if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
-                app.mode = Mode::WorktreeCommitPushInput;
-                app.worktree_commit_input.clear();
-                app.worktree_commit_path = Some(path);
-                app.status_line =
-                    "Worktree commit mode: commit message, Enter to add/commit".to_string();
-            }
-        }
-        KeyCode::Char('p') => {
-            if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
-                start_git_task(app, "Push selected worktree", false, true, move || {
-                    git_result_text(push_with_upstream_at(path.as_str()))
-                });
-            }
-        }
-        KeyCode::Char('f') => {
-            if let Some(parent) = connected_parent_worktree(app) {
-                let path = parent.path;
-                let branch = parent.branch;
-                start_git_task(app, "Fetch + pull parent", false, true, move || {
-                    git_result_text(update_parent_at(path.as_str(), branch.as_str()))
-                });
-            } else if let Some(selected) = app.selected_worktree().cloned() {
-                if worktree_is_main_behind_head(&selected) {
-                    let path = selected.path;
-                    let branch = selected.branch;
-                    start_git_task(app, "Fetch + pull selected head", false, true, move || {
-                        git_result_text(update_worktree_head_at(path.as_str(), branch.as_str()))
-                    });
-                } else if is_main_branch_name(selected.branch.as_str()) && selected.has_upstream {
-                    app.status_line = format!(
-                        "Selected {} branch is already in sync with head",
-                        selected.branch
-                    );
-                } else {
-                    app.status_line =
-                        "No connected parent node found for selected worktree".to_string();
-                }
-            } else {
-                app.status_line =
-                    "No connected parent node found for selected worktree".to_string();
-            }
-        }
-        KeyCode::Char('F') => {
-            let selected = app.selected_worktree().cloned();
-            let parent = connected_parent_worktree(app);
-            if let (Some(selected), Some(parent)) = (selected, parent) {
-                let child_path = selected.path;
-                let child_branch = selected.branch;
-                let parent_path = parent.path;
-                let parent_branch = parent.branch;
-                start_git_task(app, "Rebase selected onto parent", false, true, move || {
-                    git_result_text(rebase_onto_parent_at(
-                        child_path.as_str(),
-                        child_branch.as_str(),
-                        parent_path.as_str(),
-                        parent_branch.as_str(),
-                    ))
-                });
-            } else {
-                app.status_line =
-                    "No connected parent node found for selected worktree".to_string();
-            }
-        }
-        KeyCode::Char('x') => {
-            start_git_task(app, "Prune stale worktrees", true, false, || {
-                git_result_text(run_git(&["worktree", "prune"]))
-            });
-        }
-        KeyCode::Char('d') => {
-            request_remove_selected_worktree(app)?;
-        }
-        KeyCode::Char('m') => {
-            app.status_line = merge_selected_into_parent(app)?;
-            refresh_worktrees(app);
-            refresh_status(app);
-        }
-        KeyCode::Char('n') => {
-            open_notes_popup(app)?;
-        }
         _ => {}
     }
 
@@ -1176,7 +1284,9 @@ fn interactive_shell_command() -> (String, Vec<&'static str>) {
 }
 
 fn refresh_runtime_settings(app: &mut App) {
-    app.config = load_openswarm_config();
+    let (config, keybinds) = load_openswarm_config_and_keybinds();
+    app.config = config;
+    app.keybinds = keybinds;
     app.detected_agents = detect_available_agents();
     app.agent_select_index = app
         .agent_select_index
@@ -1413,6 +1523,52 @@ fn load_openswarm_config() -> OpenSwarmConfig {
     }
 }
 
+fn load_openswarm_config_and_keybinds() -> (OpenSwarmConfig, KeybindMap) {
+    let config = load_openswarm_config();
+    let mut keybinds = KeybindMap::defaults();
+
+    let config_path = PathBuf::from(config.config_path.as_str());
+    if let Ok(raw) = fs::read_to_string(config_path.as_path()) {
+        let mut in_keybinds_section = false;
+        let mut has_keybinds_section = false;
+        for line in raw.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            if trimmed.starts_with('[') {
+                in_keybinds_section = trimmed == "[keybinds]";
+                if in_keybinds_section {
+                    has_keybinds_section = true;
+                }
+                continue;
+            }
+            if !in_keybinds_section {
+                continue;
+            }
+            if let Some((key, value)) = trimmed.split_once('=') {
+                let key = key.trim();
+                let value = value.trim();
+                if let Some(parsed) = parse_config_string(value) {
+                    keybinds.set_by_config_key(key, Keybind::from_config(parsed.as_str()));
+                }
+            }
+        }
+
+        if !has_keybinds_section {
+            let mut updated = raw;
+            if !updated.ends_with('\n') {
+                updated.push('\n');
+            }
+            updated.push('\n');
+            updated.push_str(default_keybinds_config_block().as_str());
+            let _ = fs::write(config_path.as_path(), updated);
+        }
+    }
+
+    (config, keybinds)
+}
+
 fn openswarm_config_dir() -> PathBuf {
     fn env_path(var: &str) -> Option<PathBuf> {
         let value = std::env::var_os(var)?;
@@ -1453,6 +1609,26 @@ fn default_openswarm_config_text() -> String {
         "# OpenSwarm config\n# default_agent accepts: \"\", \"opencode\", \"claude\"\n# empty default_agent means always show the picker on Shift+O\ndefault_agent = \"\"\n\n# relative paths are resolved from the OpenSwarm config dir\n# (~/.config/openswarm, or %USERPROFILE%\\.config\\openswarm on Windows)\nconflict_resolve_prompt = \"prompts/conflict-resolve-prompt.md\"\n\n# orchestrate feature requirements into a worktree plan using OpenCode\nworktree_orchestrator_enabled = true\nworktree_orchestrator_prompt = \"prompts/worktree-orchestrator-prompt.md\"\nworktree_orchestrator_max_nodes = 8\n\n"
             .to_string();
     text.push_str(default_worktree_graph_art_config_block().as_str());
+    text.push('\n');
+    text.push_str(default_keybinds_config_block().as_str());
+    text
+}
+
+fn default_keybinds_config_block() -> String {
+    let mut text =
+        "# keybind overrides (set to \"\" to unbind, \"ctrl+x\" for ctrl combos)\n# only uncommented entries override defaults. See ? popup for current bindings.\n# [keybinds]\n"
+            .to_string();
+    let defaults = KeybindMap::defaults();
+    for (config_key, label, _cat) in KeybindMap::config_entries() {
+        if let Some(bind) = defaults.get_by_config_key(config_key) {
+            text.push_str(&format!(
+                "# {} = {}  # {}\n",
+                config_key,
+                bind.config_string(),
+                label
+            ));
+        }
+    }
     text
 }
 
@@ -2350,6 +2526,7 @@ fn open_worktree_git_log_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
 fn open_worktree_keybinds_popup(app: &mut App) {
     app.show_panel_help = false;
     app.mode = Mode::WorktreeKeybindsPopup;
+    app.keybinds_scroll = 0;
     app.status_line = "Opened keybindings popup".to_string();
 }
 
@@ -2429,7 +2606,20 @@ fn handle_worktree_keybinds_mode_key(app: &mut App, code: KeyCode) {
     match code {
         KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') | KeyCode::Char('?') => {
             app.mode = Mode::Normal;
+            app.keybinds_scroll = 0;
             app.status_line = "Closed keybindings popup".to_string();
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.keybinds_scroll = app.keybinds_scroll.saturating_add(1);
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.keybinds_scroll = app.keybinds_scroll.saturating_sub(1);
+        }
+        KeyCode::Char('G') => {
+            app.keybinds_scroll = u16::MAX;
+        }
+        KeyCode::Char('g') => {
+            app.keybinds_scroll = 0;
         }
         _ => {}
     }
