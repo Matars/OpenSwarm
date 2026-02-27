@@ -2266,6 +2266,9 @@ fn start_remove_worktree_task(app: &mut App, worktree_path: String, force: bool)
     }
 
     let selected_path = selected.path;
+    let selected_branch = selected.branch.clone();
+    let is_detached = selected.detached;
+    let is_bare = selected.bare;
     let had_live_session = has_live_terminal_session(app, selected_path.as_str());
     terminate_terminal_session(app, selected_path.as_str());
 
@@ -2282,6 +2285,8 @@ fn start_remove_worktree_task(app: &mut App, worktree_path: String, force: bool)
         "Remove selected worktree"
     };
 
+    let root = create_root_for_app(app);
+
     start_git_task(app, label, true, true, move || {
         let result = if force {
             run_git(&["worktree", "remove", "--force", selected_path.as_str()])
@@ -2290,6 +2295,35 @@ fn start_remove_worktree_task(app: &mut App, worktree_path: String, force: bool)
         };
 
         let mut outcome = git_result_text(result);
+
+        // Also delete the branch unless it's detached, bare, or a main branch
+        let should_delete_branch = !is_detached
+            && !is_bare
+            && !selected_branch.is_empty()
+            && selected_branch != "detached"
+            && !is_main_branch_name(selected_branch.as_str())
+            && outcome.starts_with('✓');
+
+        if should_delete_branch {
+            let branch_result = run_git_in(
+                Some(root.as_str()),
+                &["branch", "-D", selected_branch.as_str()],
+            );
+            match branch_result {
+                Ok(msg) => {
+                    outcome.push_str(&format!(" + deleted branch '{}'", selected_branch));
+                    let _ = msg;
+                }
+                Err(err) => {
+                    outcome.push_str(&format!(
+                        " (warning: failed to delete branch '{}': {})",
+                        selected_branch,
+                        sanitize_for_tui(err.to_string().as_str())
+                    ));
+                }
+            }
+        }
+
         if had_live_session {
             outcome.push_str(" (closed terminal session for worktree)");
         }
