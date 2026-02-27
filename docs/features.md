@@ -12,7 +12,7 @@ Press `M` to switch the right-side art panel between configured static art and t
 
 ## Embedded PTY terminals
 
-Press `o` to open a shell or `O` to launch an AI agent directly inside OpenSwarm. Sessions run in a real PTY with full ANSI color support. Close the popup and the session keeps running in the background -- reopen it anytime. If your configured default agent is OpenCode, `O` attempts to reconnect to the most recent OpenCode session whose directory matches that worktree node (including after restarting OpenSwarm). Toggle between input mode (keys go to the terminal) and control mode (`Ctrl+G`) to manage sessions.
+Press `o` to open a shell or `O` to launch an AI agent directly inside OpenSwarm. Sessions run in a real PTY with full ANSI color support. Close the popup and the session keeps running in the background -- reopen it anytime. If your configured default agent is OpenCode, `O` attempts to reconnect to the most recent OpenCode session whose directory matches that worktree node (including after restarting OpenSwarm). Toggle between input mode (keys go to the terminal) and control mode (`Ctrl+G`) to manage sessions; in input mode, `Up/Down` scrolls terminal history in the popup viewport.
 
 ## Inline staging and diffs
 

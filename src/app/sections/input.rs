@@ -649,6 +649,7 @@ fn open_terminal_popup_for_path(app: &mut App, path: &str) -> Result<(), Box<dyn
     } else {
         app.status_line = "Reopened terminal session".to_string();
     }
+    reset_terminal_popup_scrollback(app, path);
     Ok(())
 }
 
@@ -2476,6 +2477,13 @@ fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
         return Ok(());
     }
 
+    if let Some(scroll_delta) = terminal_popup_scroll_delta(key) {
+        adjust_terminal_popup_scrollback(app, path.as_str(), scroll_delta);
+        return Ok(());
+    }
+
+    reset_terminal_popup_scrollback(app, path.as_str());
+
     match code {
         KeyCode::Esc => {
             write_to_agent(app, path.as_str(), "\x1b")?;
@@ -2531,6 +2539,44 @@ fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
     }
 
     Ok(())
+}
+
+fn terminal_popup_scroll_delta(key: KeyEvent) -> Option<isize> {
+    if key
+        .modifiers
+        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+    {
+        return None;
+    }
+
+    match key.code {
+        KeyCode::Up => Some(1),
+        KeyCode::Down => Some(-1),
+        _ => None,
+    }
+}
+
+fn adjust_terminal_popup_scrollback(app: &mut App, path: &str, delta: isize) {
+    let Some(session) = app.agent_sessions.get_mut(path) else {
+        return;
+    };
+
+    let scrollback = session.parser.screen().scrollback();
+    let next = if delta.is_negative() {
+        scrollback.saturating_sub(delta.unsigned_abs())
+    } else {
+        scrollback.saturating_add(delta as usize)
+    };
+
+    session.parser.set_scrollback(next);
+}
+
+fn reset_terminal_popup_scrollback(app: &mut App, path: &str) {
+    if let Some(session) = app.agent_sessions.get_mut(path) {
+        if session.parser.screen().scrollback() != 0 {
+            session.parser.set_scrollback(0);
+        }
+    }
 }
 
 fn is_terminal_mode_toggle(key: KeyEvent) -> bool {

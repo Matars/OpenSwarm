@@ -98,7 +98,7 @@ nav_order: 3
 
 Toggle between INPUT and CONTROL mode with `Ctrl+G` (or `Cmd+G` on macOS).
 
-**INPUT mode** -- all keys forwarded to the PTY process (shell or agent).
+**INPUT mode** -- typing goes to the PTY process (shell or agent). `Up/Down` scroll terminal history in the popup viewport.
 
 **CONTROL mode:**
 
