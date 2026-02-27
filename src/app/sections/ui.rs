@@ -4272,7 +4272,7 @@ fn terminal_popup_mode_style(mode: TerminalPopupMode) -> Style {
 fn terminal_footer_text(mode: TerminalPopupMode) -> &'static str {
     match mode {
         TerminalPopupMode::Input => {
-            "INPUT mode: typing goes to terminal (Esc is forwarded). Ctrl+G/Cmd+G toggles CONTROL."
+            "INPUT mode: typing goes to terminal (Esc is forwarded). Up/Down scroll view. Ctrl+G/Cmd+G toggles CONTROL."
         }
         TerminalPopupMode::Control => {
             "CONTROL mode: Esc background, q quit session, r restart, Ctrl+G/Cmd+G returns INPUT."
