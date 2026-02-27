@@ -1,16 +1,16 @@
 title: OpenSwarm
 description: Keyboard-first TUI for parallel AI agent deployment across Git worktrees
-theme: just-the-docs
+remote_theme: just-the-docs/just-the-docs
 color_scheme: dark
 
 url: https://matars.github.io
 baseurl: /OpenSwarm
 
-aux_links:
-  openswarm on GitHub: https://github.com/Matars/OpenSwarm
+plugins:
+  - jekyll-remote-theme
 
-just_the_docs:
-  show_sidebar: true
+aux_links:
+  GitHub: https://github.com/Matars/OpenSwarm
 
 defaults:
   - scope:

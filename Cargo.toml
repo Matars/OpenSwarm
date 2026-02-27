@@ -1,5 +1,5 @@
 [package]
-name = "openclaw"
+name = "openswarm"
 version = "0.1.0"
 edition = "2021"
 description = "Experimental TUI for worktree and Agent managmenet" 
