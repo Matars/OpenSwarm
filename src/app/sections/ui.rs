@@ -4109,7 +4109,7 @@ fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
         .margin(1)
         .constraints([
             Constraint::Length(1),
-            Constraint::Length(3),
+            Constraint::Length(2),
             Constraint::Min(8),
             Constraint::Length(1),
         ])
@@ -4139,6 +4139,28 @@ fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
         ])),
         layout[0],
     );
+
+    let mode = app.terminal_popup_mode;
+    let mode_style = terminal_popup_mode_style(mode).add_modifier(Modifier::BOLD);
+    let helper_line = Line::from(vec![
+        Span::styled(
+            "Ctrl+G/Cmd+G",
+            Style::default().fg(Color::Black).bg(Color::LightCyan),
+        ),
+        Span::styled(" toggle mode  ", Style::default().fg(Color::Gray)),
+        Span::styled("Current:", Style::default().fg(Color::Gray)),
+        Span::raw(" "),
+        Span::styled(terminal_popup_mode_text(mode), mode_style),
+        Span::styled(
+            if mode == TerminalPopupMode::Input {
+                " (typing is sent to terminal)"
+            } else {
+                " (keys control popup)"
+            },
+            Style::default().fg(Color::White),
+        ),
+    ]);
+    frame.render_widget(Paragraph::new(helper_line), layout[1]);
 
     let mut lines: Vec<Line<'_>> = Vec::new();
     if let Some(session) = app.agent_sessions.get(path) {
@@ -5581,7 +5603,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 }
 
 fn terminal_popup_rect(area: Rect) -> Rect {
-    let vertical_margin = 1;
+    let vertical_margin = 0;
     let available_height = area.height.saturating_sub(vertical_margin * 2);
 
     let width = area.width.max(1);
