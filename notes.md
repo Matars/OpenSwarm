@@ -18,3 +18,6 @@ nown issues
 * auto refresh on done command (status knows the satate)
 * add buffer for git commands so i dont have to wait
 * main not showing when behind
+* node_modules, .env - this should not be a problem since you
+                        can now be on different branches,
+                        meaning you never debug on wt

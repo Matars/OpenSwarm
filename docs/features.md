@@ -28,7 +28,7 @@ Press `w` to switch to the changes view. See all staged and unstaged files in a 
 - `f` -- fetch and pull parent branch (or selected root branch if behind head)
 - `F` -- rebase selected worktree branch onto parent branch
 - `m` -- merge worktree into parent
-- `d` -- open delete confirmation for selected worktree
+- `d` -- open delete confirmation for selected worktree (type `yes`/`y` or `no`/`n`)
 - `dd` -- instantly force-delete selected worktree
 - `s` / `S` -- stash push / stash pop
 

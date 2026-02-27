@@ -2139,10 +2139,28 @@ fn request_remove_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>>
 
     app.pending_remove_worktree_path = selected.path;
     app.confirm_remove_worktree_yes = false;
+    app.remove_worktree_confirm_input.clear();
     app.mode = Mode::WorktreeRemoveDirtyConfirm;
     app.status_line =
-        "Press Enter to confirm delete, or press d again to force delete instantly".to_string();
+        "Type yes/y or no/n, Enter to confirm, or press d again to force delete instantly"
+            .to_string();
     Ok(())
+}
+
+fn parse_remove_worktree_confirmation_input(input: &str) -> Option<bool> {
+    match input.trim().to_ascii_lowercase().as_str() {
+        "y" | "ye" | "yes" => Some(true),
+        "n" | "no" => Some(false),
+        _ => None,
+    }
+}
+
+fn sync_remove_worktree_confirmation_input(app: &mut App) {
+    if let Some(value) =
+        parse_remove_worktree_confirmation_input(app.remove_worktree_confirm_input.as_str())
+    {
+        app.confirm_remove_worktree_yes = value;
+    }
 }
 
 fn handle_worktree_remove_dirty_confirm_mode_key(
@@ -2153,14 +2171,18 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
         KeyCode::Esc => {
             app.mode = Mode::Normal;
             app.confirm_remove_worktree_yes = false;
+            app.remove_worktree_confirm_input.clear();
             app.pending_remove_worktree_path.clear();
             app.status_line = "Delete cancelled".to_string();
         }
         KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
             app.confirm_remove_worktree_yes = !app.confirm_remove_worktree_yes;
+            app.remove_worktree_confirm_input.clear();
         }
-        KeyCode::Char('y') => app.confirm_remove_worktree_yes = true,
-        KeyCode::Char('n') => app.confirm_remove_worktree_yes = false,
+        KeyCode::Backspace => {
+            app.remove_worktree_confirm_input.pop();
+            sync_remove_worktree_confirmation_input(app);
+        }
         KeyCode::Char('d') => {
             let path = app.pending_remove_worktree_path.clone();
             if path.is_empty() {
@@ -2171,9 +2193,29 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
 
             app.mode = Mode::Normal;
             app.confirm_remove_worktree_yes = false;
+            app.remove_worktree_confirm_input.clear();
             app.pending_remove_worktree_path.clear();
         }
+        KeyCode::Char(c) if c.is_ascii_alphabetic() => {
+            if app.remove_worktree_confirm_input.len() < 8 {
+                app.remove_worktree_confirm_input
+                    .push(c.to_ascii_lowercase());
+                sync_remove_worktree_confirmation_input(app);
+            }
+        }
         KeyCode::Enter => {
+            let parsed = parse_remove_worktree_confirmation_input(
+                app.remove_worktree_confirm_input.as_str(),
+            );
+            if app.remove_worktree_confirm_input.trim().is_empty() {
+                // keep current selection from arrow/tab toggle when no text is entered
+            } else if let Some(value) = parsed {
+                app.confirm_remove_worktree_yes = value;
+            } else {
+                app.status_line = "Type yes/y or no/n, then press Enter".to_string();
+                return Ok(());
+            }
+
             if app.confirm_remove_worktree_yes {
                 let path = app.pending_remove_worktree_path.clone();
                 if path.is_empty() {
@@ -2193,6 +2235,7 @@ fn handle_worktree_remove_dirty_confirm_mode_key(
 
             app.mode = Mode::Normal;
             app.confirm_remove_worktree_yes = false;
+            app.remove_worktree_confirm_input.clear();
             app.pending_remove_worktree_path.clear();
         }
         _ => {}

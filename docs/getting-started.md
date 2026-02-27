@@ -38,7 +38,7 @@ make dev
 
 7. **Merge back** -- select a child worktree, press `m` to merge into its parent. If there are conflicts, OpenSwarm offers to launch OpenCode with a prefilled conflict-resolution prompt (or you can launch another agent via `O`).
 
-8. **Clean up** -- press `d` to open delete confirmation (or `dd` to force-delete instantly), `x` to prune stale entries.
+8. **Clean up** -- press `d`, type `yes`/`y` or `no`/`n` in the delete confirmation (or use `dd` to force-delete instantly), and `x` to prune stale entries.
 
 9. **Reconnect context later** -- if you close and reopen OpenSwarm, pressing `O` on the same worktree can reconnect the recent OpenCode session for that node (when OpenCode is your default agent).
 

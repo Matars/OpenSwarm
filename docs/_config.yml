@@ -3,8 +3,8 @@ description: Keyboard-first TUI for parallel AI agent deployment across Git work
 theme: just-the-docs
 color_scheme: dark
 
-url: https://github.com/Matars/OpenSwarm
-baseurl: ""
+url: https://matars.github.io
+baseurl: /OpenSwarm
 
 aux_links:
   openswarm on GitHub: https://github.com/Matars/OpenSwarm

@@ -57,7 +57,7 @@ nav_order: 3
 | `f` | Fetch and pull parent branch (or selected root branch if behind head) |
 | `F` | Rebase selected branch onto parent branch |
 | `m` | Merge selected worktree into parent |
-| `d` | Open delete confirmation for selected worktree |
+| `d` | Open delete confirmation for selected worktree (type `yes`/`y` or `no`/`n`) |
 | `dd` | Instantly force-delete selected worktree |
 | `x` | Prune stale worktrees |
 | `L` | Open git reflog popup |
@@ -225,6 +225,8 @@ All confirmation dialogs (worktree delete, quit with sessions, branch conflict, 
 | `n` | Select No |
 | `Enter` | Confirm |
 | `Esc` | Cancel |
+
+Worktree delete confirmation also supports typing `yes`/`y` or `no`/`n` in its input field (with `Backspace` to edit), plus `d` for instant force-delete.
 
 The conflict resolution dialog also supports `e` to edit the prompt template inline.
 
