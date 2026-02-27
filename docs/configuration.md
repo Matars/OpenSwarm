@@ -38,6 +38,16 @@ worktree_orchestrator_enabled = true
 worktree_orchestrator_prompt = "prompts/worktree-orchestrator-prompt.md"
 worktree_orchestrator_max_nodes = 8
 
+# Keybind overrides for main Worktrees/Changes actions.
+# Set to "" to unbind, use "ctrl+x" for Ctrl combos.
+# (Leave commented to keep defaults.)
+# [keybinds]
+# quit = "q"
+# changes_view = "w"
+# create_worktree = "a"
+# commit = "c"
+# push = "p"
+
 # Optional art box shown above the worktree details panel.
 # Supports ASCII or Unicode.
 worktree_graph_art = """
@@ -103,6 +113,17 @@ Hard cap on how many worktree nodes are created from a single orchestration requ
 
 - Valid range is clamped to `1..=24`.
 - Default is `8`.
+
+### `[keybinds]`
+
+Main Worktrees/Changes bindings can be overridden in a `[keybinds]` section.
+
+- Use the action names shown in the generated commented block in `config.toml`.
+- Values are string key specs like `"a"`, `"?"`, `"M"`, or `"ctrl+k"`.
+- Set value to `""` to leave an action unbound.
+- Fixed bindings (arrows, `Tab`, `Enter`/`Space`, modal confirm/cancel keys, `Ctrl+C`, `Ctrl+L`, and delete-confirm `dd`) are not configurable.
+
+If `[keybinds]` is missing in an existing `config.toml`, OpenSwarm appends the default commented keybind block automatically on startup.
 
 **Template placeholders:**
 

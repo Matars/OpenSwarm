@@ -30,7 +30,7 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         draw_files_panel(frame, app, columns[0]);
         draw_selected_overview_panel(frame, app, columns[1]);
         draw_pulse_panel(frame, app, right[0]);
-        draw_changes_actions_panel(frame, right[1]);
+        draw_changes_actions_panel(frame, app, right[1]);
     } else {
         let columns = Layout::default()
             .direction(Direction::Horizontal)
@@ -99,7 +99,7 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
     }
 
     if matches!(app.mode, Mode::WorktreeKeybindsPopup) {
-        draw_worktree_keybinds_modal(frame);
+        draw_worktree_keybinds_modal(frame, app);
     }
 
     if matches!(app.mode, Mode::QuitWithSessionsConfirm) {
@@ -529,26 +529,63 @@ fn draw_pulse_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
     frame.render_widget(panel, area);
 }
 
-fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
+fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
+    let show = |k: &Keybind| {
+        let value = k.display();
+        if value.is_empty() {
+            "(unbound)".to_string()
+        } else {
+            value
+        }
+    };
+
+    let kb = &app.keybinds;
     let lines = vec![
         Line::from(vec![
-            Span::styled("w", Style::default().fg(Color::LightBlue)),
+            Span::styled(
+                show(&kb.kb_ch_worktree_view),
+                Style::default().fg(Color::LightBlue),
+            ),
             Span::raw(" worktree canvas"),
         ]),
         Line::from(vec![
-            Span::styled("h/l", Style::default().fg(Color::LightBlue)),
+            Span::styled(
+                format!(
+                    "{} / {}",
+                    show(&kb.kb_ch_focus_left),
+                    show(&kb.kb_ch_focus_right)
+                ),
+                Style::default().fg(Color::LightBlue),
+            ),
             Span::raw(" focus files/overview"),
         ]),
         Line::from(vec![
-            Span::styled("j/k", Style::default().fg(Color::LightBlue)),
+            Span::styled(
+                format!(
+                    "{} / {}",
+                    show(&kb.kb_ch_move_down),
+                    show(&kb.kb_ch_move_up)
+                ),
+                Style::default().fg(Color::LightBlue),
+            ),
             Span::raw(" move selection/method"),
         ]),
         Line::from(vec![
-            Span::styled("J/K", Style::default().fg(Color::LightBlue)),
+            Span::styled(
+                format!(
+                    "{} / {}",
+                    show(&kb.kb_ch_scroll_down),
+                    show(&kb.kb_ch_scroll_up)
+                ),
+                Style::default().fg(Color::LightBlue),
+            ),
             Span::raw(" scroll overview"),
         ]),
         Line::from(vec![
-            Span::styled("a", Style::default().fg(Color::LightGreen)),
+            Span::styled(
+                show(&kb.kb_ch_stage),
+                Style::default().fg(Color::LightGreen),
+            ),
             Span::raw(" smart stage / unstage"),
         ]),
         Line::from(vec![
@@ -559,39 +596,55 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
             Span::raw(" expand selected method"),
         ]),
         Line::from(vec![
-            Span::styled("u", Style::default().fg(Color::LightGreen)),
+            Span::styled(
+                show(&kb.kb_ch_unstage),
+                Style::default().fg(Color::LightGreen),
+            ),
             Span::raw(" unstage selected"),
         ]),
         Line::from(vec![
-            Span::styled("A / U", Style::default().fg(Color::LightGreen)),
+            Span::styled(
+                format!(
+                    "{} / {}",
+                    show(&kb.kb_ch_stage_all),
+                    show(&kb.kb_ch_unstage_all)
+                ),
+                Style::default().fg(Color::LightGreen),
+            ),
             Span::raw(" stage all / unstage all"),
         ]),
         Line::from(vec![
-            Span::styled("c", Style::default().fg(Color::Yellow)),
+            Span::styled(show(&kb.kb_ch_commit), Style::default().fg(Color::Yellow)),
             Span::raw(" commit"),
         ]),
         Line::from(vec![
-            Span::styled("n", Style::default().fg(Color::LightCyan)),
+            Span::styled(show(&kb.kb_ch_notes), Style::default().fg(Color::LightCyan)),
             Span::raw(" notes (vim-style)"),
         ]),
         Line::from(vec![
-            Span::styled("p", Style::default().fg(Color::Magenta)),
+            Span::styled(show(&kb.kb_ch_push), Style::default().fg(Color::Magenta)),
             Span::raw(" push"),
         ]),
         Line::from(vec![
-            Span::styled("s", Style::default().fg(Color::LightYellow)),
+            Span::styled(
+                show(&kb.kb_ch_stash_push),
+                Style::default().fg(Color::LightYellow),
+            ),
             Span::raw(" stash changes"),
         ]),
         Line::from(vec![
-            Span::styled("S", Style::default().fg(Color::Yellow)),
+            Span::styled(
+                show(&kb.kb_ch_stash_pop),
+                Style::default().fg(Color::Yellow),
+            ),
             Span::raw(" stash pop"),
         ]),
         Line::from(vec![
-            Span::styled("r", Style::default().fg(Color::Cyan)),
+            Span::styled(show(&kb.kb_ch_refresh), Style::default().fg(Color::Cyan)),
             Span::raw(" refresh"),
         ]),
         Line::from(vec![
-            Span::styled("q", Style::default().fg(Color::Red)),
+            Span::styled(show(&kb.kb_ch_quit), Style::default().fg(Color::Red)),
             Span::raw(" quit"),
         ]),
     ];
@@ -3299,6 +3352,15 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     let section_style = Style::default().fg(Color::DarkGray);
     let key_style = Style::default().fg(Color::LightBlue);
     let git_style = Style::default().fg(Color::Magenta);
+    let show = |k: &Keybind| {
+        let value = k.display();
+        if value.is_empty() {
+            "(unbound)".to_string()
+        } else {
+            value
+        }
+    };
+    let kb = &app.keybinds;
 
     let section = |lines: &mut Vec<Line<'_>>, title: &'static str| {
         if !lines.is_empty() {
@@ -3314,16 +3376,21 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     };
 
     section(&mut lines, "general");
-    action(&mut lines, "w", "file changes view".to_string(), key_style);
     action(
         &mut lines,
-        "r",
+        show(&kb.kb_changes_view).as_str(),
+        "file changes view".to_string(),
+        key_style,
+    );
+    action(
+        &mut lines,
+        show(&kb.kb_refresh).as_str(),
         "refresh worktrees".to_string(),
         Style::default().fg(Color::Cyan),
     );
     action(
         &mut lines,
-        "q",
+        show(&kb.kb_quit).as_str(),
         "quit".to_string(),
         Style::default().fg(Color::Red),
     );
@@ -3331,72 +3398,87 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     section(&mut lines, "worktrees");
     action(
         &mut lines,
-        "a",
+        show(&kb.kb_create_worktree).as_str(),
         "create worktree".to_string(),
         Style::default().fg(Color::LightGreen),
     );
     action(
         &mut lines,
-        "b",
+        show(&kb.kb_branch_switch).as_str(),
         "switch/create branch".to_string(),
         Style::default().fg(Color::LightGreen),
     );
     action(
         &mut lines,
-        "g",
+        show(&kb.kb_orchestrate).as_str(),
         "orchestrate worktrees from feature requirement".to_string(),
         Style::default().fg(Color::LightGreen),
     );
     action(
         &mut lines,
-        "o",
+        show(&kb.kb_open_terminal).as_str(),
         "open terminal popup".to_string(),
         key_style,
     );
-    action(&mut lines, "O", "open agent picker".to_string(), key_style);
     action(
         &mut lines,
-        "n",
+        show(&kb.kb_open_agent_picker).as_str(),
+        "open agent picker".to_string(),
+        key_style,
+    );
+    action(
+        &mut lines,
+        show(&kb.kb_notes).as_str(),
         "notes (vim-style)".to_string(),
         Style::default().fg(Color::LightCyan),
     );
     action(
         &mut lines,
-        "L",
+        show(&kb.kb_git_log).as_str(),
         "git command history popup".to_string(),
         Style::default().fg(Color::LightCyan),
     );
     action(
         &mut lines,
-        "x",
+        show(&kb.kb_prune).as_str(),
         "prune stale".to_string(),
         Style::default().fg(Color::Yellow),
     );
     action(
         &mut lines,
-        "d/dd",
+        format!("{}/dd", show(&kb.kb_delete)).as_str(),
         "delete selected (type yes/no confirm / instant force-delete)".to_string(),
         Style::default().fg(Color::LightRed),
     );
 
     section(&mut lines, "git");
-    action(&mut lines, "c", "add+commit".to_string(), git_style);
-    action(&mut lines, "p", "push".to_string(), git_style);
     action(
         &mut lines,
-        "f",
+        show(&kb.kb_commit).as_str(),
+        "add+commit".to_string(),
+        git_style,
+    );
+    action(
+        &mut lines,
+        show(&kb.kb_push).as_str(),
+        "push".to_string(),
+        git_style,
+    );
+    action(
+        &mut lines,
+        show(&kb.kb_fetch_pull).as_str(),
         format!("fetch + pull parent (or selected {} head)", root_branch),
         Style::default().fg(Color::Cyan),
     );
     action(
         &mut lines,
-        "F",
+        show(&kb.kb_rebase).as_str(),
         "rebase selected onto parent".to_string(),
         Style::default().fg(Color::Cyan),
     );
     action(
         &mut lines,
-        "m",
+        show(&kb.kb_merge).as_str(),
         "merge to parent".to_string(),
         Style::default().fg(Color::LightGreen),
     );
@@ -3405,19 +3487,19 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     action(&mut lines, "Tab", "switch panel".to_string(), key_style);
     action(
         &mut lines,
-        "v",
+        show(&kb.kb_toggle_verbose).as_str(),
         "toggle compact/verbose details".to_string(),
         key_style,
     );
     action(
         &mut lines,
-        "H",
+        show(&kb.kb_panel_help).as_str(),
         "panel help".to_string(),
         Style::default().fg(Color::Yellow),
     );
     action(
         &mut lines,
-        "?",
+        show(&kb.kb_keybinds_popup).as_str(),
         "open keybindings".to_string(),
         Style::default().fg(Color::LightCyan),
     );
@@ -3431,33 +3513,55 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     );
     action(
         &mut lines,
-        "h/l",
+        format!(
+            "{}/{}",
+            show(&kb.kb_sibling_left),
+            show(&kb.kb_sibling_right)
+        )
+        .as_str(),
         "left/right in level".to_string(),
         key_style,
     );
     action(
         &mut lines,
-        "j/k",
+        format!("{}/{}", show(&kb.kb_level_child), show(&kb.kb_level_parent)).as_str(),
         "child/parent level".to_string(),
         key_style,
     );
-    action(&mut lines, "+/-", "zoom canvas".to_string(), key_style);
-    action(&mut lines, "0", "reset camera".to_string(), key_style);
     action(
         &mut lines,
-        "Shift+WASD",
+        format!("{}/{}", show(&kb.kb_zoom_in), show(&kb.kb_zoom_out)).as_str(),
+        "zoom canvas".to_string(),
+        key_style,
+    );
+    action(
+        &mut lines,
+        show(&kb.kb_zoom_reset).as_str(),
+        "reset camera".to_string(),
+        key_style,
+    );
+    action(
+        &mut lines,
+        format!(
+            "{}/{}/{}/{}",
+            show(&kb.kb_pan_up),
+            show(&kb.kb_pan_left),
+            show(&kb.kb_pan_down),
+            show(&kb.kb_pan_right)
+        )
+        .as_str(),
         "pan camera".to_string(),
         key_style,
     );
     action(
         &mut lines,
-        "Ctrl+K",
+        show(&kb.kb_cycle_graph).as_str(),
         "next graph builder".to_string(),
         key_style,
     );
     action(
         &mut lines,
-        "M",
+        show(&kb.kb_toggle_art).as_str(),
         "toggle art / spotify connector".to_string(),
         key_style,
     );
@@ -3512,69 +3616,186 @@ fn draw_worktree_help_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     frame.render_widget(panel, popup);
 }
 
-fn draw_worktree_keybinds_modal(frame: &mut ratatui::Frame<'_>) {
+fn build_keybinds_lines(keybinds: &KeybindMap) -> Vec<Line<'static>> {
+    let key_style = Style::default()
+        .fg(Color::LightYellow)
+        .add_modifier(Modifier::BOLD);
+    let unbound_style = Style::default().fg(Color::DarkGray);
+    let label_style = Style::default().fg(Color::White);
+    let separator_style = Style::default().fg(Color::DarkGray);
+
+    let category_colors: &[(&str, Color)] = &[
+        ("general", Color::LightBlue),
+        ("worktrees", Color::LightGreen),
+        ("git", Color::Magenta),
+        ("canvas", Color::LightCyan),
+        ("changes", Color::Yellow),
+    ];
+
+    fn color_for_cat(name: &str, table: &[(&str, Color)]) -> Color {
+        table
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, c)| *c)
+            .unwrap_or(Color::Cyan)
+    }
+
+    let categories = keybinds.categorized_display();
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    let key_col_width = 12usize;
+
+    for (cat_name, entries) in &categories {
+        if !lines.is_empty() {
+            lines.push(Line::from(""));
+        }
+
+        let cat_color = color_for_cat(cat_name, category_colors);
+        let cat_style = Style::default().fg(cat_color).add_modifier(Modifier::BOLD);
+
+        // Category header with decorative line
+        let title = cat_name.to_ascii_uppercase();
+        let dash_count = 40usize.saturating_sub(title.len() + 2);
+        lines.push(Line::from(vec![
+            Span::styled(format!(" {} ", title), cat_style),
+            Span::styled("-".repeat(dash_count), separator_style),
+        ]));
+
+        for (display_key, label) in entries {
+            if display_key.is_empty() {
+                // Unbound
+                let padded = format!("  {:>width$}", "-", width = key_col_width);
+                lines.push(Line::from(vec![
+                    Span::styled(padded, unbound_style),
+                    Span::styled(format!(" {}", label), unbound_style),
+                ]));
+            } else {
+                let padded = format!("  {:>width$}", display_key, width = key_col_width);
+                lines.push(Line::from(vec![
+                    Span::styled(padded, key_style),
+                    Span::styled(format!(" {}", label), label_style),
+                ]));
+            }
+        }
+    }
+
+    // Non-configurable section
+    lines.push(Line::from(""));
+    let fixed_style = Style::default()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::BOLD);
+    let fixed_dash_count = 40usize.saturating_sub("FIXED".len() + 2);
+    lines.push(Line::from(vec![
+        Span::styled(" FIXED ", fixed_style),
+        Span::styled("-".repeat(fixed_dash_count), separator_style),
+    ]));
+    let fixed_entries: Vec<(&str, &str)> = vec![
+        ("arrows", "directional graph navigation"),
+        ("Tab", "switch panel (worktrees)"),
+        ("Left/Right", "also focus files/overview (changes)"),
+        ("Up/Down", "also move selection (changes)"),
+        ("Enter/Space", "expand method / stage toggle (changes)"),
+        ("Ctrl+L", "toggle perf debug + hitch logging"),
+        ("Ctrl+C", "quit (force)"),
+    ];
+    for (k, l) in &fixed_entries {
+        let padded = format!("  {:>width$}", k, width = key_col_width);
+        lines.push(Line::from(vec![
+            Span::styled(padded, Style::default().fg(Color::Gray)),
+            Span::styled(format!(" {}", l), Style::default().fg(Color::Gray)),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("  close: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "Esc",
+            Style::default()
+                .fg(Color::LightYellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(", ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "Enter",
+            Style::default()
+                .fg(Color::LightYellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "j/k",
+            Style::default()
+                .fg(Color::LightYellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" scroll", Style::default().fg(Color::DarkGray)),
+        Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("customize in ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "~/.config/openswarm/config.toml",
+            Style::default().fg(Color::Gray),
+        ),
+    ]));
+
+    lines
+}
+
+fn draw_worktree_keybinds_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     let popup = centered_rect(88, 86, frame.area());
     frame.render_widget(Clear, popup);
 
     let panel = Block::default()
-        .title("Keybindings")
+        .title(Span::styled(
+            " Keybindings ",
+            Style::default()
+                .fg(Color::LightCyan)
+                .add_modifier(Modifier::BOLD),
+        ))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::LightCyan))
         .style(Style::default().bg(Color::Black));
     frame.render_widget(panel, popup);
 
-    let lines = vec![
-        Line::from("WORKTREES"),
-        Line::from("  general"),
-        Line::from("    w      changes view"),
-        Line::from("    r      refresh worktrees"),
-        Line::from("    q      quit"),
-        Line::from("    H      panel help"),
-        Line::from("    ?      open this keybindings view"),
-        Line::from(""),
-        Line::from("  worktrees"),
-        Line::from("    a      create worktree"),
-        Line::from("    g      orchestrate worktrees from feature requirement"),
-        Line::from("    o / O  open terminal popup / open agent picker"),
-        Line::from("    n      notes editor"),
-        Line::from("    L      git command history popup"),
-        Line::from("    x / d  prune stale / delete selected (yes/no prompt)"),
-        Line::from(""),
-        Line::from("  git"),
-        Line::from("    c / p  add+commit / push"),
-        Line::from("    f      fetch + pull parent (or selected root head)"),
-        Line::from("    F / m  rebase onto parent / merge to parent"),
-        Line::from(""),
-        Line::from("  canvas"),
-        Line::from("    arrows directional graph navigation"),
-        Line::from("    h / l  move between siblings"),
-        Line::from("    j / k  child / parent levels"),
-        Line::from("    +/-/0  zoom in/out/reset"),
-        Line::from("    Shift+WASD pan camera"),
-        Line::from("    Ctrl+K next graph builder"),
-        Line::from("    M / B  toggle art mode / cycle background"),
-        Line::from("    v      toggle compact/verbose details"),
-        Line::from(""),
-        Line::from("CHANGES"),
-        Line::from("  h/l or Left/Right focus files/overview"),
-        Line::from("  j/k or Up/Down move selection/scroll"),
-        Line::from("  a smart stage/unstage, u unstage"),
-        Line::from("  A/U stage all/unstage all"),
-        Line::from("  c commit, p push, s/S stash push/pop"),
-        Line::from(""),
-        Line::from("GLOBAL"),
-        Line::from("  Ctrl+L toggle perf debug stats + hitch logging"),
-        Line::from(""),
-        Line::from("close: Esc, Enter, q, or ?"),
-    ];
+    let inner = popup.inner(Margin::new(1, 1));
+    let lines = build_keybinds_lines(&app.keybinds);
+    let total_lines = lines.len() as u16;
+    let visible = inner.height;
+    let max_scroll = total_lines.saturating_sub(visible);
+    let scroll = app.keybinds_scroll.min(max_scroll);
 
     frame.render_widget(
         Paragraph::new(lines)
             .block(Block::default().borders(Borders::NONE))
             .style(Style::default().fg(Color::White))
-            .alignment(Alignment::Left),
-        popup.inner(Margin::new(1, 1)),
+            .alignment(Alignment::Left)
+            .scroll((scroll, 0)),
+        inner,
     );
+
+    // Scroll indicator
+    if total_lines > visible {
+        let indicator = if scroll == 0 {
+            "v more"
+        } else if scroll >= max_scroll {
+            "^ more"
+        } else {
+            "^v"
+        };
+        let indicator_area = Rect::new(
+            popup.x + popup.width.saturating_sub(indicator.len() as u16 + 3),
+            popup.y,
+            indicator.len() as u16 + 2,
+            1,
+        );
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                format!(" {} ", indicator),
+                Style::default().fg(Color::DarkGray),
+            )),
+            indicator_area,
+        );
+    }
 }
 
 fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'static>> {
@@ -4109,7 +4330,7 @@ fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
         .margin(1)
         .constraints([
             Constraint::Length(1),
-            Constraint::Length(3),
+            Constraint::Length(2),
             Constraint::Min(8),
             Constraint::Length(1),
         ])
@@ -4139,6 +4360,28 @@ fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
         ])),
         layout[0],
     );
+
+    let mode = app.terminal_popup_mode;
+    let mode_style = terminal_popup_mode_style(mode).add_modifier(Modifier::BOLD);
+    let helper_line = Line::from(vec![
+        Span::styled(
+            "Ctrl+G/Cmd+G",
+            Style::default().fg(Color::Black).bg(Color::LightCyan),
+        ),
+        Span::styled(" toggle mode  ", Style::default().fg(Color::Gray)),
+        Span::styled("Current:", Style::default().fg(Color::Gray)),
+        Span::raw(" "),
+        Span::styled(terminal_popup_mode_text(mode), mode_style),
+        Span::styled(
+            if mode == TerminalPopupMode::Input {
+                " (typing is sent to terminal)"
+            } else {
+                " (keys control popup)"
+            },
+            Style::default().fg(Color::White),
+        ),
+    ]);
+    frame.render_widget(Paragraph::new(helper_line), layout[1]);
 
     let mut lines: Vec<Line<'_>> = Vec::new();
     if let Some(session) = app.agent_sessions.get(path) {
@@ -5581,7 +5824,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 }
 
 fn terminal_popup_rect(area: Rect) -> Rect {
-    let vertical_margin = 1;
+    let vertical_margin = 0;
     let available_height = area.height.saturating_sub(vertical_margin * 2);
 
     let width = area.width.max(1);
