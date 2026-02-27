@@ -1,6 +1,7 @@
 # OpenSwarm
 
 An interactive TUI for managing worktrees and parallel AI agents.
+[![Docs](https://img.shields.io/badge/docs-matars.github.io%2FOpenSwarm-blue)](https://matars.github.io/OpenSwarm/)
 
 ![OpenSwarm screenshot](img/screenshot.png)
 
