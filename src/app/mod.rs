@@ -51,7 +51,7 @@ enum Mode {
     WorktreeConflictResolveConfirm,
     WorktreeRemoveDirtyConfirm,
     WorktreeGitLogPopup,
-    WorktreeKeybindsPopup,
+    KeybindsOverlay,
     LegacyWorkspaceMigrateConfirm,
     QuitWithSessionsConfirm,
     AgentSelectPopup,
@@ -330,12 +330,12 @@ macro_rules! define_keybinds {
 }
 
 define_keybinds! {
-    category "general" => {
+    category "essentials" => {
         kb_quit: "quit", "quit", Keybind::Key('q');
-        kb_changes_view: "changes_view", "file changes view", Keybind::Key('w');
+        kb_changes_view: "changes_view", "switch to changes view", Keybind::Key('w');
         kb_refresh: "refresh", "refresh worktrees + config", Keybind::Key('r');
         kb_panel_help: "panel_help", "panel help", Keybind::Key('H');
-        kb_keybinds_popup: "keybinds_popup", "open keybindings", Keybind::Key('?');
+        kb_keybinds_popup: "keybinds_popup", "open keybindings overlay", Keybind::Key('?');
         kb_toggle_verbose: "toggle_verbose", "toggle compact/verbose details", Keybind::Key('v');
     }
 
@@ -359,11 +359,20 @@ define_keybinds! {
         kb_merge: "merge", "merge to parent", Keybind::Key('m');
     }
 
-    category "canvas" => {
+    category "navigation" => {
         kb_sibling_left: "sibling_left", "move left in level", Keybind::Key('h');
         kb_sibling_right: "sibling_right", "move right in level", Keybind::Key('l');
         kb_level_child: "level_child", "move to child level", Keybind::Key('j');
         kb_level_parent: "level_parent", "move to parent level", Keybind::Key('k');
+        kb_ch_focus_left: "ch_focus_left", "focus files", Keybind::Key('h');
+        kb_ch_focus_right: "ch_focus_right", "focus overview", Keybind::Key('l');
+        kb_ch_move_down: "ch_move_down", "move selection down", Keybind::Key('j');
+        kb_ch_move_up: "ch_move_up", "move selection up", Keybind::Key('k');
+        kb_ch_scroll_down: "ch_scroll_down", "scroll overview down", Keybind::Key('J');
+        kb_ch_scroll_up: "ch_scroll_up", "scroll overview up", Keybind::Key('K');
+    }
+
+    category "canvas" => {
         kb_zoom_in: "zoom_in", "zoom in", Keybind::Key('+');
         kb_zoom_out: "zoom_out", "zoom out", Keybind::Key('-');
         kb_zoom_reset: "zoom_reset", "reset camera", Keybind::Key('0');
@@ -377,12 +386,6 @@ define_keybinds! {
     }
 
     category "changes" => {
-        kb_ch_focus_left: "ch_focus_left", "focus files", Keybind::Key('h');
-        kb_ch_focus_right: "ch_focus_right", "focus overview", Keybind::Key('l');
-        kb_ch_move_down: "ch_move_down", "move selection down", Keybind::Key('j');
-        kb_ch_move_up: "ch_move_up", "move selection up", Keybind::Key('k');
-        kb_ch_scroll_down: "ch_scroll_down", "scroll overview down", Keybind::Key('J');
-        kb_ch_scroll_up: "ch_scroll_up", "scroll overview up", Keybind::Key('K');
         kb_ch_stage: "ch_stage", "smart stage / unstage", Keybind::Key('a');
         kb_ch_unstage: "ch_unstage", "unstage selected", Keybind::Key('u');
         kb_ch_stage_all: "ch_stage_all", "stage all", Keybind::Key('A');
@@ -475,7 +478,6 @@ struct App {
     pending_conflict_context: Option<ConflictResolveContext>,
     config: OpenSwarmConfig,
     keybinds: KeybindMap,
-    keybinds_scroll: u16,
     agent_popup_path: Option<String>,
     terminal_popup_mode: TerminalPopupMode,
     notes_path: String,
@@ -1133,7 +1135,6 @@ impl App {
             pending_conflict_context: None,
             config,
             keybinds,
-            keybinds_scroll: 0,
             agent_popup_path: None,
             terminal_popup_mode: TerminalPopupMode::Input,
             notes_path: String::new(),
@@ -1428,8 +1429,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         Mode::WorktreeGitLogPopup => {
                             handle_worktree_git_log_mode_key(&mut app, key.code);
                         }
-                        Mode::WorktreeKeybindsPopup => {
-                            handle_worktree_keybinds_mode_key(&mut app, key.code);
+                        Mode::KeybindsOverlay => {
+                            handle_keybinds_overlay_mode_key(&mut app, key);
                         }
                         Mode::LegacyWorkspaceMigrateConfirm => {
                             handle_legacy_workspace_migrate_mode_key(&mut app, key.code)?;

@@ -1,11 +1,16 @@
 fn handle_normal_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dyn Error>> {
     let code = key.code;
     let mods = key.modifiers;
+    let kb = &app.keybinds.clone();
+    if (mods.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('h'))
+        || kb.kb_keybinds_popup.matches(code, mods)
+    {
+        open_keybinds_overlay(app);
+        return Ok(false);
+    }
     if app.view_mode == ViewMode::Worktrees {
         return handle_worktree_mode_key(app, key);
     }
-
-    let kb = &app.keybinds.clone();
 
     // --- configurable keybinds ---
     if kb.kb_ch_quit.matches(code, mods) {
@@ -249,11 +254,6 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
         } else {
             "Details panel: compact".to_string()
         };
-        return Ok(false);
-    }
-
-    if kb.kb_keybinds_popup.matches(code, mods) {
-        open_worktree_keybinds_popup(app);
         return Ok(false);
     }
 
@@ -2523,11 +2523,10 @@ fn open_worktree_git_log_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn open_worktree_keybinds_popup(app: &mut App) {
+fn open_keybinds_overlay(app: &mut App) {
     app.show_panel_help = false;
-    app.mode = Mode::WorktreeKeybindsPopup;
-    app.keybinds_scroll = 0;
-    app.status_line = "Opened keybindings popup".to_string();
+    app.mode = Mode::KeybindsOverlay;
+    app.status_line = "Opened keybindings overlay".to_string();
 }
 
 fn load_worktree_git_log(path: &str) -> Result<Vec<String>, Box<dyn Error>> {
@@ -2602,24 +2601,15 @@ fn handle_worktree_git_log_mode_key(app: &mut App, code: KeyCode) {
     }
 }
 
-fn handle_worktree_keybinds_mode_key(app: &mut App, code: KeyCode) {
-    match code {
+fn handle_keybinds_overlay_mode_key(app: &mut App, key: KeyEvent) {
+    match key.code {
         KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') | KeyCode::Char('?') => {
             app.mode = Mode::Normal;
-            app.keybinds_scroll = 0;
-            app.status_line = "Closed keybindings popup".to_string();
+            app.status_line = "Closed keybindings overlay".to_string();
         }
-        KeyCode::Down | KeyCode::Char('j') => {
-            app.keybinds_scroll = app.keybinds_scroll.saturating_add(1);
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-            app.keybinds_scroll = app.keybinds_scroll.saturating_sub(1);
-        }
-        KeyCode::Char('G') => {
-            app.keybinds_scroll = u16::MAX;
-        }
-        KeyCode::Char('g') => {
-            app.keybinds_scroll = 0;
+        KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.mode = Mode::Normal;
+            app.status_line = "Closed keybindings overlay".to_string();
         }
         _ => {}
     }

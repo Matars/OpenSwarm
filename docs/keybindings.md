@@ -6,7 +6,8 @@ nav_order: 3
 # Keybindings
 
 Most main-view keybinds are configurable in `~/.config/openswarm/config.toml` under `[keybinds]`.
-Use `?` in worktree view to open the categorized popup and see your active bindings.
+Use `Ctrl+H` anywhere in the main views to open the live keybindings overlay.
+It also tracks `?` as a shortcut for the same overlay.
 Set a binding to `""` to unbind it.
 
 ## Global
@@ -33,7 +34,7 @@ Set a binding to `""` to unbind it.
 | `Tab` | Cycle focus: Canvas, Details, Actions |
 | `H` | Toggle panel help modal |
 | `v` | Toggle details panel compact / verbose |
-| `?` | Open full keybindings popup |
+| `Ctrl+H` / `?` | Open full keybindings overlay |
 
 ### Canvas
 

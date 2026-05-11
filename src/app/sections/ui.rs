@@ -98,8 +98,8 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         draw_worktree_git_log_modal(frame, app);
     }
 
-    if matches!(app.mode, Mode::WorktreeKeybindsPopup) {
-        draw_worktree_keybinds_modal(frame, app);
+    if matches!(app.mode, Mode::KeybindsOverlay) {
+        draw_keybinds_overlay(frame, app);
     }
 
     if matches!(app.mode, Mode::QuitWithSessionsConfirm) {
@@ -3616,133 +3616,8 @@ fn draw_worktree_help_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     frame.render_widget(panel, popup);
 }
 
-fn build_keybinds_lines(keybinds: &KeybindMap) -> Vec<Line<'static>> {
-    let key_style = Style::default()
-        .fg(Color::LightYellow)
-        .add_modifier(Modifier::BOLD);
-    let unbound_style = Style::default().fg(Color::DarkGray);
-    let label_style = Style::default().fg(Color::White);
-    let separator_style = Style::default().fg(Color::DarkGray);
-
-    let category_colors: &[(&str, Color)] = &[
-        ("general", Color::LightBlue),
-        ("worktrees", Color::LightGreen),
-        ("git", Color::Magenta),
-        ("canvas", Color::LightCyan),
-        ("changes", Color::Yellow),
-    ];
-
-    fn color_for_cat(name: &str, table: &[(&str, Color)]) -> Color {
-        table
-            .iter()
-            .find(|(n, _)| *n == name)
-            .map(|(_, c)| *c)
-            .unwrap_or(Color::Cyan)
-    }
-
-    let categories = keybinds.categorized_display();
-    let mut lines: Vec<Line<'static>> = Vec::new();
-
-    let key_col_width = 12usize;
-
-    for (cat_name, entries) in &categories {
-        if !lines.is_empty() {
-            lines.push(Line::from(""));
-        }
-
-        let cat_color = color_for_cat(cat_name, category_colors);
-        let cat_style = Style::default().fg(cat_color).add_modifier(Modifier::BOLD);
-
-        // Category header with decorative line
-        let title = cat_name.to_ascii_uppercase();
-        let dash_count = 40usize.saturating_sub(title.len() + 2);
-        lines.push(Line::from(vec![
-            Span::styled(format!(" {} ", title), cat_style),
-            Span::styled("-".repeat(dash_count), separator_style),
-        ]));
-
-        for (display_key, label) in entries {
-            if display_key.is_empty() {
-                // Unbound
-                let padded = format!("  {:>width$}", "-", width = key_col_width);
-                lines.push(Line::from(vec![
-                    Span::styled(padded, unbound_style),
-                    Span::styled(format!(" {}", label), unbound_style),
-                ]));
-            } else {
-                let padded = format!("  {:>width$}", display_key, width = key_col_width);
-                lines.push(Line::from(vec![
-                    Span::styled(padded, key_style),
-                    Span::styled(format!(" {}", label), label_style),
-                ]));
-            }
-        }
-    }
-
-    // Non-configurable section
-    lines.push(Line::from(""));
-    let fixed_style = Style::default()
-        .fg(Color::DarkGray)
-        .add_modifier(Modifier::BOLD);
-    let fixed_dash_count = 40usize.saturating_sub("FIXED".len() + 2);
-    lines.push(Line::from(vec![
-        Span::styled(" FIXED ", fixed_style),
-        Span::styled("-".repeat(fixed_dash_count), separator_style),
-    ]));
-    let fixed_entries: Vec<(&str, &str)> = vec![
-        ("arrows", "directional graph navigation"),
-        ("Tab", "switch panel (worktrees)"),
-        ("Left/Right", "also focus files/overview (changes)"),
-        ("Up/Down", "also move selection (changes)"),
-        ("Enter/Space", "expand method / stage toggle (changes)"),
-        ("Ctrl+L", "toggle perf debug + hitch logging"),
-        ("Ctrl+C", "quit (force)"),
-    ];
-    for (k, l) in &fixed_entries {
-        let padded = format!("  {:>width$}", k, width = key_col_width);
-        lines.push(Line::from(vec![
-            Span::styled(padded, Style::default().fg(Color::Gray)),
-            Span::styled(format!(" {}", l), Style::default().fg(Color::Gray)),
-        ]));
-    }
-
-    lines.push(Line::from(""));
-    lines.push(Line::from(vec![
-        Span::styled("  close: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            "Esc",
-            Style::default()
-                .fg(Color::LightYellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(", ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            "Enter",
-            Style::default()
-                .fg(Color::LightYellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            "j/k",
-            Style::default()
-                .fg(Color::LightYellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" scroll", Style::default().fg(Color::DarkGray)),
-        Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("customize in ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            "~/.config/openswarm/config.toml",
-            Style::default().fg(Color::Gray),
-        ),
-    ]));
-
-    lines
-}
-
-fn draw_worktree_keybinds_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
-    let popup = centered_rect(88, 86, frame.area());
+fn draw_keybinds_overlay(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(90, 86, frame.area());
     frame.render_widget(Clear, popup);
 
     let panel = Block::default()
@@ -3758,44 +3633,156 @@ fn draw_worktree_keybinds_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     frame.render_widget(panel, popup);
 
     let inner = popup.inner(Margin::new(1, 1));
-    let lines = build_keybinds_lines(&app.keybinds);
-    let total_lines = lines.len() as u16;
-    let visible = inner.height;
-    let max_scroll = total_lines.saturating_sub(visible);
-    let scroll = app.keybinds_scroll.min(max_scroll);
+    let content_area = if inner.height > 1 {
+        Rect::new(inner.x, inner.y, inner.width, inner.height - 1)
+    } else {
+        inner
+    };
+    let footer_area = if inner.height > 0 {
+        Rect::new(inner.x, inner.y + inner.height.saturating_sub(1), inner.width, 1)
+    } else {
+        inner
+    };
+
+    let mut categories = app.keybinds.categorized_display();
+    categories.push((
+        "fixed",
+        vec![
+            ("Arrows".to_string(), "directional graph navigation"),
+            ("Tab".to_string(), "switch panel (worktrees)"),
+            ("Left/Right".to_string(), "focus files / overview (changes)"),
+            ("Up/Down".to_string(), "move selection / scroll (changes)"),
+            ("Enter/Space".to_string(), "expand method / stage toggle (changes)"),
+            ("Ctrl+L".to_string(), "toggle perf debug + hitch logging"),
+            ("Ctrl+C".to_string(), "force quit"),
+        ],
+    ));
+    if categories.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No keybinds configured")
+                .style(Style::default().fg(Color::DarkGray)),
+            content_area,
+        );
+    } else {
+        let column_count = if content_area.width >= 120 {
+            3
+        } else if content_area.width >= 80 {
+            2
+        } else {
+            1
+        }
+        .min(categories.len().max(1));
+
+        let mut columns: Vec<Vec<(&str, Vec<(String, &'static str)>)>> =
+            vec![Vec::new(); column_count];
+        for (idx, category) in categories.into_iter().enumerate() {
+            columns[idx % column_count].push(category);
+        }
+
+        let column_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .spacing(1)
+            .constraints(vec![Constraint::Ratio(1, column_count as u32); column_count])
+            .split(content_area);
+
+        for (column_area, column_categories) in column_chunks.into_iter().zip(columns.into_iter()) {
+            draw_keybinds_column(frame, *column_area, &column_categories);
+        }
+    }
 
     frame.render_widget(
-        Paragraph::new(lines)
-            .block(Block::default().borders(Borders::NONE))
-            .style(Style::default().fg(Color::White))
-            .alignment(Alignment::Left)
-            .scroll((scroll, 0)),
-        inner,
+        Paragraph::new(vec![Line::from(vec![
+            Span::styled("Esc", Style::default().fg(Color::LightYellow).add_modifier(Modifier::BOLD)),
+            Span::styled(" / ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Enter", Style::default().fg(Color::LightYellow).add_modifier(Modifier::BOLD)),
+            Span::styled(" / ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Ctrl+H", Style::default().fg(Color::LightYellow).add_modifier(Modifier::BOLD)),
+            Span::styled(" closes. Bindings stay live from config.", Style::default().fg(Color::DarkGray)),
+        ])])
+        .style(Style::default().fg(Color::White)),
+        footer_area,
     );
+}
 
-    // Scroll indicator
-    if total_lines > visible {
-        let indicator = if scroll == 0 {
-            "v more"
-        } else if scroll >= max_scroll {
-            "^ more"
-        } else {
-            "^v"
-        };
-        let indicator_area = Rect::new(
-            popup.x + popup.width.saturating_sub(indicator.len() as u16 + 3),
-            popup.y,
-            indicator.len() as u16 + 2,
-            1,
-        );
-        frame.render_widget(
-            Paragraph::new(Span::styled(
-                format!(" {} ", indicator),
-                Style::default().fg(Color::DarkGray),
-            )),
-            indicator_area,
-        );
+fn draw_keybinds_column(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    categories: &[(&str, Vec<(String, &'static str)>)],
+) {
+    if categories.is_empty() {
+        return;
     }
+
+    let mut constraints = Vec::with_capacity(categories.len());
+    for (_, entries) in categories {
+        constraints.push(Constraint::Length((entries.len() as u16).saturating_add(4)));
+    }
+
+    let blocks = Layout::default()
+        .direction(Direction::Vertical)
+        .spacing(1)
+        .constraints(constraints)
+        .split(area);
+
+    for ((cat_name, entries), block_area) in categories.iter().zip(blocks.into_iter()) {
+        draw_keybind_category(frame, *block_area, cat_name, entries);
+    }
+}
+
+fn draw_keybind_category(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    cat_name: &str,
+    entries: &[(String, &'static str)],
+) {
+    let color = match cat_name {
+        "essentials" => Color::LightBlue,
+        "navigation" => Color::LightCyan,
+        "git" => Color::Magenta,
+        "worktrees" => Color::LightGreen,
+        "canvas" => Color::Yellow,
+        "changes" => Color::LightRed,
+        "fixed" => Color::DarkGray,
+        _ => Color::Gray,
+    };
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let key_style = Style::default().fg(Color::LightYellow).add_modifier(Modifier::BOLD);
+    let label_style = Style::default().fg(Color::White);
+    let unbound_style = Style::default().fg(Color::DarkGray);
+    let key_width = entries
+        .iter()
+        .map(|(key, _)| key.chars().count())
+        .max()
+        .unwrap_or(1)
+        .max(10);
+
+    for (key, label) in entries {
+        let key_text = if key.is_empty() { "-".to_string() } else { key.clone() };
+        let style = if key.is_empty() { unbound_style } else { key_style };
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:>width$}", key_text, width = key_width), style),
+            Span::styled("  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(*label, label_style),
+        ]));
+    }
+
+    let title = cat_name.to_ascii_uppercase();
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(Span::styled(
+                        format!(" {} ", title),
+                        Style::default().fg(color).add_modifier(Modifier::BOLD),
+                    ))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(color))
+                    .style(Style::default().bg(Color::Black)),
+            )
+            .style(Style::default().fg(Color::White)),
+        area,
+    );
 }
 
 fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'static>> {
@@ -3830,7 +3817,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from(""),
             Line::from("Flow: o/O launch shells or agents, c/p/m/d/dd run git lifecycle"),
             Line::from(""),
-            Line::from("  H: close this help, ?: open keybindings"),
+            Line::from("  H: close this help, Ctrl+H / ?: open keybindings"),
         ],
         WorktreePane::Details => vec![
             Line::from("Details panel"),
@@ -3844,11 +3831,11 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from("- Tight layouts automatically hide lower-priority runtime rows"),
             Line::from("- Use this panel to validate readiness before push/merge"),
             Line::from("- Tab: move focus to next panel"),
-            Line::from("- H: close this help, ?: open keybindings"),
+            Line::from("- H: close this help, Ctrl+H / ?: open keybindings"),
         ],
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
-            Line::from("- Grouped by category: general, worktrees, git, view + help, canvas"),
+            Line::from("- Grouped by category: essentials, navigation, git, worktrees, canvas, changes"),
             Line::from("- a: create worktree from branch name"),
             Line::from("- b: open branch switcher (type to filter, Enter switch/create)"),
             Line::from("- g: orchestrate feature, review prompts per leaf, then execute"),
@@ -3870,7 +3857,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
             Line::from(
                 "- Agent defaults/prompts live in ~/.config/openswarm (%USERPROFILE%\\.config\\openswarm on Windows)",
             ),
-            Line::from("- H: close this help, ?: open keybindings"),
+            Line::from("- H: close this help, Ctrl+H / ?: open keybindings"),
         ],
     }
 }
