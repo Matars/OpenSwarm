@@ -324,7 +324,7 @@ fn handle_worktree_mode_key(app: &mut App, key: KeyEvent) -> Result<bool, Box<dy
         app.new_worktree_branch.clear();
         app.new_worktree_base = WorktreeCreateBase::Selected;
         app.status_line =
-            "Create worktree: choose base with Left/Right, then type branch name".to_string();
+            "Create worktree: choose base with Left/Right, then type worktree name".to_string();
         return Ok(false);
     }
     if kb.kb_branch_switch.matches(code, mods) {

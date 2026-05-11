@@ -157,7 +157,7 @@ Vim-style editor for `notes.md` (or conflict prompt templates).
 | Key | Action |
 |-----|--------|
 | `Left` / `Right` | Cycle base: Main, Selected, Selected+Changes |
-| Characters | Type branch name |
+| Characters | Type worktree name |
 | `Enter` | Create and auto-select new worktree |
 | `Esc` | Cancel |
 

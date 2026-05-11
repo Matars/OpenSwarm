@@ -3845,7 +3845,7 @@ fn worktree_help_lines(pane: WorktreePane, root_branch: &str) -> Vec<Line<'stati
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
             Line::from("- Grouped by category: general, worktrees, git, view + help, canvas"),
-            Line::from("- a: create worktree from branch name"),
+            Line::from("- a: create worktree from worktree name"),
             Line::from("- b: open branch switcher (type to filter, Enter switch/create)"),
             Line::from("- g: orchestrate feature, review prompts per leaf, then execute"),
             Line::from("- o: open/reopen terminal popup for selected node"),
@@ -3953,7 +3953,7 @@ fn draw_worktree_create_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
 
     frame.render_widget(
         Paragraph::new(
-            "Choose source above, then type worktree branch. Enter creates a workspace under ~/.config/openswarm/workspaces/.",
+            "Choose source above, then type worktree name. Enter creates a workspace under ~/.config/openswarm/workspaces/.",
         )
             .style(Style::default().fg(Color::Gray)),
         layout[0],
@@ -3978,7 +3978,7 @@ fn draw_worktree_create_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
 
     frame.render_widget(
         Paragraph::new(app.new_worktree_branch.as_str())
-            .block(Block::default().title("Branch").borders(Borders::ALL))
+            .block(Block::default().title("Worktree").borders(Borders::ALL))
             .style(Style::default().fg(Color::Cyan)),
         layout[2],
     );
