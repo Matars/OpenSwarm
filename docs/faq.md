@@ -15,11 +15,11 @@ OpenSwarm auto-detects `claude` and `opencode` on your PATH. It launches them in
 
 ## Does OpenSwarm modify my repository?
 
-OpenSwarm uses standard git commands: `git worktree add/remove`, `git add`, `git commit`, `git push`, `git merge`, `git status`, `git stash`. It stores parent-child worktree relationships in a `.parent-hints` file in the workspaces directory. Worktrees are created in a `.<repo>-workspaces/` sibling directory on all platforms. No git hooks are modified, no global config is touched.
+OpenSwarm uses standard git commands: `git worktree add/remove`, `git add`, `git commit`, `git push`, `git merge`, `git status`, `git stash`. It stores parent-child worktree relationships in a `.parent-hints` file in each workspaces container. Worktrees are created under `~/.config/openswarm/workspaces/` on all platforms. No git hooks are modified, no global config is touched.
 
 ## Can I use OpenSwarm on an existing repo with worktrees?
 
-Yes. OpenSwarm reads `git worktree list` on startup and displays whatever worktrees already exist. It will offer to migrate from the legacy `.gitfetch-worktrees/` layout if detected.
+Yes. OpenSwarm reads `git worktree list` on startup and displays whatever worktrees already exist.
 
 ## OpenSwarm opens to a black screen after `npm install`
 

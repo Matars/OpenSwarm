@@ -15,6 +15,7 @@ Instead of juggling terminal tabs and manual worktree commands, you get one visu
 - **Built for parallel flow**: run multiple isolated streams without context thrash
 - **Fast keyboard loop**: create, commit, push, merge, and clean up without leaving the TUI
 - **Configurable keybinds**: remap most Worktrees/Changes actions in `~/.config/openswarm/config.toml`
+- **Local workspace storage**: worktrees live under `~/.config/openswarm/workspaces/`
 
 ## Quick start
 

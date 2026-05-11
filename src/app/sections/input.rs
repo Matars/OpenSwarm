@@ -1774,46 +1774,6 @@ fn handle_quit_with_sessions_mode_key(app: &mut App, code: KeyCode) {
     }
 }
 
-fn handle_legacy_workspace_migrate_mode_key(
-    app: &mut App,
-    code: KeyCode,
-) -> Result<(), Box<dyn Error>> {
-    match code {
-        KeyCode::Esc => {
-            app.mode = Mode::Normal;
-            app.confirm_legacy_workspace_migrate_yes = false;
-            app.legacy_workspace_prompt_dismissed = true;
-            app.status_line = "Legacy workspace migration skipped".to_string();
-        }
-        KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
-            app.confirm_legacy_workspace_migrate_yes = !app.confirm_legacy_workspace_migrate_yes;
-        }
-        KeyCode::Char('y') => app.confirm_legacy_workspace_migrate_yes = true,
-        KeyCode::Char('n') => app.confirm_legacy_workspace_migrate_yes = false,
-        KeyCode::Enter => {
-            if app.confirm_legacy_workspace_migrate_yes {
-                let root = app.pending_legacy_workspace_root.clone();
-                app.status_line = migrate_legacy_workspace_layout(root.as_str())?;
-                app.legacy_workspace_prompt_dismissed = true;
-                refresh_worktrees(app);
-                refresh_status(app);
-            } else {
-                app.status_line = "Legacy workspace migration skipped".to_string();
-                app.legacy_workspace_prompt_dismissed = true;
-            }
-
-            app.mode = Mode::Normal;
-            app.confirm_legacy_workspace_migrate_yes = false;
-            app.pending_legacy_workspace_root.clear();
-            app.pending_legacy_workspace_path.clear();
-            app.pending_new_workspace_path.clear();
-        }
-        _ => {}
-    }
-
-    Ok(())
-}
-
 fn handle_worktree_create_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Error>> {
     match code {
         KeyCode::Esc => {

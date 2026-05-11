@@ -150,20 +150,20 @@ You can edit the prompt template inline during conflict resolution by pressing `
 
 ## Workspace layout
 
-Worktrees are created in a sibling directory on all platforms:
+Worktrees are created under the OpenSwarm config directory on all platforms:
 
 ```
-your-repo/                    # Main repository
-.<repo-name>-workspaces/      # Created by OpenSwarm
-  feature-auth/               # Worktree for feature-auth branch
-  fix-pagination/             # Worktree for fix-pagination branch
+~/.config/openswarm/workspaces/
+  <repo-name>-<id>/           # One container per repo
+    feature-auth/             # Worktree for feature-auth branch
+    fix-pagination/           # Worktree for fix-pagination branch
 ```
 
 Branch name slashes are replaced with hyphens for filesystem safety (e.g., `feature/auth` becomes `feature-auth`).
 
 ## Parent hints
 
-OpenSwarm tracks parent-child worktree relationships in a `.parent-hints` file inside the workspaces directory. This is a TSV file mapping child branches to parent branches. It's used to build the graph hierarchy and determine merge targets.
+OpenSwarm tracks parent-child worktree relationships in a `.parent-hints` file inside each workspaces container. This is a TSV file mapping child branches to parent branches. It's used to build the graph hierarchy and determine merge targets.
 
 Parent relationships are also inferred from branch name hierarchy (e.g., `feature/auth` is treated as a child of `feature` if both exist).
 
